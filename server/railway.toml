@@ -1,0 +1,8 @@
+# Railway configuration for the Node.js backend
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "node --experimental-vm-modules node_modules/tsx/dist/esm/index.js src/server.ts"
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 3
