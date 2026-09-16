@@ -11,7 +11,8 @@ import {
   Target,
   ChevronDown,
   ChevronUp,
-  LogIn
+  LogIn,
+  Award
 } from 'lucide-react';
 
 interface HomeProps {
@@ -635,47 +636,225 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
         </div>
       </section>
 
-      {/* Final Call to Action Box */}
-      <section style={{ marginBottom: '2.5rem' }}>
-        <div className="card" style={{
-          background: 'linear-gradient(135deg, var(--primary-700), var(--primary-900))',
-          color: 'white',
-          padding: '2.75rem 2rem',
-          textAlign: 'center',
-          borderRadius: 'var(--radius-xl)',
-          boxShadow: '0 20px 30px -10px rgba(30, 58, 138, 0.3)'
-        }}>
-          <h2 style={{ fontSize: '1.85rem', fontWeight: 900, marginBottom: '0.75rem', color: 'white' }}>
-            {language === 'ar' ? 'ابدأ تجربة التقويم الذكي الآن مجاناً' : 'Experience Next-Gen Diagnostic Assessment Today'}
+      {/* Educational Excellence Charter & Pillars Section (Modern UI Boxes) */}
+      <section style={{ marginBottom: '3rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
+            {language === 'ar' ? 'ميثاق التميز التربوي والتقني' : 'Pedagogical Excellence Charter'}
+          </span>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-title)' }}>
+            {language === 'ar' ? 'ركائز منظومة التقييم من أجل التعليم' : 'Core Pillars of the Assessment Platform'}
           </h2>
-          <p style={{ maxWidth: '640px', margin: '0 auto 1.75rem', fontSize: '1.05rem', opacity: 0.9, lineHeight: 1.7 }}>
+          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem', maxWidth: '680px', margin: '0.5rem auto 0', lineHeight: 1.6 }}>
             {language === 'ar'
-              ? 'انضم إلى المنظومة التعليمية الرقمية المعتمدة المستندة لكتب المناهج واختبر مهاراتك مع التغذية الراجعة الفورية بالذكاء الاصطناعي.'
-              : 'Join the official educational platform and test your mastery with real-time curriculum diagnostic feedback.'}
+              ? 'معايير علمية وتطبيقية صارمة تضمن أعلى مستويات الدقة والأمان وتوفر للطالب والمعلم بيئة تعلم حقيقية موثوقة'
+              : 'Rigorous pedagogical and technical benchmarks ensuring peak diagnostic accuracy, student safety, and curriculum alignment.'}
           </p>
-          <div className="hero-actions-container" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button 
-              className="btn btn-secondary btn-lg hero-cta-btn" 
-              onClick={() => onOpenAuth('register')}
-              style={{ fontWeight: 800, padding: '0.85rem 2rem' }}
-            >
-              <Sparkles size={20} />
-              <span>{language === 'ar' ? 'إنشاء حساب جديد' : 'Create New Account'}</span>
-            </button>
-            <button 
-              className="btn btn-outline btn-lg hero-cta-btn" 
-              onClick={() => onOpenAuth('login')}
-              style={{
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gap: '1.25rem',
+          marginBottom: '1.5rem'
+        }}>
+          {/* Pillar 1 */}
+          <div className="card" style={{
+            background: 'linear-gradient(145deg, #FFFFFF, #EFF6FF)',
+            border: '1.5px solid var(--primary-100)',
+            padding: '1.75rem 1.5rem',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.05)'
+          }}>
+            <div>
+              <div style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, var(--primary-600), var(--primary-800))',
                 color: 'white',
-                borderColor: 'rgba(255, 255, 255, 0.75)',
-                background: 'rgba(255, 255, 255, 0.1)',
-                fontWeight: 800,
-                padding: '0.85rem 2rem'
-              }}
-            >
-              <LogIn size={20} />
-              <span>{language === 'ar' ? 'تسجيل الدخول' : 'Sign In'}</span>
-            </button>
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+                boxShadow: '0 4px 10px rgba(37, 99, 235, 0.25)'
+              }}>
+                <ShieldCheck size={24} />
+              </div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-900)', marginBottom: '0.5rem' }}>
+                {language === 'ar' ? 'عزل الصفوف وأمان المنهج' : 'Strict Stage & Grade Security'}
+              </h3>
+              <p style={{ color: 'var(--text-body)', fontSize: '0.9rem', lineHeight: 1.7 }}>
+                {language === 'ar'
+                  ? 'وصول محمي ومخصص بالكامل؛ يحصل كل طالب فقط على كتب وامتحانات ومحتوى صفه الدراسي المقيد به، دون أي تشتت أو خلط بين المراحل.'
+                  : 'Isolated curriculum access ensuring students only interact with textbooks and evaluations designated for their exact registered academic stage.'}
+              </p>
+            </div>
+            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light)' }}>
+              <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                {language === 'ar' ? 'أمان وموثوقية 100%' : '100% Stage Isolation'}
+              </span>
+            </div>
+          </div>
+
+          {/* Pillar 2 */}
+          <div className="card" style={{
+            background: 'linear-gradient(145deg, #FFFFFF, #F0FDF4)',
+            border: '1.5px solid #DCFCE7',
+            padding: '1.75rem 1.5rem',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 14px rgba(22, 163, 74, 0.05)'
+          }}>
+            <div>
+              <div style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, var(--success-500), var(--success-700))',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+                boxShadow: '0 4px 10px rgba(22, 163, 74, 0.25)'
+              }}>
+                <BookOpen size={24} />
+              </div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#166534', marginBottom: '0.5rem' }}>
+                {language === 'ar' ? 'دقة مراجع الكتب والصفحات' : 'Official Page Citations'}
+              </h3>
+              <p style={{ color: 'var(--text-body)', fontSize: '0.9rem', lineHeight: 1.7 }}>
+                {language === 'ar'
+                  ? 'ربط كل سؤال واختبار بنص الكتاب المدرسي الرسمي ورقم الصفحة بدقة متناهية، لمنع الهلوسة وضمان مطابقة معايير الامتحانات الوزارية.'
+                  : 'Every diagnostic question is tied directly to official textbook passages with precise page references, preventing hallucinations.'}
+              </p>
+            </div>
+            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light)' }}>
+              <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>
+                {language === 'ar' ? 'موثق بالصفحة والفقرة' : 'Exact Page Alignment'}
+              </span>
+            </div>
+          </div>
+
+          {/* Pillar 3 */}
+          <div className="card" style={{
+            background: 'linear-gradient(145deg, #FFFFFF, #FFFBEB)',
+            border: '1.5px solid #FEF3C7',
+            padding: '1.75rem 1.5rem',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 14px rgba(217, 119, 6, 0.05)'
+          }}>
+            <div>
+              <div style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, var(--warning-500), var(--warning-600))',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+                boxShadow: '0 4px 10px rgba(217, 119, 6, 0.25)'
+              }}>
+                <Target size={24} />
+              </div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#92400E', marginBottom: '0.5rem' }}>
+                {language === 'ar' ? 'خطة علاجية وتشخيص فوري' : 'Actionable Remedial Feedback'}
+              </h3>
+              <p style={{ color: 'var(--text-body)', fontSize: '0.9rem', lineHeight: 1.7 }}>
+                {language === 'ar'
+                  ? 'لا نكتفي بإعطاء درجات رقمية، بل يشخص النظام سبب الخطأ والمفهوم الناقص، ويوجه الطالب مباشرة: "راجع الفصل الأول - صفحة 7".'
+                  : 'Moves beyond raw grades by pinpointing the specific misconception, explaining why choices are incorrect with study prescriptions.'}
+              </p>
+            </div>
+            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light)' }}>
+              <span className="badge" style={{ background: '#FEF3C7', color: '#92400E', fontSize: '0.75rem' }}>
+                {language === 'ar' ? 'تشخيص مفاهيمي متقدم' : 'Instant Misconception Diagnosis'}
+              </span>
+            </div>
+          </div>
+
+          {/* Pillar 4 */}
+          <div className="card" style={{
+            background: 'linear-gradient(145deg, #FFFFFF, #FAF5FF)',
+            border: '1.5px solid #F3E8FF',
+            padding: '1.75rem 1.5rem',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 14px rgba(147, 51, 234, 0.05)'
+          }}>
+            <div>
+              <div style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: 'var(--radius-md)',
+                background: 'linear-gradient(135deg, #7C3AED, #6D28D9)',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+                boxShadow: '0 4px 10px rgba(124, 58, 237, 0.25)'
+              }}>
+                <BarChart3 size={24} />
+              </div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#6B21A8', marginBottom: '0.5rem' }}>
+                {language === 'ar' ? 'تحليلات طولية ومستوى الإتقان' : 'Longitudinal Mastery Analytics'}
+              </h3>
+              <p style={{ color: 'var(--text-body)', fontSize: '0.9rem', lineHeight: 1.7 }}>
+                {language === 'ar'
+                  ? 'متابعة تراكمية للأداء عبر الفصول والوحدات، مع تصنيف دقيق لمستوى استيعاب المفاهيم (متقن، متطور، بحاجة لدعم) لدعم مسار التعلم.'
+                  : 'Track longitudinal learning curve with granular topic mastery metrics, enabling students and teachers to measure real progress.'}
+              </p>
+            </div>
+            <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-light)' }}>
+              <span className="badge" style={{ background: '#F3E8FF', color: '#6B21A8', fontSize: '0.75rem' }}>
+                {language === 'ar' ? 'مؤشرات أداء شاملة' : 'Continuous Progress Tracking'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Quality Assurance Ribbon */}
+        <div style={{
+          background: 'linear-gradient(135deg, #F8FAFC, #EFF6FF)',
+          border: '1.5px solid var(--primary-200)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '1.25rem 1.75rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Award size={26} color="var(--primary-700)" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 800, color: 'var(--primary-900)', fontSize: '1rem' }}>
+                {language === 'ar' ? 'معايير الجودة والاعتماد الأكاديمي للتقويم التربوي' : 'Certified Academic Quality & Evaluation Standards'}
+              </div>
+              <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                {language === 'ar' ? 'مطور وفق أحدث نظريات القياس والتقويم بالذكاء الاصطناعي بواسطة فريق DevTech' : 'Engineered under modern psychometric & AI diagnostic frameworks by DevTech'}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span className="badge badge-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}>
+              {language === 'ar' ? '✓ نظام نشط ومحدث 2026' : '✓ Active System 2026'}
+            </span>
           </div>
         </div>
       </section>
