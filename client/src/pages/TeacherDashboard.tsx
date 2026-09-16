@@ -339,7 +339,7 @@ export const TeacherDashboard: React.FC = () => {
                 </h4>
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--primary-700)', marginBottom: '0.75rem' }}>
-                يقوم الخادم حالياً باستخراج النصوص من الصفحات، وتقسيمها إلى مقاطع دلالية، وتوليد متجهات التضمين HNSW RAG...
+                يقوم الخادم حالياً باستخراج النصوص من الصفحات، وتقسيمها إلى مقاطع دلالية، وفهرستها للتقييم الذكي...
               </p>
               <div className="progress-container">
                 <div className="progress-bar" style={{ width: `${jobProgress}%` }} />
@@ -468,7 +468,7 @@ export const TeacherDashboard: React.FC = () => {
                 style={{ width: '100%' }}
               >
                 <Upload size={20} />
-                <span>{isUploading ? t.uploadingBook : 'رفع الكتاب وبدء معالجة الـ RAG بالخلفية'}</span>
+                <span>{isUploading ? t.uploadingBook : 'رفع الكتاب وبدء المعالجة الذكية بالخلفية'}</span>
               </button>
             </form>
           </div>

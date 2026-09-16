@@ -91,7 +91,7 @@ const PlatformApp: React.FC = () => {
       }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
           <p style={{ fontWeight: 700, color: 'var(--primary-800)', marginBottom: '0.35rem' }}>
-            {t.brandName} • {language === 'ar' ? 'منظومة التقويم التشخيصي الذكي المستند للمناهج' : 'Grounded Diagnostic Educational Platform'}
+            {t.brandName} • {language === 'ar' ? 'منظومة التقويم التشخيصي الذكي المستند للمناهج' : 'Diagnostic Educational Assessment Platform'}
           </p>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
             {language === 'ar' ? 'جميع الحقوق محفوظة © DevTech' : 'All rights reserved © DevTech'}

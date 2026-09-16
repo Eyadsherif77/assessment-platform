@@ -33,8 +33,8 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
     {
       q_ar: 'هل الأسئلة مطابقة 100% لكتب ومناهج وزارة التربية والتعليم الرسمية؟',
       q_en: 'Are the questions 100% aligned with official ministry textbooks?',
-      a_ar: 'نعم بكل تأكيد. تعتمد المنصة على محرك استرجاع منهجي حازم (Strict RAG) يمنع الذكاء الاصطناعي من اختراع أي أسئلة خارج نص الكتاب المدرسي، ويربط كل سؤال برقم الصفحة والاقتباس المباشر.',
-      a_en: 'Yes absolutely. The platform uses a Strict Grounded RAG engine that prevents AI hallucinations, guaranteeing every question is extracted directly from the uploaded official textbook with page references.'
+      a_ar: 'نعم بكل تأكيد. تعتمد المنصة على محرك استرجاع منهجي حازم يمنع الذكاء الاصطناعي من اختراع أي أسئلة خارج نص الكتاب المدرسي، ويربط كل سؤال برقم الصفحة والاقتباس المباشر.',
+      a_en: 'Yes absolutely. The platform uses a strict educational AI engine that prevents hallucinations, guaranteeing every question is extracted directly from the uploaded official textbook with page references.'
     },
     {
       q_ar: 'كيف يساعد التقرير التشخيصي الطالب على رفع درجاته؟',
@@ -195,9 +195,9 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             <div style={{ flex: 1, minWidth: '280px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
                 <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary-800)' }}>
-                  {language === 'ar' ? 'فلسفة المنصة: تقييم تشخيصي مرتبط بنصوص الكتاب المدرسي' : 'Grounded Educational Diagnostic Assessment'}
+                  {language === 'ar' ? 'فلسفة المنصة: تقييم تشخيصي مرتبط بنصوص الكتاب المدرسي' : 'Curriculum-Linked Diagnostic Assessment'}
                 </h3>
-                <span className="badge badge-primary">RAG Grounded AI</span>
+                <span className="badge badge-primary">{language === 'ar' ? 'ذكاء اصطناعي تشخيصي' : 'Diagnostic AI'}</span>
               </div>
               <p style={{ color: 'var(--text-body)', lineHeight: 1.8, fontSize: '1rem' }}>
                 {language === 'ar' 
@@ -492,7 +492,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               </div>
               <h4 style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--primary-900)', marginBottom: '0.4rem' }}>الربط المنهجي العميق</h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-body)', lineHeight: 1.6 }}>
-                كتاب العلوم وفصل المادة وخواصها مفهرس بالكامل، مع تقييم ذكي فوري بالذكاء الاصطناعي RAG.
+                كتاب العلوم وفصل المادة وخواصها مفهرس بالكامل، مع تقييم ذكي فوري بالذكاء الاصطناعي.
               </p>
             </div>
 
@@ -629,7 +629,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           <p style={{ maxWidth: '640px', margin: '0 auto 1.75rem', fontSize: '1.05rem', opacity: 0.9, lineHeight: 1.7 }}>
             {language === 'ar'
               ? 'انضم إلى المنظومة التعليمية الرقمية المعتمدة المستندة لكتب المناهج واختبر مهاراتك مع التغذية الراجعة الفورية بالذكاء الاصطناعي.'
-              : 'Join the officially grounded educational system and test your mastery with real-time textbook-grounded diagnostic feedback.'}
+              : 'Join the official educational platform and test your mastery with real-time curriculum diagnostic feedback.'}
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button 

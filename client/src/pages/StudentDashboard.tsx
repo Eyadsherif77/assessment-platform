@@ -375,7 +375,7 @@ export const StudentDashboard: React.FC = () => {
         >
           <BrainCircuit size={18} />
           <span>{t.tabAiEval}</span>
-          <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>AI RAG</span>
+          <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>AI</span>
         </button>
 
         <button
@@ -507,7 +507,7 @@ export const StudentDashboard: React.FC = () => {
             <div style={{ marginTop: '2rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>
-                  {language === 'ar' ? 'الأسئلة المولدة من نصوص الكتاب:' : 'Textbook-Grounded Questions:'}
+                  {language === 'ar' ? 'الأسئلة المولدة من نصوص الكتاب:' : 'Textbook-Based Questions:'}
                 </h3>
                 <span className="badge badge-primary">{aiQuestions.length} أسئلة</span>
               </div>
@@ -578,7 +578,7 @@ export const StudentDashboard: React.FC = () => {
             }}>
               <div style={{ textAlign: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
                 <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
-                  {language === 'ar' ? 'تقرير التقييم التشخيصي المستند للكتاب' : 'Grounded Diagnostic Report'}
+                  {language === 'ar' ? 'تقرير التقييم التشخيصي المستند للكتاب' : 'Diagnostic Assessment Report'}
                 </span>
                 <h3 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--primary-800)' }}>
                   {t.aiDiagnosisResult}
@@ -719,7 +719,7 @@ export const StudentDashboard: React.FC = () => {
               </p>
 
               <h4 style={{ fontWeight: 700, marginBottom: '0.75rem' }}>
-                {language === 'ar' ? 'نصوص وفقرات الكتاب المستخرجة للتقييم RAG:' : 'Extracted Grounded Chunks:'}
+                {language === 'ar' ? 'نصوص وفقرات الكتاب المستخرجة للتقييم:' : 'Extracted Curriculum Chunks:'}
               </h4>
 
               {selectedChapterChunks.map((chunk) => (
@@ -1010,7 +1010,7 @@ export const StudentDashboard: React.FC = () => {
                 {analytics?.summary?.total_ai_assessments || 0}
               </div>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                تقييمات ذكية RAG مكتملة
+                تقييمات ذكية مكتملة
               </div>
             </div>
 
@@ -1103,7 +1103,7 @@ export const StudentDashboard: React.FC = () => {
               ))
             ) : (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                ابدأ بإجراء أول تقييم ذكي RAG لتتبع مستوى إتقانك هنا!
+                ابدأ بإجراء أول تقييم ذكي لتتبع مستوى إتقانك هنا!
               </p>
             )}
           </div>
