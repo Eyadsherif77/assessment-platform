@@ -32,6 +32,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [schoolName, setSchoolName] = useState('');
   const [specialization, setSpecialization] = useState('');
 
+  // Secondary division & School type states
+  const [section, setSection] = useState('علمي');
+  const [secondarySubDivision, setSecondarySubDivision] = useState<'علمي علوم' | 'علمي رياضة'>('علمي علوم');
+  const [schoolType, setSchoolType] = useState<'عربي' | 'لغات'>('عربي');
+
   // Metadata from API
   const [stages, setStages] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +65,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Selected stage grades
   const selectedStage = stages.find(s => s.id === academicStageId);
   const availableGrades = selectedStage?.grades || [];
+  const selectedGrade = availableGrades.find((g: any) => g.id === gradeId);
+
+  const isSecondaryStage = selectedStage?.code === 'SECONDARY' || selectedStage?.name_ar?.includes('ثانو');
+  const isSec1 = selectedGrade?.code === 'SEC_1' || selectedGrade?.name_ar?.includes('الأول');
+  const isSec2Or3 = isSecondaryStage && !isSec1;
 
   useEffect(() => {
     if (availableGrades.length > 0 && !availableGrades.some((g: any) => g.id === gradeId)) {
@@ -91,6 +101,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           payload.governorateId = governorateId;
           payload.schoolId = schoolId;
           payload.schoolName = schoolName;
+          payload.schoolType = schoolType;
+          if (isSecondaryStage) {
+            payload.section = isSec2Or3 && section === 'علمي' ? secondarySubDivision : section;
+          }
         } else {
           payload.specialization = specialization;
           payload.schoolName = schoolName;
@@ -341,6 +355,76 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Secondary Stage Division Selector */}
+                  {isSecondaryStage && (
+                    <div style={{
+                      background: 'var(--primary-50)',
+                      border: '1.5px solid var(--primary-200)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '0.85rem 1rem',
+                      marginBottom: '1rem'
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--primary-800)', marginBottom: '0.5rem' }}>
+                        🎯 {language === 'ar' ? 'تحديد الشعبة للمرحلة الثانوية:' : 'Secondary Division:'}
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: isSec2Or3 && section === 'علمي' ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                            {language === 'ar' ? 'الشعبة' : 'Track'}
+                          </label>
+                          <select
+                            className="form-select"
+                            value={section}
+                            onChange={(e) => setSection(e.target.value)}
+                          >
+                            <option value="علمي">{language === 'ar' ? 'الشعبة العلمية (علمي)' : 'Scientific'}</option>
+                            <option value="أدبي">{language === 'ar' ? 'الشعبة الأدبية (أدبي)' : 'Literary'}</option>
+                          </select>
+                        </div>
+
+                        {isSec2Or3 && section === 'علمي' && (
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                              {language === 'ar' ? 'تخصص الشعبة العلمية' : 'Science Branch'}
+                            </label>
+                            <select
+                              className="form-select"
+                              value={secondarySubDivision}
+                              onChange={(e) => setSecondarySubDivision(e.target.value as any)}
+                            >
+                              <option value="علمي علوم">{language === 'ar' ? 'علمي علوم' : 'Science (Biology)'}</option>
+                              <option value="علمي رياضة">{language === 'ar' ? 'علمي رياضة' : 'Math (Engineering)'}</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* School Type (عربي / لغات) */}
+                  <div className="form-group">
+                    <label className="form-label">{language === 'ar' ? 'نوع المدرسة' : 'School Curriculum Type'}</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <button
+                        type="button"
+                        className={`btn ${schoolType === 'عربي' ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => setSchoolType('عربي')}
+                        style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem' }}
+                      >
+                        🏫 {language === 'ar' ? 'مدارس عربي' : 'Arabic School'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${schoolType === 'لغات' ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => setSchoolType('لغات')}
+                        style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem' }}
+                      >
+                        🌐 {language === 'ar' ? 'مدارس لغات' : 'Language School'}
+                      </button>
+                    </div>
+                  </div>
+
                   {/* School name */}
                   <div className="form-group">
                     <label className="form-label">{t.selectSchool}</label>
@@ -349,7 +433,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       className="form-input"
                       value={schoolName}
                       onChange={(e) => setSchoolName(e.target.value)}
-                      placeholder={language === 'ar' ? 'مدرسة المتفوقين الرسمية لغات' : 'School Name'}
+                      placeholder={language === 'ar' ? 'اسم المدرسة (اختياري)' : 'School Name (optional)'}
                     />
                   </div>
                 </>

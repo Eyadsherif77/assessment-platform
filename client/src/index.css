@@ -60,7 +60,13 @@
 
 html, body {
   min-height: 100vh;
-  background-color: var(--bg-main);
+  background-color: #F8FAFC;
+  background-image: 
+    radial-gradient(rgba(37, 99, 235, 0.06) 1.2px, transparent 1.2px),
+    radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 85% 75%, rgba(99, 102, 241, 0.07) 0%, transparent 45%);
+  background-size: 24px 24px, 100% 100%, 100% 100%;
+  background-attachment: fixed;
   color: var(--text-body);
   font-size: 16px;
   line-height: 1.6;
@@ -68,6 +74,29 @@ html, body {
   overflow-x: hidden;
   width: 100%;
   -webkit-text-size-adjust: 100%;
+}
+
+/* Ambient Modern Elements */
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.05); }
+}
+
+.floating-card {
+  animation: floatSlow 5s ease-in-out infinite;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 10px 25px -5px rgba(30, 58, 138, 0.07);
 }
 
 /* Arabic RTL Typography */

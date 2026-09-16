@@ -141,6 +141,15 @@ class DatabaseManager {
         const schemaSql = fs.readFileSync(schemaPath, 'utf8');
         console.log('📜 Applying database schema...');
         await this.exec(schemaSql);
+
+        // Safe migrations for newer columns
+        try {
+          await this.query(`ALTER TABLE student_profiles ADD COLUMN section TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE student_profiles ADD COLUMN school_type TEXT`);
+        } catch (_) {}
+
         console.log('✅ Database schema verified and active.');
       }
     } catch (error) {

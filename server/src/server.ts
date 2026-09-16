@@ -71,6 +71,39 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// SEO: Robots.txt
+app.get('/robots.txt', (req, res) => {
+  const host = req.get('host') || 'client-pied-alpha.vercel.app';
+  res.type('text/plain');
+  res.send(`User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: https://${host}/sitemap.xml\n`);
+});
+
+// SEO: Dynamic XML Sitemap
+app.get('/sitemap.xml', (req, res) => {
+  const host = req.get('host') || 'client-pied-alpha.vercel.app';
+  const baseUrl = `https://${host}`;
+  const now = new Date().toISOString().split('T')[0];
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/?view=home</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+</urlset>`;
+
+  res.type('application/xml');
+  res.send(xml);
+});
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (err.type === 'entity.parse.failed' || err.status === 400) {

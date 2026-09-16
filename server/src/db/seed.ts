@@ -4,6 +4,30 @@ import { db } from './db.js';
 
 export async function seedDatabase(): Promise<void> {
   try {
+    // Ensure Secondary grades SEC_2 and SEC_3 always exist
+    try {
+      const secStageRes = await db.query(`SELECT id FROM academic_stages WHERE code = 'SECONDARY'`);
+      if (secStageRes.rows.length > 0) {
+        const secStageId = secStageRes.rows[0].id;
+        const sec2Check = await db.query(`SELECT id FROM grades WHERE code = 'SEC_2'`);
+        if (sec2Check.rows.length === 0) {
+          await db.query(
+            `INSERT INTO grades (id, stage_id, code, name_ar, name_en, sort_order) VALUES ($1, $2, 'SEC_2', 'الصف الثاني الثانوي', 'Secondary 2 (Grade 11)', 2)`,
+            [uuidv4(), secStageId]
+          );
+        }
+        const sec3Check = await db.query(`SELECT id FROM grades WHERE code = 'SEC_3'`);
+        if (sec3Check.rows.length === 0) {
+          await db.query(
+            `INSERT INTO grades (id, stage_id, code, name_ar, name_en, sort_order) VALUES ($1, $2, 'SEC_3', 'الصف الثالث الثانوي', 'Secondary 3 (Grade 12)', 3)`,
+            [uuidv4(), secStageId]
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Grade sync note:', e);
+    }
+
     const existingStages = await db.query('SELECT COUNT(*) as count FROM academic_stages');
     if (parseInt(existingStages.rows[0].count, 10) > 0) {
       console.log('🌱 Database already seeded with academic stages. Skipping initial seed.');

@@ -16,6 +16,8 @@ export interface UserProfile {
     grade_name_en?: string;
     school_name?: string;
     specialization?: string;
+    section?: string;
+    school_type?: string;
   };
 }
 

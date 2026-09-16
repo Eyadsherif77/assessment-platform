@@ -55,10 +55,20 @@ export interface FullDiagnosticReport {
   overall_feedback_en: string;
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 class AIRagEngine {
   /**
    * Strictly retrieve textbook chunks belonging ONLY to the student's stage, grade, subject, book, and chapter.
    */
+
   public async retrieveGroundedChunks(params: {
     academicStageId: string;
     gradeId: string;
@@ -157,6 +167,7 @@ class AIRagEngine {
     const prompt = `أنت خبير قياس وتقويم تربوي للمناهج التعليمية الرسمية.
 مهمتك توليد ${count} أسئلة اختيار من متعدد باللغة العربية معتمدة حصرياً ومباشرة وبدقة 100% على فقرات الكتاب المدرسي المرفقة أدناه.
 ممنوع اختراع أي معلومات خارج النص المرفق.
+تنبيه صارم: وزّع موقع الإجابة الصحيحة عشوائياً بين الخيارات (لا تضع الإجابة الصحيحة دائماً أول خيار، بل نوّع مواقعها).
 
 نص الكتاب المدرسي المستخرج:
 ${contextText}
@@ -166,10 +177,10 @@ ${contextText}
   {
     "question_text": "نص السؤال الدقيق من واقع الكتاب",
     "options": [
-      { "text": "الخيار الأول (الصحيح)", "is_correct": true },
-      { "text": "الخيار الثاني (الخطأ)", "is_correct": false },
-      { "text": "الخيار الثالث (الخطأ)", "is_correct": false },
-      { "text": "الخيار الرابع (الخطأ)", "is_correct": false }
+      { "text": "خيار أول", "is_correct": false },
+      { "text": "خيار ثان (الصحيح)", "is_correct": true },
+      { "text": "خيار ثالث", "is_correct": false },
+      { "text": "خيار رابع", "is_correct": false }
     ],
     "difficulty": "MEDIUM",
     "bloom_level": "APPLICATION",
@@ -199,11 +210,11 @@ ${contextText}
         return parsed.map((q: any) => ({
           id: uuidv4(),
           question_text: q.question_text,
-          options: q.options.map((opt: any) => ({
+          options: shuffleArray(q.options.map((opt: any) => ({
             id: uuidv4(),
             text: opt.text,
-            is_correct: opt.is_correct
-          })),
+            is_correct: !!opt.is_correct
+          }))),
           difficulty: q.difficulty || 'MEDIUM',
           bloom_level: q.bloom_level || 'COMPREHENSION',
           page_reference: q.page_reference || chunks[0].page_number,
@@ -294,7 +305,10 @@ ${contextText}
       });
     }
 
-    return questions;
+    return questions.map(q => ({
+      ...q,
+      options: shuffleArray(q.options)
+    }));
   }
 
   /**

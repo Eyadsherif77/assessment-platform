@@ -8,9 +8,31 @@ import { AuthModal } from './pages/AuthModal';
 
 const PlatformApp: React.FC = () => {
   const { user, t, language } = useAuth();
-  const [activeView, setActiveView] = useState<'home' | 'dashboard'>('home');
+
+  const getInitialView = (): 'home' | 'dashboard' => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const v = params.get('view');
+      if (v === 'dashboard' || v === 'home') return v;
+      const saved = localStorage.getItem('platform_active_view');
+      if (saved === 'dashboard' || saved === 'home') return saved;
+    } catch (_) {}
+    return 'home';
+  };
+
+  const [activeView, setActiveViewState] = useState<'home' | 'dashboard'>(getInitialView);
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+
+  const setActiveView = (view: 'home' | 'dashboard') => {
+    setActiveViewState(view);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', view);
+      window.history.replaceState({}, '', url.toString());
+      localStorage.setItem('platform_active_view', view);
+    } catch (_) {}
+  };
 
   const handleOpenAuth = (mode: 'login' | 'register') => {
     setAuthModalMode(mode);
@@ -26,7 +48,7 @@ const PlatformApp: React.FC = () => {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" style={{ position: 'relative' }}>
       <Navbar
         onOpenAuth={handleOpenAuth}
         activeView={activeView}
@@ -68,11 +90,11 @@ const PlatformApp: React.FC = () => {
         fontSize: '0.875rem'
       }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-          <p style={{ fontWeight: 700, color: 'var(--primary-800)', marginBottom: '0.25rem' }}>
+          <p style={{ fontWeight: 700, color: 'var(--primary-800)', marginBottom: '0.35rem' }}>
             {t.brandName} • {language === 'ar' ? 'منظومة التقويم التشخيصي الذكي المستند للمناهج' : 'Grounded Diagnostic Educational Platform'}
           </p>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
-            PostgreSQL + pgvector • React + TypeScript + Vite • Node.js Express • AI RAG Engine
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
+            {language === 'ar' ? 'جميع الحقوق محفوظة © DevTech' : 'All rights reserved © DevTech'}
           </p>
         </div>
       </footer>

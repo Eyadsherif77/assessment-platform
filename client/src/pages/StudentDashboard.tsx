@@ -22,7 +22,28 @@ export const StudentDashboard: React.FC = () => {
   const { user, token, t, language } = useAuth();
   const ArrowIcon = language === 'ar' ? ArrowLeft : ArrowRight;
 
-  const [activeTab, setActiveTab] = useState<'books' | 'exams' | 'ai' | 'analytics'>('ai');
+  const getInitialTab = (): 'books' | 'exams' | 'ai' | 'analytics' => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab === 'books' || tab === 'exams' || tab === 'ai' || tab === 'analytics') return tab;
+      const saved = localStorage.getItem('student_active_tab');
+      if (saved === 'books' || saved === 'exams' || saved === 'ai' || saved === 'analytics') return saved as any;
+    } catch (_) {}
+    return 'ai';
+  };
+
+  const [activeTab, setActiveTabState] = useState<'books' | 'exams' | 'ai' | 'analytics'>(getInitialTab);
+
+  const setActiveTab = (tab: 'books' | 'exams' | 'ai' | 'analytics') => {
+    setActiveTabState(tab);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+      localStorage.setItem('student_active_tab', tab);
+    } catch (_) {}
+  };
 
   // Books Data
   const [books, setBooks] = useState<any[]>([]);
@@ -36,6 +57,14 @@ export const StudentDashboard: React.FC = () => {
   const [examAnswers, setExamAnswers] = useState<Record<string, string>>({});
   const [examResult, setExamResult] = useState<any | null>(null);
   const [isSubmittingExam, setIsSubmittingExam] = useState(false);
+  const [examTimeLeft, setExamTimeLeft] = useState<number | null>(null);
+
+  // Format countdown time MM:SS
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // AI Evaluation Studio Data
   const [selectedAiBook, setSelectedAiBook] = useState<any | null>(null);
@@ -95,6 +124,23 @@ export const StudentDashboard: React.FC = () => {
       .catch(console.error);
   };
 
+  // Live Exam Countdown Timer Effect
+  useEffect(() => {
+    if (!activeExam || examTimeLeft === null || examResult) return;
+
+    if (examTimeLeft <= 0) {
+      // Auto-submit when time reaches 00:00!
+      handleSubmitExam();
+      return;
+    }
+
+    const timerInterval = setInterval(() => {
+      setExamTimeLeft(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [activeExam, examTimeLeft, examResult]);
+
   const handleOpenBookDetails = async (bookId: string) => {
     try {
       const res = await fetch(apiUrl(`/api/books/${bookId}`), {
@@ -130,6 +176,10 @@ export const StudentDashboard: React.FC = () => {
       setActiveExam(data);
       setExamAnswers({});
       setExamResult(null);
+
+      // Initialize live countdown timer in seconds
+      const durationMin = parseInt(data.exam?.duration_minutes, 10) || 15;
+      setExamTimeLeft(durationMin * 60);
     } catch (e) {
       console.error(e);
     }
@@ -138,6 +188,7 @@ export const StudentDashboard: React.FC = () => {
   const handleSubmitExam = async () => {
     if (!activeExam) return;
     setIsSubmittingExam(true);
+    setExamTimeLeft(null);
     try {
       const answersPayload = Object.entries(examAnswers).map(([qId, optId]) => ({
         question_id: qId,
@@ -274,12 +325,22 @@ export const StudentDashboard: React.FC = () => {
               {user?.fullName?.charAt(0) || 'ط'}
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{user?.fullName}</h2>
                 <span className="badge badge-primary">
                   <School size={13} />
                   <span>{user?.profile?.grade_name_ar || 'الصف الأول الإعدادي'}</span>
                 </span>
+                {user?.profile?.section && (
+                  <span className="badge" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+                    شعبة: {user.profile.section}
+                  </span>
+                )}
+                {user?.profile?.school_type && (
+                  <span className="badge" style={{ background: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF' }}>
+                    {user.profile.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}
+                  </span>
+                )}
               </div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
                 {user?.profile?.stage_name_ar || 'المرحلة الإعدادية'} • {user?.profile?.school_name || 'مدرسة المتفوقين'}
@@ -401,8 +462,44 @@ export const StudentDashboard: React.FC = () => {
               style={{ width: '100%' }}
             >
               <Sparkles size={20} />
-              <span>{isGeneratingAi ? t.generatingQuestions : t.generateQuestionsBtn}</span>
+              <span>{isGeneratingAi ? (language === 'ar' ? 'جاري توليد الأسئلة... يرجى الانتظار ⏳' : 'Generating questions... Please wait ⏳') : t.generateQuestionsBtn}</span>
             </button>
+
+            {/* Waiting State Notification */}
+            {isGeneratingAi && (
+              <div style={{
+                marginTop: '1.25rem',
+                background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
+                border: '1.5px solid var(--primary-300)',
+                borderRadius: 'var(--radius-lg)',
+                padding: '1.25rem',
+                textAlign: 'center',
+                boxShadow: '0 8px 16px -4px rgba(37, 99, 235, 0.12)'
+              }}>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  background: 'var(--primary-600)',
+                  color: 'white',
+                  marginBottom: '0.6rem',
+                  animation: 'pulseGlow 1.5s infinite'
+                }}>
+                  <Sparkles size={22} />
+                </div>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary-900)', marginBottom: '0.25rem' }}>
+                  {language === 'ar' ? '⏳ يرجى الانتظار ثوانٍ معدودة...' : '⏳ Please wait a few seconds...'}
+                </h4>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-body)', maxWidth: '500px', margin: '0 auto', lineHeight: 1.6 }}>
+                  {language === 'ar'
+                    ? 'يقوم الذكاء الاصطناعي الآن بقراءة وتحليل صفحات الفصل المختار من الكتاب المدرسي، واستخراج أسئلة دقيقة مطابقة للمنهج مع شروحاتها ومراجع الصفحات.'
+                    : 'AI is reading and analyzing the textbook chapters to generate verified questions with page references.'}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* AI Assessment Questions */}
@@ -732,22 +829,41 @@ export const StudentDashboard: React.FC = () => {
             <div className="card">
               <button
                 className="btn btn-outline btn-sm"
-                onClick={() => { setActiveExam(null); setExamResult(null); }}
+                onClick={() => { setActiveExam(null); setExamResult(null); setExamTimeLeft(null); }}
                 style={{ marginBottom: '1.25rem' }}
               >
                 {language === 'ar' ? '← إلغاء والعودة للاختبارات' : '← Back to Exams'}
               </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <div>
                   <h3 style={{ fontSize: '1.35rem', fontWeight: 800 }}>{activeExam.exam.title_ar}</h3>
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                     إعداد المعلم: {activeExam.exam.teacher_name} • المدة: {activeExam.exam.duration_minutes} دقيقة
                   </p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-700)', fontWeight: 700 }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: 'var(--radius-full)',
+                  background: examTimeLeft !== null && examTimeLeft < 120 ? '#FEE2E2' : 'var(--primary-50)',
+                  border: examTimeLeft !== null && examTimeLeft < 120 ? '1.5px solid #EF4444' : '1.5px solid var(--primary-200)',
+                  color: examTimeLeft !== null && examTimeLeft < 120 ? '#B91C1C' : 'var(--primary-700)',
+                  fontWeight: 800,
+                  fontSize: '1rem',
+                  transition: 'all 0.3s ease'
+                }}>
                   <Clock size={18} />
-                  <span>{activeExam.exam.duration_minutes} {t.durationMin}</span>
+                  <span>
+                    {examTimeLeft !== null ? formatTime(examTimeLeft) : `${activeExam.exam.duration_minutes} ${t.durationMin}`}
+                  </span>
+                  {examTimeLeft !== null && examTimeLeft < 120 && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                      ({language === 'ar' ? 'الوقت ينفد!' : 'Ending soon!'})
+                    </span>
+                  )}
                 </div>
               </div>
 

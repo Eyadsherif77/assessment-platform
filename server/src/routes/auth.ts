@@ -20,7 +20,10 @@ router.post('/register', async (req, res) => {
       schoolName,
       academicStageId,
       gradeId,
-      specialization
+      specialization,
+      section,
+      schoolType,
+      school_type
     } = req.body;
 
     if (!email || !password || !role || !fullName) {
@@ -50,10 +53,12 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ error: 'يجب اختيار المرحلة الدراسية والصف الدراسي للطالب' });
       }
 
+      const effectiveSchoolType = schoolType || school_type || 'عربي';
+
       await db.query(
         `INSERT INTO student_profiles (
-           user_id, full_name, country_id, governorate_id, school_id, school_name, academic_stage_id, grade_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           user_id, full_name, country_id, governorate_id, school_id, school_name, academic_stage_id, grade_id, section, school_type
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           userId,
           fullName.trim(),
@@ -62,7 +67,9 @@ router.post('/register', async (req, res) => {
           schoolId || null,
           schoolName || null,
           academicStageId,
-          gradeId
+          gradeId,
+          section || null,
+          effectiveSchoolType
         ]
       );
     } else if (role === 'TEACHER') {

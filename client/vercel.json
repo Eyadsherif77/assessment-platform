@@ -5,8 +5,8 @@
   "installCommand": "npm install",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://ferry-valium-disclosure-stunning.trycloudflare.com/api/$1" },
-    { "source": "/uploads/(.*)", "destination": "https://ferry-valium-disclosure-stunning.trycloudflare.com/uploads/$1" },
+    { "source": "/api/(.*)", "destination": "https://exhibit-segment-bob-thick.trycloudflare.com/api/$1" },
+    { "source": "/uploads/(.*)", "destination": "https://exhibit-segment-bob-thick.trycloudflare.com/uploads/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

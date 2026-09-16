@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS student_profiles (
     school_name TEXT,
     academic_stage_id TEXT NOT NULL REFERENCES academic_stages(id),
     grade_id TEXT NOT NULL REFERENCES grades(id),
+    section TEXT,
+    school_type TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

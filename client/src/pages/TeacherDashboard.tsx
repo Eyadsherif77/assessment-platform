@@ -12,7 +12,28 @@ import {
 
 export const TeacherDashboard: React.FC = () => {
   const { user, token, t, language } = useAuth();
-  const [activeTab, setActiveTab] = useState<'upload' | 'exams' | 'banks' | 'analytics'>('upload');
+  const getInitialTeacherTab = (): 'upload' | 'exams' | 'banks' | 'analytics' => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab === 'upload' || tab === 'exams' || tab === 'banks' || tab === 'analytics') return tab;
+      const saved = localStorage.getItem('teacher_active_tab');
+      if (saved === 'upload' || saved === 'exams' || saved === 'banks' || saved === 'analytics') return saved as any;
+    } catch (_) {}
+    return 'upload';
+  };
+
+  const [activeTab, setActiveTabState] = useState<'upload' | 'exams' | 'banks' | 'analytics'>(getInitialTeacherTab);
+
+  const setActiveTab = (tab: 'upload' | 'exams' | 'banks' | 'analytics') => {
+    setActiveTabState(tab);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+      localStorage.setItem('teacher_active_tab', tab);
+    } catch (_) {}
+  };
 
   // Metadata
   const [stages, setStages] = useState<any[]>([]);
