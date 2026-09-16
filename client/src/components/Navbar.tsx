@@ -3,12 +3,12 @@ import { useAuth } from '../context/AuthContext';
 import { BookOpen, Globe, LogOut, User, Sparkles, School, Home as HomeIcon } from 'lucide-react';
 
 interface NavbarProps {
-  onOpenAuth: (mode: 'login' | 'register') => void;
+  onOpenAuth?: (mode: 'login' | 'register') => void;
   activeView: 'home' | 'dashboard';
   setActiveView: (view: 'home' | 'dashboard') => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, activeView, setActiveView }) => {
+export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => {
   const { user, logout, language, setLanguage, t } = useAuth();
 
   const toggleLanguage = () => {
@@ -96,22 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, activeView, setActiv
                 </button>
               </div>
             </>
-          ) : (
-            <div className="auth-nav-buttons">
-              <button 
-                className="btn btn-secondary btn-sm" 
-                onClick={() => onOpenAuth('login')}
-              >
-                {t.login}
-              </button>
-              <button 
-                className="btn btn-primary btn-sm" 
-                onClick={() => onOpenAuth('register')}
-              >
-                {t.register}
-              </button>
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
     </header>
