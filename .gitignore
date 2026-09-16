@@ -11,3 +11,6 @@ yarn-debug.log*
 pnpm-debug.log*
 uploads/*.pdf
 !uploads/sample_book_prep1.txt
+
+server/pgdata_local/
+*.db
