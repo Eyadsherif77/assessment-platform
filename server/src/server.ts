@@ -73,9 +73,13 @@ app.get('/api/health', (req, res) => {
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err.type === 'entity.parse.failed' || err.status === 400) {
+    return res.status(400).json({ error: 'صيغة البيانات (JSON) المرسلة غير صالحة' });
+  }
   console.error('Unhandled server error:', err);
   res.status(500).json({ error: 'حدث خطأ غير متوقع في الخادم: ' + (err.message || 'Error') });
 });
+
 
 // Initialize DB and launch server
 async function startServer() {
