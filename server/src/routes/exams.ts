@@ -101,7 +101,7 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
         book_id || null,
         chapter_id || null,
         duration_minutes,
-        Boolean(is_published)
+        is_published ? 1 : 0
       ]
     );
 
@@ -120,7 +120,7 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
             await db.query(
               `INSERT INTO exam_question_options (id, question_id, option_text, is_correct)
                VALUES ($1, $2, $3, $4)`,
-              [uuidv4(), qId, opt.option_text.trim(), Boolean(opt.is_correct)]
+              [uuidv4(), qId, opt.option_text.trim(), opt.is_correct ? 1 : 0]
             );
           }
         }
@@ -142,7 +142,7 @@ router.patch('/:id/publish', authenticateToken, requireRole(['TEACHER', 'ADMIN']
 
     await db.query(
       `UPDATE exams SET is_published = $2 WHERE id = $1 AND (teacher_id = $3 OR $4 = 'ADMIN')`,
-      [id, Boolean(is_published), req.user!.id, req.user!.role]
+      [id, is_published ? 1 : 0, req.user!.id, req.user!.role]
     );
 
     return res.json({ message: 'تم تحديث حالة نشر الاختبار بنجاح' });
@@ -273,7 +273,7 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
         `INSERT INTO student_answers (
            id, attempt_id, question_id, selected_option_id, is_correct, points_awarded
          ) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [uuidv4(), attemptId, q.id, selectedOptId || null, isCorrect, pointsAwarded]
+        [uuidv4(), attemptId, q.id, selectedOptId || null, isCorrect ? 1 : 0, pointsAwarded]
       );
 
       itemResults.push({

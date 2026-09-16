@@ -144,7 +144,7 @@ router.post('/:id/items', authenticateToken, requireRole(['TEACHER', 'ADMIN']), 
       await db.query(
         `INSERT INTO question_bank_options (id, question_item_id, option_text, is_correct)
          VALUES ($1, $2, $3, $4)`,
-        [uuidv4(), itemId, opt.option_text.trim(), Boolean(opt.is_correct)]
+        [uuidv4(), itemId, opt.option_text.trim(), opt.is_correct ? 1 : 0]
       );
     }
 

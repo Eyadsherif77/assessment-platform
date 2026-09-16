@@ -248,7 +248,8 @@ export const TeacherDashboard: React.FC = () => {
         })
       });
 
-      if (!res.ok) throw new Error('فشل إنشاء الاختبار');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل إنشاء الاختبار');
 
       alert('تم إنشاء ونشر الاختبار بنجاح!');
       setNewExamTitle('');

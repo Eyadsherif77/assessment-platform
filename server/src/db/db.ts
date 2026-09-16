@@ -71,8 +71,12 @@ class DatabaseManager {
       await this.init();
     }
 
-    // Convert undefined values to null for compatibility
-    const sanitizedParams = params.map(p => (p === undefined ? null : p));
+    // Convert undefined values to null, and booleans to 1/0 for SQLite compatibility
+    const sanitizedParams = params.map(p => {
+      if (p === undefined) return null;
+      if (typeof p === 'boolean') return p ? 1 : 0;
+      return p;
+    });
 
     if (this.pgPool) {
       const res = await this.pgPool.query(sql, sanitizedParams);
