@@ -233,6 +233,24 @@ button, input, select, textarea {
   gap: 0.5rem;
 }
 
+.nav-user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  background: #EFF6FF;
+  color: var(--primary-800);
+  border: 1px solid var(--primary-200);
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.nav-user-badge .badge-text {
+  display: inline !important;
+}
+
 @media (max-width: 768px) {
   .navbar-inner {
     padding: 0.65rem 0.85rem;
@@ -251,6 +269,9 @@ button, input, select, textarea {
   .brand-subtitle {
     display: none;
   }
+  .auth-nav-buttons {
+    display: none !important;
+  }
   .nav-actions {
     gap: 0.4rem;
   }
@@ -264,11 +285,14 @@ button, input, select, textarea {
   .nav-btn-text-mobile {
     display: inline;
   }
-  .badge-text {
-    display: none;
-  }
   .nav-user-badge {
-    padding: 0.35rem 0.5rem;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+    background: #EFF6FF;
+    border: 1px solid var(--primary-300);
+  }
+  .nav-user-badge .badge-text {
+    display: inline !important;
   }
 }
 
@@ -584,16 +608,19 @@ button, input, select, textarea {
   background-color: var(--danger-50);
 }
 
-/* Tab Navigation */
+/* Tab Navigation - Modern Segmented UI Boxes */
 .tabs-nav {
   display: flex;
-  gap: 0.5rem;
-  border-bottom: 2px solid var(--border-light);
-  margin-bottom: 1.5rem;
+  align-items: center;
+  gap: 0.65rem;
+  background: #F1F5F9;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 16px;
+  padding: 0.45rem;
+  margin-bottom: 1.75rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding-bottom: 4px;
 }
 
 .tabs-nav::-webkit-scrollbar {
@@ -601,26 +628,58 @@ button, input, select, textarea {
 }
 
 .tab-btn {
-  padding: 0.75rem 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.25rem;
   font-weight: 700;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-bottom: 3px solid transparent;
+  font-size: 0.95rem;
+  color: #334155;
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 12px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all var(--transition-fast);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   touch-action: manipulation;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .tab-btn:hover {
-  color: var(--primary-600);
+  color: var(--primary-700);
+  background: #F8FAFC;
+  border-color: var(--primary-300);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
 }
 
 .tab-btn.active {
-  color: var(--primary-600);
-  border-bottom-color: var(--primary-600);
+  background: linear-gradient(135deg, #1D4ED8 0%, #2563EB 100%) !important;
+  color: #FFFFFF !important;
+  border-color: #1D4ED8 !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4) !important;
+}
+
+.tab-btn.active * {
+  color: #FFFFFF !important;
+}
+
+.tab-btn.active svg {
+  stroke: #FFFFFF !important;
+}
+
+.tab-btn.active .badge {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
+}
+
+.tab-btn .badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
 }
 
 /* ==========================================================================
@@ -693,6 +752,21 @@ button, input, select, textarea {
     padding: 0.6rem 0.85rem;
     font-size: 0.85rem;
   }
+
+  /* Hero Actions on Mobile */
+  .hero-actions-container {
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 0.75rem !important;
+  }
+  .hero-actions-container .btn {
+    width: 100% !important;
+  }
+
+  /* Student Dashboard Header Card */
+  .student-profile-header-card {
+    padding: 1rem !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -708,5 +782,16 @@ button, input, select, textarea {
   .study-box {
     padding: 0.85rem;
   }
+
+  .tabs-nav {
+    padding: 0.35rem;
+    gap: 0.4rem;
+  }
+
+  .tab-btn {
+    padding: 0.55rem 0.85rem;
+    font-size: 0.82rem;
+  }
 }
+
 

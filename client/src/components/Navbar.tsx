@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { BookOpen, Globe, LogOut, User, Sparkles, School } from 'lucide-react';
+import { BookOpen, Globe, LogOut, User, Sparkles, School, Home as HomeIcon } from 'lucide-react';
 
 interface NavbarProps {
   onOpenAuth: (mode: 'login' | 'register') => void;
@@ -47,29 +47,40 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, activeView, setActiv
 
           {user ? (
             <>
-              <button 
-                className={`btn btn-sm ${activeView === 'dashboard' ? 'btn-primary' : 'btn-secondary'} nav-dashboard-btn`}
-                onClick={() => setActiveView('dashboard')}
-              >
-                <Sparkles size={15} />
-                <span className="nav-btn-text">
-                  {user.role === 'STUDENT' ? t.studentDashboard : t.teacherDashboard}
-                </span>
-                <span className="nav-btn-text-mobile">
-                  {language === 'ar' ? 'لوحتي' : 'Dashboard'}
-                </span>
-              </button>
+              {activeView === 'home' ? (
+                <button 
+                  className="btn btn-sm btn-primary nav-dashboard-btn"
+                  onClick={() => setActiveView('dashboard')}
+                >
+                  <Sparkles size={14} />
+                  <span className="nav-btn-text">
+                    {user.role === 'STUDENT' ? t.studentDashboard : t.teacherDashboard}
+                  </span>
+                  <span className="nav-btn-text-mobile">
+                    {language === 'ar' ? 'لوحتي' : 'Dashboard'}
+                  </span>
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-outline btn-sm nav-home-btn"
+                  onClick={() => setActiveView('home')}
+                  title={t.home}
+                >
+                  <HomeIcon size={14} />
+                  <span className="nav-btn-text">{t.home}</span>
+                </button>
+              )}
 
               <div className="user-badge-container">
                 <span className="badge badge-primary nav-user-badge">
                   {user.role === 'STUDENT' ? (
                     <>
-                      <School size={12} />
-                      <span className="badge-text">{user.profile?.grade_name_ar || t.studentRole}</span>
+                      <School size={13} />
+                      <span className="badge-text">{user.profile?.grade_name_ar || 'الصف الأول الإعدادي'}</span>
                     </>
                   ) : (
                     <>
-                      <User size={12} />
+                      <User size={13} />
                       <span className="badge-text">{t.teacherRole}</span>
                     </>
                   )}

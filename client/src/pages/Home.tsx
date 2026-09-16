@@ -6,12 +6,12 @@ import {
   BookOpen, 
   Compass, 
   BarChart3, 
-  GraduationCap, 
   ArrowRight, 
   ArrowLeft,
   Target,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  LogIn
 } from 'lucide-react';
 
 interface HomeProps {
@@ -85,12 +85,12 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             {t.heroSubtitle}
           </p>
 
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div className="hero-actions-container" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '560px', margin: '0 auto' }}>
             {user ? (
               <button 
                 className="btn btn-secondary btn-lg" 
                 onClick={onGoToDashboard}
-                style={{ fontWeight: 800, padding: '0.85rem 1.75rem' }}
+                style={{ fontWeight: 800, padding: '0.85rem 2rem', width: 'auto' }}
               >
                 <span>{user.role === 'STUDENT' ? t.studentDashboard : t.teacherDashboard}</span>
                 <ArrowIcon size={20} />
@@ -98,19 +98,41 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             ) : (
               <>
                 <button 
-                  className="btn btn-secondary btn-lg" 
+                  className="btn btn-secondary btn-lg hero-cta-btn" 
                   onClick={() => onOpenAuth('register')}
-                  style={{ fontWeight: 800, padding: '0.85rem 1.75rem' }}
+                  style={{
+                    fontWeight: 800,
+                    padding: '0.85rem 2rem',
+                    fontSize: '1.05rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.25)'
+                  }}
                 >
-                  <GraduationCap size={22} />
-                  <span>{t.heroCtaStudent}</span>
+                  <Sparkles size={20} />
+                  <span>{language === 'ar' ? 'إنشاء حساب جديد' : 'Create New Account'}</span>
                 </button>
                 <button 
-                  className="btn btn-outline btn-lg" 
+                  className="btn btn-outline btn-lg hero-cta-btn" 
                   onClick={() => onOpenAuth('login')}
-                  style={{ color: 'white', borderColor: 'rgba(255, 255, 255, 0.5)', fontWeight: 700, padding: '0.85rem 1.75rem' }}
+                  style={{
+                    color: 'white',
+                    borderColor: 'rgba(255, 255, 255, 0.75)',
+                    background: 'rgba(255, 255, 255, 0.12)',
+                    backdropFilter: 'blur(8px)',
+                    fontWeight: 800,
+                    padding: '0.85rem 2rem',
+                    fontSize: '1.05rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}
                 >
-                  <span>{t.heroCtaTeacher}</span>
+                  <LogIn size={20} />
+                  <span>{language === 'ar' ? 'تسجيل الدخول' : 'Sign In'}</span>
                 </button>
               </>
             )}
@@ -631,21 +653,28 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               ? 'انضم إلى المنظومة التعليمية الرقمية المعتمدة المستندة لكتب المناهج واختبر مهاراتك مع التغذية الراجعة الفورية بالذكاء الاصطناعي.'
               : 'Join the official educational platform and test your mastery with real-time curriculum diagnostic feedback.'}
           </p>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div className="hero-actions-container" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button 
-              className="btn btn-secondary btn-lg" 
+              className="btn btn-secondary btn-lg hero-cta-btn" 
               onClick={() => onOpenAuth('register')}
               style={{ fontWeight: 800, padding: '0.85rem 2rem' }}
             >
               <Sparkles size={20} />
-              <span>{language === 'ar' ? 'إنشاء حساب طالب مجاناً' : 'Create Free Student Account'}</span>
+              <span>{language === 'ar' ? 'إنشاء حساب جديد' : 'Create New Account'}</span>
             </button>
             <button 
-              className="btn btn-outline btn-lg" 
+              className="btn btn-outline btn-lg hero-cta-btn" 
               onClick={() => onOpenAuth('login')}
-              style={{ color: 'white', borderColor: 'rgba(255, 255, 255, 0.5)', fontWeight: 700 }}
+              style={{
+                color: 'white',
+                borderColor: 'rgba(255, 255, 255, 0.75)',
+                background: 'rgba(255, 255, 255, 0.1)',
+                fontWeight: 800,
+                padding: '0.85rem 2rem'
+              }}
             >
-              <span>{language === 'ar' ? 'تسجيل دخول المعلمين' : 'Teacher Portal'}</span>
+              <LogIn size={20} />
+              <span>{language === 'ar' ? 'تسجيل الدخول' : 'Sign In'}</span>
             </button>
           </div>
         </div>

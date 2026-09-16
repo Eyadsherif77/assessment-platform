@@ -302,11 +302,11 @@ export const StudentDashboard: React.FC = () => {
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
       {/* Student Profile & Stage Isolation Banner */}
-      <div className="card" style={{
+      <div className="card student-profile-header-card" style={{
         background: 'linear-gradient(135deg, #FFFFFF, #EFF6FF)',
         border: '1.5px solid var(--primary-200)',
-        marginBottom: '1.75rem',
-        padding: '1.5rem'
+        marginBottom: '1.5rem',
+        padding: '1.25rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
