@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
             onClick={toggleLanguage}
             title={language === 'ar' ? 'Switch to English' : 'التحويل للعربية'}
           >
-            <Globe size={15} />
+            <Globe size={14} />
             <span className="lang-label">{language === 'ar' ? 'EN' : 'عربي'}</span>
           </button>
 
@@ -51,6 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                 <button 
                   className="btn btn-sm btn-primary nav-dashboard-btn"
                   onClick={() => setActiveView('dashboard')}
+                  title={user.role === 'STUDENT' ? t.studentDashboard : t.teacherDashboard}
                 >
                   <Sparkles size={14} />
                   <span className="nav-btn-text">
@@ -68,10 +69,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                 >
                   <HomeIcon size={14} />
                   <span className="nav-btn-text">{t.home}</span>
+                  <span className="nav-btn-text-mobile">
+                    {language === 'ar' ? 'الرئيسية' : 'Home'}
+                  </span>
                 </button>
               )}
 
-              <div className="user-badge-container">
+              {/* Desktop-Only User Badge (Kept in top bar on PC/Laptop) */}
+              <div className="user-badge-container desktop-user-badge">
                 <span className="badge badge-primary nav-user-badge">
                   {user.role === 'STUDENT' ? (
                     <>
@@ -85,20 +90,43 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                     </>
                   )}
                 </span>
-                
-                <button 
-                  className="btn btn-outline btn-sm logout-btn" 
-                  onClick={logout}
-                  title={t.logout}
-                  aria-label={t.logout}
-                >
-                  <LogOut size={15} />
-                </button>
               </div>
+
+              {/* Logout Button - Always visible and accessible */}
+              <button 
+                className="btn btn-outline btn-sm logout-btn" 
+                onClick={logout}
+                title={t.logout}
+                aria-label={t.logout}
+              >
+                <LogOut size={15} />
+              </button>
             </>
           ) : null}
         </div>
       </div>
+
+      {/* Mobile-Only Student Info Strip - 100% visible on all phones without horizontal overflow */}
+      {user && (
+        <div className="mobile-student-strip">
+          <div className="mobile-strip-inner">
+            <span className="badge badge-primary mobile-grade-badge">
+              <School size={12} />
+              <span>{user.profile?.grade_name_ar || (user.role === 'STUDENT' ? 'الصف الأول الإعدادي' : t.teacherRole)}</span>
+            </span>
+            {user.profile?.section && (
+              <span className="badge mobile-section-badge">
+                شعبة: {user.profile.section}
+              </span>
+            )}
+            {user.profile?.school_type && (
+              <span className="badge mobile-school-badge">
+                {user.profile.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 };

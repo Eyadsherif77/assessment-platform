@@ -251,20 +251,86 @@ button, input, select, textarea {
   display: inline !important;
 }
 
+/* Mobile-Only Student Status Strip */
+.mobile-student-strip {
+  display: none;
+  background: #F8FAFC;
+  border-top: 1px solid var(--border-light);
+  padding: 0.35rem 0.85rem;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.mobile-strip-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.mobile-strip-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-grade-badge {
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  padding: 0.3rem 0.65rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  white-space: nowrap !important;
+}
+
+.mobile-section-badge {
+  background: #FEF3C7 !important;
+  color: #92400E !important;
+  border: 1px solid #FDE68A !important;
+  font-size: 0.75rem !important;
+  padding: 0.25rem 0.55rem !important;
+  white-space: nowrap !important;
+}
+
+.mobile-school-badge {
+  background: #F3E8FF !important;
+  color: #6B21A8 !important;
+  border: 1px solid #E9D5FF !important;
+  font-size: 0.75rem !important;
+  padding: 0.25rem 0.55rem !important;
+  white-space: nowrap !important;
+}
+
 @media (max-width: 768px) {
+  .desktop-user-badge {
+    display: none !important;
+  }
+  .mobile-student-strip {
+    display: block !important;
+  }
   .navbar-inner {
-    padding: 0.65rem 0.85rem;
-    gap: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    gap: 0.4rem;
   }
   .brand-logo {
-    gap: 0.5rem;
+    gap: 0.45rem;
+    min-width: 0;
   }
   .brand-icon {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+  }
+  .brand-text {
+    min-width: 0;
+    overflow: hidden;
   }
   .brand-title {
-    font-size: 1.05rem;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
   }
   .brand-subtitle {
     display: none;
@@ -273,11 +339,13 @@ button, input, select, textarea {
     display: none !important;
   }
   .nav-actions {
-    gap: 0.4rem;
+    gap: 0.35rem;
+    flex-shrink: 0;
   }
   .nav-actions .btn {
-    padding: 0.45rem 0.7rem;
-    font-size: 0.825rem;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
   }
   .nav-btn-text {
     display: none;
@@ -285,27 +353,30 @@ button, input, select, textarea {
   .nav-btn-text-mobile {
     display: inline;
   }
-  .nav-user-badge {
-    padding: 0.35rem 0.6rem;
-    font-size: 0.8rem;
-    background: #EFF6FF;
-    border: 1px solid var(--primary-300);
+  .logout-btn {
+    color: #DC2626 !important;
+    border-color: #FECACA !important;
+    background: #FEF2F2 !important;
+    padding: 0.4rem 0.55rem !important;
+    flex-shrink: 0 !important;
   }
-  .nav-user-badge .badge-text {
-    display: inline !important;
+  .lang-btn {
+    padding: 0.4rem 0.5rem !important;
+    flex-shrink: 0 !important;
   }
 }
 
 @media (max-width: 420px) {
   .navbar-inner {
-    padding: 0.5rem 0.65rem;
+    padding: 0.45rem 0.65rem;
   }
   .brand-title {
-    font-size: 0.95rem;
+    font-size: 0.875rem;
+    max-width: 110px;
   }
   .brand-icon {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
   }
   .auth-nav-buttons .btn {
     padding: 0.4rem 0.55rem;
