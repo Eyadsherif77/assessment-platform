@@ -367,7 +367,7 @@ export const TeacherDashboard: React.FC = () => {
             </h3>
 
             <form onSubmit={handleUploadBook}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div className="responsive-form-grid-3">
                 <div>
                   <label className="form-label">{t.selectStage}</label>
                   <select
@@ -420,7 +420,7 @@ export const TeacherDashboard: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div className="responsive-form-grid-2">
                 <div>
                   <label className="form-label">رقم الفصل الأول</label>
                   <input
@@ -509,7 +509,7 @@ export const TeacherDashboard: React.FC = () => {
             </h3>
 
             <form onSubmit={handleCreateExam}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div className="responsive-form-grid-3">
                 <div>
                   <label className="form-label">{t.selectStage}</label>
                   <select
@@ -550,7 +550,7 @@ export const TeacherDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div className="responsive-form-grid-2">
                 <div>
                   <label className="form-label">{t.examTitleAr}</label>
                   <input
@@ -725,7 +725,7 @@ export const TeacherDashboard: React.FC = () => {
       {/* TAB 3: CLASS ANALYTICS & STUDENT RESULTS */}
       {activeTab === 'analytics' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+          <div className="stat-summary-grid">
             <div className="card" style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
                 {teacherAnalytics?.stats?.total_students || 0}

@@ -5,9 +5,12 @@ import { Home } from './pages/Home';
 import { StudentDashboard } from './pages/StudentDashboard';
 import { TeacherDashboard } from './pages/TeacherDashboard';
 import { AuthModal } from './pages/AuthModal';
+import { useScreenDetector } from './utils/useScreenDetector';
 
 const PlatformApp: React.FC = () => {
   const { user, t, language } = useAuth();
+  // Automatically detects screen dimensions, device type (mobile/tablet/desktop) and syncs CSS
+  useScreenDetector();
 
   const getInitialView = (): 'home' | 'dashboard' => {
     try {

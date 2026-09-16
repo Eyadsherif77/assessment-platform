@@ -420,7 +420,7 @@ export const StudentDashboard: React.FC = () => {
             </p>
 
             {/* Book and Chapter Selectors */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div className="responsive-form-grid-2">
               <div>
                 <label className="form-label">{language === 'ar' ? 'اختر الكتاب المقرر:' : 'Select Textbook:'}</label>
                 <select
@@ -584,7 +584,7 @@ export const StudentDashboard: React.FC = () => {
                   {t.aiDiagnosisResult}
                 </h3>
                 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2rem', margin: '1.25rem 0' }}>
+                <div className="ai-score-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2rem', margin: '1.25rem 0', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontSize: '2.5rem', fontWeight: 900, color: aiReport.percentage >= 70 ? 'var(--success-600)' : 'var(--danger-600)' }}>
                       {aiReport.percentage}%
@@ -594,7 +594,7 @@ export const StudentDashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ borderRight: '1px solid var(--border-light)', height: '50px' }} />
+                  <div className="ai-score-divider" style={{ borderRight: '1px solid var(--border-light)', height: '50px' }} />
 
                   <div>
                     <div style={{ fontSize: '1.15rem', fontWeight: 800 }}>
@@ -644,18 +644,18 @@ export const StudentDashboard: React.FC = () => {
                       background: item.is_correct ? 'var(--success-50)' : 'var(--danger-50)'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '200px' }}>
                         {item.is_correct ? (
-                          <CheckCircle2 size={20} color="var(--success-600)" />
+                          <CheckCircle2 size={20} color="var(--success-600)" style={{ flexShrink: 0 }} />
                         ) : (
-                          <XCircle size={20} color="var(--danger-600)" />
+                          <XCircle size={20} color="var(--danger-600)" style={{ flexShrink: 0 }} />
                         )}
                         <span style={{ fontWeight: 800, color: 'var(--text-title)' }}>
                           سؤال {idx + 1}: {item.question_text}
                         </span>
                       </div>
-                      <span className="badge badge-primary">
+                      <span className="badge badge-primary" style={{ flexShrink: 0 }}>
                         {t.pageRefLabel} {item.page_reference}
                       </span>
                     </div>
@@ -1004,7 +1004,7 @@ export const StudentDashboard: React.FC = () => {
       {activeTab === 'analytics' && (
         <div>
           {/* Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.75rem' }}>
+          <div className="stat-summary-grid">
             <div className="card" style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
                 {analytics?.summary?.total_ai_assessments || 0}

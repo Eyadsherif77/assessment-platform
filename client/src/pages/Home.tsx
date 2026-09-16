@@ -79,10 +79,10 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             <span>{language === 'ar' ? 'الجيل الجديد من التقويم التربوي والتشخيص الذكي 2026' : 'Next-Gen Educational AI Assessment & Diagnostics'}</span>
           </div>
 
-          <h1 className="hero-title" style={{ fontSize: '2.5rem', lineHeight: 1.25, fontWeight: 900, marginBottom: '1rem' }}>
+          <h1 className="hero-title">
             {t.heroTitle}
           </h1>
-          <p className="hero-subtitle" style={{ fontSize: '1.15rem', lineHeight: 1.7, maxWidth: '780px', margin: '0 auto 2rem' }}>
+          <p className="hero-subtitle">
             {t.heroSubtitle}
           </p>
 
@@ -91,7 +91,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               <button 
                 className="btn btn-secondary btn-lg" 
                 onClick={onGoToDashboard}
-                style={{ fontWeight: 800, padding: '0.85rem 2rem', width: 'auto' }}
+                style={{ fontWeight: 800, padding: '0.85rem 2rem' }}
               >
                 <span>{user.role === 'STUDENT' ? t.studentDashboard : t.teacherDashboard}</span>
                 <ArrowIcon size={20} />
@@ -143,12 +143,8 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
 
       {/* Live Educational Metrics Bar */}
       <section style={{ marginTop: '-1.5rem', marginBottom: '3.5rem', position: 'relative', zIndex: 10 }}>
-        <div className="card glass-panel" style={{
+        <div className="card glass-panel metrics-grid" style={{
           padding: '1.5rem 1rem',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '1.5rem',
-          textAlign: 'center',
           boxShadow: '0 12px 30px -8px rgba(30, 58, 138, 0.12)'
         }}>
           <div>
@@ -195,34 +191,19 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
 
       {/* Flagship Pedagogical Concept Box */}
       <section style={{ marginBottom: '3.5rem' }}>
-        <div className="card" style={{
-          background: 'linear-gradient(135deg, #FFFFFF, #EFF6FF)',
-          border: '1.5px solid var(--primary-200)',
-          padding: '2.25rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.5rem', flexWrap: 'wrap' }}>
-            <div style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: 'var(--radius-lg)',
-              background: 'linear-gradient(135deg, var(--primary-600), var(--primary-800))',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              flexShrink: 0,
-              boxShadow: '0 8px 16px -4px rgba(37, 99, 235, 0.3)'
-            }}>
+        <div className="concept-card">
+          <div className="concept-inner">
+            <div className="concept-icon">
               <Target size={32} />
             </div>
-            <div style={{ flex: 1, minWidth: '280px' }}>
+            <div className="concept-body">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary-800)' }}>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--primary-800)' }}>
                   {language === 'ar' ? 'فلسفة المنصة: تقييم تشخيصي مرتبط بنصوص الكتاب المدرسي' : 'Curriculum-Linked Diagnostic Assessment'}
                 </h3>
                 <span className="badge badge-primary">{language === 'ar' ? 'ذكاء اصطناعي تشخيصي' : 'Diagnostic AI'}</span>
               </div>
-              <p style={{ color: 'var(--text-body)', lineHeight: 1.8, fontSize: '1rem' }}>
+              <p style={{ color: 'var(--text-body)', lineHeight: 1.8, fontSize: '0.975rem' }}>
                 {language === 'ar' 
                   ? 'لا نعتمد على محتوى عام أو مولد عشوائياً! الذكاء الاصطناعي يستخرج فقرات الكتاب المدرسي الرسمي، يطابق الإجابات، وعند الخطأ يشرح للطالب سبب عدم صحة اختياره، ويوجهه مباشرة: "ارجع لكتاب العلوم - الفصل الأول - صفحة 7 لمراجعة مفهوم الكثافة وحرائق البترول".'
                   : 'We do not use invented general knowledge! The AI strictly retrieves textbook chunks uploaded for the student’s exact grade. When a mistake is made, it explains the misconception and directs the student: "Open Chapter 1, Page 7 to review Density and Oil Fires".'}
@@ -469,7 +450,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
 
       {/* Curriculum Levels & Tracks Preview */}
       <section style={{ marginBottom: '3.5rem' }}>
-        <div className="card" style={{ padding: '2.5rem 2rem' }}>
+        <div className="card" style={{ padding: '1.75rem 1.25rem' }}>
           <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
             <h3 style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-title)' }}>
               {language === 'ar' ? 'المراحل والشعب الدراسية المدعومة بالمنصة' : 'Supported Educational Stages & Tracks'}
@@ -479,16 +460,12 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             </p>
           </div>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '1.25rem'
-          }}>
+          <div className="curriculum-grid">
             {/* Primary */}
             <div style={{
               border: '1.5px solid var(--border-light)',
               borderRadius: 'var(--radius-lg)',
-              padding: '1.5rem',
+              padding: '1.25rem',
               background: 'var(--bg-main)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
@@ -505,7 +482,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             <div style={{
               border: '2px solid var(--primary-400)',
               borderRadius: 'var(--radius-lg)',
-              padding: '1.5rem',
+              padding: '1.25rem',
               background: 'linear-gradient(135deg, #FFFFFF, #EFF6FF)',
               boxShadow: '0 8px 16px -4px rgba(37, 99, 235, 0.1)'
             }}>
@@ -523,7 +500,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             <div style={{
               border: '1.5px solid var(--border-light)',
               borderRadius: 'var(--radius-lg)',
-              padding: '1.5rem',
+              padding: '1.25rem',
               background: 'var(--bg-main)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
@@ -550,13 +527,9 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           </h2>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '1.5rem'
-        }}>
+        <div className="comparison-grid">
           {/* Traditional */}
-          <div className="card" style={{ background: '#FFFDFD', border: '1.5px solid #FEE2E2', padding: '2rem' }}>
+          <div className="card" style={{ background: '#FFFDFD', border: '1.5px solid #FEE2E2', padding: '1.5rem 1.25rem' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#DC2626', marginBottom: '1rem' }}>
               ❌ {language === 'ar' ? 'الامتحانات التقليدية' : 'Traditional Exams'}
             </h3>
@@ -569,7 +542,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           </div>
 
           {/* Assessment for Education */}
-          <div className="card" style={{ background: '#F0FDF4', border: '2px solid #86EFAC', padding: '2rem' }}>
+          <div className="card" style={{ background: '#F0FDF4', border: '2px solid #86EFAC', padding: '1.5rem 1.25rem' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803D', marginBottom: '1rem' }}>
               ✅ {language === 'ar' ? 'منصة التقييم من أجل التعليم' : 'Assessment for Education Platform'}
             </h3>
@@ -652,17 +625,12 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           </p>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-          gap: '1.25rem',
-          marginBottom: '1.5rem'
-        }}>
+        <div className="pillars-grid">
           {/* Pillar 1 */}
           <div className="card" style={{
             background: 'linear-gradient(145deg, #FFFFFF, #EFF6FF)',
             border: '1.5px solid var(--primary-100)',
-            padding: '1.75rem 1.5rem',
+            padding: '1.5rem 1.25rem',
             borderRadius: 'var(--radius-lg)',
             display: 'flex',
             flexDirection: 'column',
@@ -704,7 +672,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           <div className="card" style={{
             background: 'linear-gradient(145deg, #FFFFFF, #F0FDF4)',
             border: '1.5px solid #DCFCE7',
-            padding: '1.75rem 1.5rem',
+            padding: '1.5rem 1.25rem',
             borderRadius: 'var(--radius-lg)',
             display: 'flex',
             flexDirection: 'column',
@@ -746,7 +714,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           <div className="card" style={{
             background: 'linear-gradient(145deg, #FFFFFF, #FFFBEB)',
             border: '1.5px solid #FEF3C7',
-            padding: '1.75rem 1.5rem',
+            padding: '1.5rem 1.25rem',
             borderRadius: 'var(--radius-lg)',
             display: 'flex',
             flexDirection: 'column',
@@ -788,7 +756,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           <div className="card" style={{
             background: 'linear-gradient(145deg, #FFFFFF, #FAF5FF)',
             border: '1.5px solid #F3E8FF',
-            padding: '1.75rem 1.5rem',
+            padding: '1.5rem 1.25rem',
             borderRadius: 'var(--radius-lg)',
             display: 'flex',
             flexDirection: 'column',
@@ -832,7 +800,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           background: 'linear-gradient(135deg, #F8FAFC, #EFF6FF)',
           border: '1.5px solid var(--primary-200)',
           borderRadius: 'var(--radius-lg)',
-          padding: '1.25rem 1.75rem',
+          padding: '1.25rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -840,7 +808,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           gap: '1rem',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '220px' }}>
             <Award size={26} color="var(--primary-700)" style={{ flexShrink: 0 }} />
             <div>
               <div style={{ fontWeight: 800, color: 'var(--primary-900)', fontSize: '1rem' }}>
@@ -851,7 +819,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
             <span className="badge badge-success" style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}>
               {language === 'ar' ? '✓ نظام نشط ومحدث 2026' : '✓ Active System 2026'}
             </span>
