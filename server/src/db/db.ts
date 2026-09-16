@@ -127,7 +127,16 @@ class DatabaseManager {
 
   private async applySchema(): Promise<void> {
     try {
-      const schemaPath = path.resolve(__dirname, 'schema.sql');
+      let schemaPath = path.resolve(__dirname, 'schema.sql');
+      if (!fs.existsSync(schemaPath)) {
+        schemaPath = path.resolve(__dirname, '../src/db/schema.sql');
+      }
+      if (!fs.existsSync(schemaPath)) {
+        schemaPath = path.resolve(process.cwd(), 'src/db/schema.sql');
+      }
+      if (!fs.existsSync(schemaPath)) {
+        schemaPath = path.resolve(process.cwd(), 'server/src/db/schema.sql');
+      }
       if (fs.existsSync(schemaPath)) {
         const schemaSql = fs.readFileSync(schemaPath, 'utf8');
         console.log('📜 Applying database schema...');

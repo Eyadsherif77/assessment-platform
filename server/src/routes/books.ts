@@ -102,7 +102,7 @@ router.post(
 
 // Get background processing status
 router.get('/status/:id', authenticateToken, async (req, res) => {
-  const { id } = req.params;
+  const id = String(req.params.id);
   const jobStatus = jobQueue.getStatus(id);
   const dbRes = await db.query('SELECT processing_status, processing_error, total_pages FROM books WHERE id = $1', [id]);
   
