@@ -10,9 +10,15 @@ import { jobQueue } from '../services/jobs/jobQueue.js';
 const router = Router();
 
 // Configure multer storage
-const uploadDir = path.resolve(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+const uploadDir = process.env.VERCEL
+  ? path.resolve('/tmp', 'uploads')
+  : path.resolve(process.cwd(), 'uploads');
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Upload directory warning:', e);
 }
 
 const storage = multer.diskStorage({

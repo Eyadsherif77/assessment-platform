@@ -5,8 +5,8 @@
   "installCommand": "npm install",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://highway-remembered-make-shaved.trycloudflare.com/api/$1" },
-    { "source": "/uploads/(.*)", "destination": "https://highway-remembered-make-shaved.trycloudflare.com/uploads/$1" },
+    { "source": "/api/(.*)", "destination": "https://server-mocha-sigma-86.vercel.app/api/$1" },
+    { "source": "/uploads/(.*)", "destination": "https://server-mocha-sigma-86.vercel.app/uploads/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

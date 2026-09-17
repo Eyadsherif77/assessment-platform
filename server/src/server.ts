@@ -24,10 +24,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Uploads directory
-const uploadsDir = path.resolve(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+// Uploads directory safe for serverless /tmp
+const uploadsDir = process.env.VERCEL
+  ? path.resolve('/tmp', 'uploads')
+  : path.resolve(process.cwd(), 'uploads');
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Uploads directory creation warning:', e);
 }
 
 // Middlewares
@@ -116,20 +122,26 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 
+// Export app for serverless environments (Vercel)
+export default app;
+
 // Initialize DB and launch server
 async function startServer() {
   try {
-    console.log('🚀 Starting Assessment Platform Server...');
-    await db.init();
-    await seedDatabase();
+    console.log(`🚀 Starting Assessment Platform Server on port: ${PORT}...`);
+    try {
+      await db.init();
+      await seedDatabase();
+    } catch (dbErr) {
+      console.warn('Initial DB connect/seed warning:', dbErr);
+    }
 
     app.listen(PORT, () => {
-      console.log(`✨ Server running on http://localhost:${PORT}`);
-      console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`✨ Server running on port ${PORT}`);
+      console.log(`📡 Health check ready`);
     });
   } catch (err) {
     console.error('Failed to start server:', err);
-    process.exit(1);
   }
 }
 

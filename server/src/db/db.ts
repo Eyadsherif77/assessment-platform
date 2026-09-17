@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import Database from 'better-sqlite3';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
 
@@ -18,7 +17,7 @@ export interface QueryResult<T = any> {
 class DatabaseManager {
   private mysqlPool: mysql.Pool | null = null;
   private pgPool: pg.Pool | null = null;
-  private sqlite: Database.Database | null = null;
+  private sqlite: any = null;
   private isInitialized = false;
 
   public async init(): Promise<void> {
@@ -70,18 +69,23 @@ class DatabaseManager {
     // 3. Fallback to embedded SQLite
     if (!this.mysqlPool && !this.pgPool) {
       console.log('🗄️  Initializing embedded SQLite database...');
-      const dataDir = path.join(
-        process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\temp', 'AppData', 'Local'),
-        'assessment_platform_data'
-      );
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      try {
+        const { default: Database } = await import('better-sqlite3');
+        const dataDir = path.join(
+          process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\temp', 'AppData', 'Local'),
+          'assessment_platform_data'
+        );
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+        const dbPath = path.join(dataDir, 'platform.db');
+        this.sqlite = new Database(dbPath, { verbose: undefined });
+        this.sqlite.pragma('journal_mode = WAL');
+        this.sqlite.pragma('foreign_keys = ON');
+        console.log('✅ SQLite database initialized at:', dbPath);
+      } catch (e) {
+        console.warn('SQLite fallback unavailable in serverless environment:', e);
       }
-      const dbPath = path.join(dataDir, 'platform.db');
-      this.sqlite = new Database(dbPath, { verbose: undefined });
-      this.sqlite.pragma('journal_mode = WAL');
-      this.sqlite.pragma('foreign_keys = ON');
-      console.log('✅ SQLite database initialized at:', dbPath);
     }
 
     this.isInitialized = true;
