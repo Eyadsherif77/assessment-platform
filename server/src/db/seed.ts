@@ -54,8 +54,175 @@ export async function seedDatabase(): Promise<void> {
         `UPDATE users SET hybrid_id = 'HYBRID-TEA-SCI-01', permissions = $1 WHERE email = 'teacher@edu.eg' AND (hybrid_id IS NULL OR hybrid_id = '')`,
         [defaultTeacherPerms]
       );
+
+      // Always ensure Prep 2 (Grade 8) curriculum & textbook are seeded
+      const prep2GradeRes = await db.query(`SELECT id, stage_id FROM grades WHERE code = 'PREP_2'`);
+      if (prep2GradeRes.rows.length > 0) {
+        const prep2Id = prep2GradeRes.rows[0].id;
+        const prepStageId = prep2GradeRes.rows[0].stage_id;
+
+        // 1. Prep 2 Subjects
+        const p2Subjects = [
+          { code: 'SCIENCE', name_ar: 'العلوم', name_en: 'Science', icon: 'Atom', sort_order: 1 },
+          { code: 'MATH', name_ar: 'الرياضيات', name_en: 'Mathematics', icon: 'Calculator', sort_order: 2 },
+          { code: 'ARABIC', name_ar: 'اللغة العربية', name_en: 'Arabic Language', icon: 'BookOpen', sort_order: 3 },
+          { code: 'ENGLISH', name_ar: 'اللغة الإنجليزية', name_en: 'English Language', icon: 'Languages', sort_order: 4 }
+        ];
+
+        for (const sub of p2Subjects) {
+          const subCheck = await db.query(
+            `SELECT id FROM subjects WHERE grade_id = $1 AND code = $2`,
+            [prep2Id, sub.code]
+          );
+          if (subCheck.rows.length === 0) {
+            await db.query(
+              `INSERT INTO subjects (id, grade_id, code, name_ar, name_en, icon, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [uuidv4(), prep2Id, sub.code, sub.name_ar, sub.name_en, sub.icon, sub.sort_order]
+            );
+          }
+        }
+
+        const p2SciSub = await db.query(
+          `SELECT id FROM subjects WHERE grade_id = $1 AND code = 'SCIENCE'`,
+          [prep2Id]
+        );
+        const prep2ScienceId = p2SciSub.rows[0]?.id;
+
+        // Teacher id
+        const teacherRes = await db.query(`SELECT id FROM users WHERE email = 'teacher@edu.eg'`);
+        const teacherId = teacherRes.rows[0]?.id || null;
+
+        // 2. Prep 2 Science Textbook
+        const p2BookCheck = await db.query(
+          `SELECT id FROM books WHERE grade_id = $1 AND subject_id = $2`,
+          [prep2Id, prep2ScienceId]
+        );
+
+        let prep2BookId = p2BookCheck.rows[0]?.id;
+        if (!prep2BookId && prep2ScienceId) {
+          prep2BookId = uuidv4();
+          await db.query(
+            `INSERT INTO books (id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id, file_url, file_size, total_pages, processing_status, school_type)
+             VALUES ($1, 'كتاب العلوم المنهجي - الصف الثاني الإعدادي', 'Prep 2 Science Textbook', $2, $3, $4, $5, '/uploads/prep2_science.pdf', 15200000, 52, 'COMPLETED', 'كلاهما')`,
+            [prep2BookId, prepStageId, prep2Id, prep2ScienceId, teacherId]
+          );
+
+          // 3 Chapters
+          const ch1Id = uuidv4();
+          const ch2Id = uuidv4();
+          const ch3Id = uuidv4();
+
+          await db.query(
+            `INSERT INTO book_chapters (id, book_id, chapter_number, title_ar, title_en, description, start_page, end_page)
+             VALUES ($1, $2, 1, 'دورية العناصر وخواصها', 'Periodicity of Elements and Their Properties', 'محاولات تصنيف العناصر (الجدول الدوري لمندليف، جدول موزلي، والجدول الدوري الحديث) وتدرج الخواص في الجدول الدوري كالقطر الذري والسالبية والفلزية.', 1, 18)`,
+            [ch1Id, prep2BookId]
+          );
+          await db.query(
+            `INSERT INTO book_chapters (id, book_id, chapter_number, title_ar, title_en, description, start_page, end_page)
+             VALUES ($1, $2, 2, 'الغلاف الجوي وحماية كوكب الأرض', 'The Atmosphere and Protecting Planet Earth', 'طبقات الغلاف الجوي وخصائص الضغط والحرارة بها، وتآكل طبقة الأوزون وظاهرة الاحترار العالمي والتغيرات المناخية.', 19, 36)`,
+            [ch2Id, prep2BookId]
+          );
+          await db.query(
+            `INSERT INTO book_chapters (id, book_id, chapter_number, title_ar, title_en, description, start_page, end_page)
+             VALUES ($1, $2, 3, 'الحفريات وحماية الأنواع من الانقراض', 'Fossils and Protecting Species from Extinction', 'أنواع الحفريات وتكونها، دور الحفريات في دراسة تطور الكائنات الحية والتنقيب عن البترول، والانقراض والمحميات الطبيعية.', 37, 52)`,
+            [ch3Id, prep2BookId]
+          );
+
+          // Textbook Pages & Chunks for Chapter 1
+          const page1Text = `الوحدة الأولى: دورية العناصر وخواصها
+الدرس الأول: محاولات تصنيف العناصر (صفحة 4)
+تعددت محاولات العلماء لتصنيف العناصر تبعاً لخواصها بهدف: سهولة دراستها، وإيجاد العلاقة بين العناصر وخواصها الفيزيائية والكيميائية.
+1. الجدول الدوري لمندليف: أول جدول دوري حقيقي لتصنيف العناصر، ورتب فيه 67 عنصراً تصاعدياً حسب أوزانها الذرية. تنبأ باكتشاف عناصر جديدة وترك لها خانات فارغة في جدوله وصحح الأوزان الذرية المقدرة خطأ لبعض العناصر.
+2. الجدول الدوري لموزلي: اكتشف بعد دراسته للأشعة السينية أن دورية خواص العناصر ترتبط بأعدادها الذرية وليس بأوزانها الذرية. رتب العناصر تصاعدياً حسب أعدادها الذرية، وأضاف المجموعة الصفرية (الغازات الخاملة) وخصص مكاناً أسفل جدوله لعناصر اللانثانيدات والأكتينيدات.
+3. الجدول الدوري الحديث: رتبت فيه العناصر تصاعدياً حسب أعدادها الذرية وطريقة ملء مستويات الطاقة الفرعية بالإلكترونات. يتكون الجدول الدوري الحديث من 7 دورات أفقية و 18 مجموعة رأسية.`;
+
+          const page2Text = `الدرس الثاني: تدرج خواص العناصر في الجدول الدوري (صفحة 9)
+1. الحجم الذري:
+- في الدورة الواحدة: يقل الحجم الذري بزيادة العدد الذري (من اليسار إلى اليمين) بسبب زيادة قوة جذب النواة الموجبة لإلكترونات مستوى الطاقة الخارجي.
+- في المجموعة الواحدة: يزداد الحجم الذري بزيادة العدد الذري (من أعلى إلى أسفل) لزيادة عدد مستويات الطاقة المشغولة بالإلكترونات.
+أكبر العناصر حجماً ذرياً هو السيزيوم (Cs) ويقع أسفل يسار الجدول الدوري، وأصغر العناصر حجماً ذرياً هو الفلور (F).
+2. السالبية الكهربية:
+هي مقدرة الذرة في الجزيء التساهمي على جذب إلكترونات الرابطة الكيميائية نحوها.
+أعلى العناصر سالبية كهربية هو الفلور (قيمتها 4).
+المركب القطبي: مركب تساهمي الفرق في السالبية الكهربية بين عنصريه كبير نسبياً، مثل الماء (H2O) والنشادر (NH3). قطبية جزيء الماء أقوى من قطبية جزيء النشادر لأن الفرق في السالبية الكهربية بين الأكسجين والهيدروجين أكبر من الفرق بين النيتروجين والهيدروجين.`;
+
+          const p1Id = uuidv4();
+          const p2Id = uuidv4();
+          await db.query(
+            `INSERT INTO book_pages (id, book_id, page_number, raw_text, char_count) VALUES ($1, $2, $3, $4, $5)`,
+            [p1Id, prep2BookId, 4, page1Text, page1Text.length]
+          );
+          await db.query(
+            `INSERT INTO book_pages (id, book_id, page_number, raw_text, char_count) VALUES ($1, $2, $3, $4, $5)`,
+            [p2Id, prep2BookId, 9, page2Text, page2Text.length]
+          );
+
+          await db.query(
+            `INSERT INTO book_chunks (id, book_id, chapter_id, academic_stage_id, grade_id, subject_id, page_number, chunk_index, content, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [uuidv4(), prep2BookId, ch1Id, prepStageId, prep2Id, prep2ScienceId, 4, 1, page1Text, JSON.stringify({ title: 'محاولات تصنيف العناصر وجدول مندليف وموزلي والجدول الحديث', page: 4 })]
+          );
+          await db.query(
+            `INSERT INTO book_chunks (id, book_id, chapter_id, academic_stage_id, grade_id, subject_id, page_number, chunk_index, content, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [uuidv4(), prep2BookId, ch1Id, prepStageId, prep2Id, prep2ScienceId, 9, 2, page2Text, JSON.stringify({ title: 'تدرج الحجم الذري والسالبية الكهربية والمركبات القطبية', page: 9 })]
+          );
+
+          // Create initial sample Exam for Prep 2 Science
+          const p2ExamId = uuidv4();
+          await db.query(
+            `INSERT INTO exams (id, title_ar, title_en, description, academic_stage_id, grade_id, subject_id, teacher_id, duration_minutes, total_points, is_published)
+             VALUES ($1, 'اختبار تشخيصي: دورية العناصر وتدرج خواصها', 'Prep 2 Diagnostic Assessment: Periodic Table', 'اختبار شامل على محاولات تصنيف العناصر والحجم الذري والسالبية الكهربية', $2, $3, $4, $5, 20, 20, 1)`,
+            [p2ExamId, prepStageId, prep2Id, prep2ScienceId, teacherId]
+          );
+
+          const q1Id = uuidv4();
+          await db.query(
+            `INSERT INTO exam_questions (id, exam_id, question_text, points, explanation, order_index)
+             VALUES ($1, $2, 'رتب العالم مندليف العناصر في جدوله الدوري تصاعدياً حسب:', 10, 'رتب مندليف العناصر حسب أوزانها الذرية بينما رتبها موزلي حسب أعدادها الذرية (مرجع الكتاب ص 4)', 1)`,
+            [q1Id, p2ExamId]
+          );
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'أوزانها الذرية', 1)`, [uuidv4(), q1Id]);
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'أعدادها الذرية', 0)`, [uuidv4(), q1Id]);
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'حجمها الذري', 0)`, [uuidv4(), q1Id]);
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'أعداد الكتلة', 0)`, [uuidv4(), q1Id]);
+
+          const q2Id = uuidv4();
+          await db.query(
+            `INSERT INTO exam_questions (id, exam_id, question_text, points, explanation, order_index)
+             VALUES ($1, $2, 'أكبر العناصر حجماً ذرياً في الجدول الدوري يقع في المجموعة الأولى وهو عنصر:', 10, 'عنصر السيزيوم Cs هو أكبر العناصر حجماً ذرياً ويقع أسفل يسار الجدول الدوري (مرجع الكتاب ص 9)', 2)`,
+            [q2Id, p2ExamId]
+          );
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'السيزيوم (Cs)', 1)`, [uuidv4(), q2Id]);
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'الفلور (F)', 0)`, [uuidv4(), q2Id]);
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'الصوديوم (Na)', 0)`, [uuidv4(), q2Id]);
+          await db.query(`INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ($1, $2, 'الليثيوم (Li)', 0)`, [uuidv4(), q2Id]);
+
+          console.log('📚 Prep 2 (Grade 8) Science textbook & assessment initialized successfully!');
+        }
+
+        // 3. Ensure student2 (Prep 2) profile is fully linked
+        const s2Check = await db.query(`SELECT id FROM users WHERE email = 'student2@edu.eg'`);
+        const passHash = await bcrypt.hash('123456', 10);
+        let s2UserId = s2Check.rows[0]?.id;
+        if (!s2UserId) {
+          s2UserId = uuidv4();
+          await db.query(
+            `INSERT INTO users (id, email, password_hash, role, full_name) VALUES ($1, 'student2@edu.eg', $2, 'STUDENT', 'سارة محمد الشريف')`,
+            [s2UserId, passHash]
+          );
+          await db.query(
+            `INSERT INTO student_profiles (user_id, full_name, school_name, academic_stage_id, grade_id, school_type)
+             VALUES ($1, 'سارة محمد الشريف', 'مدرسة النيل الإعدادية الحديثة', $2, $3, 'عربي')`,
+            [s2UserId, prepStageId, prep2Id]
+          );
+        } else {
+          await db.query(
+            `UPDATE student_profiles SET academic_stage_id = $1, grade_id = $2 WHERE user_id = $3`,
+            [prepStageId, prep2Id, s2UserId]
+          );
+        }
+      }
     } catch (e) {
-      console.warn('Admin/Teacher sync note:', e);
+      console.warn('Admin/Teacher/Prep2 sync note:', e);
     }
 
     const existingStages = await db.query('SELECT COUNT(*) as count FROM academic_stages');

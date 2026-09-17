@@ -217,30 +217,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <Sparkles size={16} />
             <span>{language === 'ar' ? 'تجربة سريعة بنقرة واحدة (Demo Access):' : 'Instant One-Click Demo Access:'}</span>
           </div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.4rem' }}>
             <button 
               type="button"
               className="btn btn-secondary btn-sm"
-              style={{ flex: 1, minWidth: '120px', fontSize: '0.78rem', background: '#FFFFFF' }}
+              style={{ fontSize: '0.78rem', background: '#FFFFFF', padding: '0.4rem 0.5rem' }}
               onClick={() => handleQuickDemoLogin('student@edu.eg')}
             >
-              👨‍🎓 {language === 'ar' ? 'طالب (أولى إعدادي)' : 'Student (Prep 1)'}
+              👨‍🎓 {language === 'ar' ? 'أولى إعدادي' : 'Prep 1'}
             </button>
             <button 
               type="button"
               className="btn btn-secondary btn-sm"
-              style={{ flex: 1, minWidth: '120px', fontSize: '0.78rem', background: '#FFFFFF' }}
+              style={{ fontSize: '0.78rem', background: '#FFFFFF', padding: '0.4rem 0.5rem' }}
               onClick={() => handleQuickDemoLogin('student2@edu.eg')}
             >
-              👩‍🎓 {language === 'ar' ? 'طالب (تانية إعدادي)' : 'Student (Prep 2)'}
+              👩‍🎓 {language === 'ar' ? 'تانية إعدادي' : 'Prep 2'}
+            </button>
+            <button 
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '0.78rem', background: '#E0F2FE', color: '#0369A1', border: '1px solid #BAE6FD', fontWeight: 700, padding: '0.4rem 0.5rem' }}
+              onClick={() => handleQuickDemoLogin('teacher@edu.eg')}
+            >
+              👩‍🏫 {language === 'ar' ? 'معلم العلوم' : 'Teacher Demo'}
             </button>
             <button 
               type="button"
               className="btn btn-sm"
-              style={{ flex: 1, minWidth: '120px', fontSize: '0.78rem', background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D', fontWeight: 800 }}
+              style={{ fontSize: '0.78rem', background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D', fontWeight: 800, padding: '0.4rem 0.5rem' }}
               onClick={() => handleQuickDemoLogin('admin@edu.eg')}
             >
-              👑 {language === 'ar' ? 'بوابة الإدارة (Admin)' : 'Admin Portal'}
+              👑 {language === 'ar' ? 'بوابة الإدارة' : 'Admin'}
             </button>
           </div>
         </div>

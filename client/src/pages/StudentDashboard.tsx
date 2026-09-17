@@ -112,6 +112,12 @@ export const StudentDashboard: React.FC = () => {
     loadAnalytics();
   }, [token]);
 
+  useEffect(() => {
+    if (books.length > 0 && !selectedAiBook) {
+      handleSelectAiBook(books[0]);
+    }
+  }, [books, selectedAiBook]);
+
   const loadAnalytics = () => {
     if (!token) return;
     fetch(apiUrl('/api/analytics/student'), {
@@ -431,11 +437,15 @@ export const StudentDashboard: React.FC = () => {
                     if (b) handleSelectAiBook(b);
                   }}
                 >
-                  {books.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.title_ar} ({b.subject_name_ar})
-                    </option>
-                  ))}
+                  {books.length === 0 ? (
+                    <option value="">{language === 'ar' ? 'جاري تحميل الكتب المقررة...' : 'Loading textbooks...'}</option>
+                  ) : (
+                    books.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.title_ar} ({b.subject_name_ar})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -443,14 +453,18 @@ export const StudentDashboard: React.FC = () => {
                 <label className="form-label">{language === 'ar' ? 'اختر الفصل / الوحدة:' : 'Select Chapter:'}</label>
                 <select
                   className="form-select"
-                  value={selectedAiChapterId}
+                  value={selectedAiChapterId || ''}
                   onChange={(e) => setSelectedAiChapterId(e.target.value)}
                 >
-                  {selectedAiBook?.chapters?.map((ch: any) => (
-                    <option key={ch.id} value={ch.id}>
-                      {ch.chapter_number}. {ch.title_ar} (ص {ch.start_page} - {ch.end_page})
-                    </option>
-                  ))}
+                  {(!selectedAiBook?.chapters || selectedAiBook.chapters.length === 0) ? (
+                    <option value="">{language === 'ar' ? 'لا توجد فصول متاحة حالياً' : 'No chapters available'}</option>
+                  ) : (
+                    selectedAiBook.chapters.map((ch: any) => (
+                      <option key={ch.id} value={ch.id}>
+                        {ch.chapter_number}. {ch.title_ar} (ص {ch.start_page} - {ch.end_page})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
             </div>
