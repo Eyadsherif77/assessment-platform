@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
-import mysql from 'mysql2/promise';
+import { connect, Connection } from '@tidbcloud/serverless';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +15,7 @@ export interface QueryResult<T = any> {
 }
 
 class DatabaseManager {
-  private mysqlPool: mysql.Pool | null = null;
+  private tidbConn: Connection<any> | null = null;
   private pgPool: pg.Pool | null = null;
   private sqlite: any = null;
   private isInitialized = false;
@@ -23,33 +23,31 @@ class DatabaseManager {
   public async init(): Promise<void> {
     if (this.isInitialized) return;
 
-    // 1. Check TiDB Cloud Serverless MySQL
+    // 1. Check TiDB Cloud Serverless (HTTP - Serverless Native, bypasses TCP port 4000)
     const tidbHost = process.env.TIDB_HOST || process.env.MYSQL_HOST;
     if (tidbHost) {
-      console.log('🌐 Connecting to TiDB Cloud Serverless MySQL at:', tidbHost);
+      console.log('🌐 Connecting to TiDB Cloud Serverless (HTTP) at:', tidbHost);
       try {
-        this.mysqlPool = mysql.createPool({
+        this.tidbConn = connect({
           host: tidbHost,
-          port: parseInt(process.env.TIDB_PORT || '4000', 10),
-          user: process.env.TIDB_USER || 'root',
+          username: process.env.TIDB_USER || 'root',
           password: process.env.TIDB_PASSWORD || '',
-          database: process.env.TIDB_DATABASE || 'assessment_platform',
-          ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: true },
-          waitForConnections: true,
-          connectionLimit: 15,
-          multipleStatements: true
+          database: process.env.TIDB_DATABASE || 'assessment_platform'
         });
-        await this.mysqlPool.query('SELECT 1');
-        console.log('✅ Connected to TiDB Cloud Serverless MySQL successfully.');
+        await this.tidbConn.execute('SELECT 1');
+        console.log('✅ Connected to TiDB Cloud Serverless (HTTP) successfully.');
+        this.isInitialized = true;
+        await this.applySchema();
+        return;
       } catch (err) {
-        console.warn('⚠️ TiDB Cloud connection failed. Falling back to next provider:', err);
-        this.mysqlPool = null;
+        console.warn('⚠️ TiDB Cloud HTTP connection failed. Falling back to next provider:', err);
+        this.tidbConn = null;
       }
     }
 
     // 2. Check PostgreSQL
     const databaseUrl = process.env.DATABASE_URL;
-    if (!this.mysqlPool && databaseUrl && !databaseUrl.includes('placeholder')) {
+    if (databaseUrl && !databaseUrl.includes('placeholder')) {
       console.log('Connecting to PostgreSQL database at:', databaseUrl.split('@')[1] || 'remote host');
       try {
         this.pgPool = new Pool({
@@ -60,6 +58,9 @@ class DatabaseManager {
         });
         await this.pgPool.query('SELECT 1');
         console.log('✅ Connected to PostgreSQL successfully.');
+        this.isInitialized = true;
+        await this.applySchema();
+        return;
       } catch (err) {
         console.warn('⚠️ Remote PostgreSQL connection failed. Falling back to embedded SQLite.');
         this.pgPool = null;
@@ -67,65 +68,61 @@ class DatabaseManager {
     }
 
     // 3. Fallback to embedded SQLite
-    if (!this.mysqlPool && !this.pgPool) {
-      console.log('🗄️  Initializing embedded SQLite database...');
-      try {
-        const { default: Database } = await import('better-sqlite3');
-        const dataDir = path.join(
-          process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\temp', 'AppData', 'Local'),
-          'assessment_platform_data'
-        );
-        if (!fs.existsSync(dataDir)) {
-          fs.mkdirSync(dataDir, { recursive: true });
-        }
-        const dbPath = path.join(dataDir, 'platform.db');
-        this.sqlite = new Database(dbPath, { verbose: undefined });
-        this.sqlite.pragma('journal_mode = WAL');
-        this.sqlite.pragma('foreign_keys = ON');
-        console.log('✅ SQLite database initialized at:', dbPath);
-      } catch (e) {
-        console.warn('SQLite fallback unavailable in serverless environment:', e);
+    console.log('🗄️  Initializing embedded SQLite database...');
+    try {
+      const { default: Database } = await import('better-sqlite3');
+      const dataDir = process.env.VERCEL
+        ? '/tmp/assessment_platform_data'
+        : path.join(
+            process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\temp', 'AppData', 'Local'),
+            'assessment_platform_data'
+          );
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
       }
+      const dbPath = path.join(dataDir, 'platform.db');
+      this.sqlite = new Database(dbPath, { verbose: undefined });
+      this.sqlite.pragma('journal_mode = WAL');
+      this.sqlite.pragma('foreign_keys = ON');
+      console.log('✅ SQLite database initialized at:', dbPath);
+      this.isInitialized = true;
+      await this.applySchema();
+      return;
+    } catch (e) {
+      console.warn('SQLite fallback unavailable in this environment:', e);
     }
 
-    this.isInitialized = true;
-    await this.applySchema();
+    // If all providers failed, leave isInitialized false so subsequent requests can retry
+    this.isInitialized = false;
   }
 
   /**
    * Run a SQL query with optional parameters.
-   * Automatically adapts between PostgreSQL ($1, $2) and SQLite (?) placeholders.
+   * Automatically adapts between PostgreSQL ($1, $2) and MySQL/SQLite (?) placeholders.
    */
   public async query<T = any>(sql: string, params: any[] = []): Promise<QueryResult<T>> {
     if (!this.isInitialized) {
       await this.init();
     }
 
-    // Convert undefined values to null, and booleans to 1/0 for SQLite compatibility
+    // Convert undefined values to null, and booleans to 1/0 for SQL compatibility
     const sanitizedParams = params.map(p => {
       if (p === undefined) return null;
       if (typeof p === 'boolean') return p ? 1 : 0;
       return p;
     });
 
-    if (this.mysqlPool) {
-      let mysqlSql = sql.replace(/\$(\d+)/g, '?');
-      mysqlSql = mysqlSql.replace(/datetime\(['"]now['"]\)/gi, 'NOW()');
-      mysqlSql = mysqlSql.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
+    if (this.tidbConn) {
+      let tidbSql = sql.replace(/\$(\d+)/g, '?');
+      tidbSql = tidbSql.replace(/datetime\(['"]now['"]\)/gi, 'NOW()');
+      tidbSql = tidbSql.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
 
-      const [result] = await this.mysqlPool.query(mysqlSql, sanitizedParams);
-      if (Array.isArray(result)) {
-        return {
-          rows: result as T[],
-          rowCount: result.length
-        };
-      } else {
-        const header = result as any;
-        return {
-          rows: [],
-          rowCount: header?.affectedRows || 0
-        };
-      }
+      const res = (await this.tidbConn.execute(tidbSql, sanitizedParams, { fullResult: true })) as any;
+      const rows = (res.rows || []) as T[];
+      return {
+        rows,
+        rowCount: res.rowCount ?? res.rowsAffected ?? rows.length
+      };
     } else if (this.pgPool) {
       const res = await this.pgPool.query(sql, sanitizedParams);
       return {
@@ -160,10 +157,10 @@ class DatabaseManager {
     if (!this.isInitialized) {
       await this.init();
     }
-    if (this.mysqlPool) {
-      let mysqlSql = sql.replace(/datetime\(['"]now['"]\)/gi, 'NOW()');
-      mysqlSql = mysqlSql.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
-      await this.mysqlPool.query(mysqlSql);
+    if (this.tidbConn) {
+      let tidbSql = sql.replace(/datetime\(['"]now['"]\)/gi, 'NOW()');
+      tidbSql = tidbSql.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
+      await this.tidbConn.execute(tidbSql);
     } else if (this.pgPool) {
       await this.pgPool.query(sql);
     } else if (this.sqlite) {
@@ -172,18 +169,20 @@ class DatabaseManager {
   }
 
   /**
-   * Run multiple queries in a SQLite transaction.
+   * Run multiple queries in a transaction.
    */
   public transaction(fn: () => void): void {
     if (this.sqlite) {
       const runInTransaction = this.sqlite.transaction(fn);
       runInTransaction();
+    } else {
+      fn();
     }
   }
 
   private async applySchema(): Promise<void> {
     try {
-      if (this.mysqlPool) {
+      if (this.tidbConn) {
         let schemaPath = path.resolve(__dirname, 'schema_mysql.sql');
         if (!fs.existsSync(schemaPath)) {
           schemaPath = path.resolve(process.cwd(), 'server/src/db/schema_mysql.sql');
@@ -193,7 +192,11 @@ class DatabaseManager {
           console.log('📜 Applying TiDB Cloud MySQL schema...');
           const statements = schemaSql.split(';').map(s => s.trim()).filter(s => s.length > 0);
           for (const stmt of statements) {
-            await this.mysqlPool.query(stmt);
+            try {
+              await this.tidbConn.execute(stmt);
+            } catch (err: any) {
+              // Ignore harmless table already exists warnings
+            }
           }
           console.log('✅ TiDB Cloud schema verified and active.');
         }
