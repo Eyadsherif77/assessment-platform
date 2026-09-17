@@ -50,17 +50,41 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
       a_en: 'The platform supports Primary, Preparatory, and Secondary stages with full track division support (Scientific, Literary, Science Biology, Math Engineering), for both Arabic and Language schools.'
     },
     {
-      q_ar: 'هل يمكن للمعلمين رفع كتبهم وامتحاناتهم الخاصة؟',
-      q_en: 'Can teachers upload custom textbooks and period exams?',
-      a_ar: 'بالتأكيد. تتيح لوحة تحكم المعلم رفع ملفات الكتب بصيغة PDF ليقوم النظام بفهرستها فورياً، مع إمكانية تصميم امتحانات دورية بمؤقت زمني ومراقبة مستوى استيعاب الطلاب تلقائياً.',
-      a_en: 'Yes! Teachers can upload PDF curriculum textbooks for instant AI indexing, create timed periodic assessments, and monitor whole-class analytics in real time.'
+      q_ar: 'كيف يستفيد الطالب من بنك الأسئلة والامتحانات التفاعلية بالمنصة؟',
+      q_en: 'How do students benefit from interactive question banks and practice exams?',
+      a_ar: 'يستطيع كل طالب خوض اختبارات إلكترونية تفاعلية بمؤقت زمني حقيقي، وتدريب نفسه على نمط أسئلة الامتحانات الوزارية، مع الحصول على تصحيح فوري وتحليل دقيق لنقاط القوة والضعف.',
+      a_en: 'Students can take timed interactive assessments modeled after official exam patterns, receiving instant automated scoring and deep diagnostic mastery reports.'
     }
   ];
 
   return (
-    <div>
+    <div style={{ position: 'relative' }}>
+
+      {/* ===== ANIMATED BACKGROUND FOR WHITE SECTIONS ===== */}
+      <div className="home-bg-canvas" aria-hidden="true">
+        {/* Floating geometric shapes */}
+        <div className="hbg-shape hbg-shape-1" />
+        <div className="hbg-shape hbg-shape-2" />
+        <div className="hbg-shape hbg-shape-3" />
+        <div className="hbg-shape hbg-shape-4" />
+        <div className="hbg-shape hbg-shape-5" />
+        <div className="hbg-ring hbg-ring-1" />
+        <div className="hbg-ring hbg-ring-2" />
+        {/* Animated dots grid */}
+        <div className="hbg-dots" />
+      </div>
+
       {/* Hero Banner */}
       <section className="hero-banner" style={{ position: 'relative', overflow: 'hidden' }}>
+        {/* Animated hero particles */}
+        <div className="hero-particle hero-p1" />
+        <div className="hero-particle hero-p2" />
+        <div className="hero-particle hero-p3" />
+        <div className="hero-particle hero-p4" />
+        <div className="hero-particle hero-p5" />
+        <div className="hero-particle hero-p6" />
+        <div className="hero-wave-ring hero-wr1" />
+        <div className="hero-wave-ring hero-wr2" />
         <div style={{ maxWidth: '920px', margin: '0 auto', position: 'relative', zIndex: 2 }}>
           <div style={{
             display: 'inline-flex',
@@ -93,7 +117,9 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
                 onClick={onGoToDashboard}
                 style={{ fontWeight: 800, padding: '0.85rem 2rem' }}
               >
-                <span>{user.role === 'STUDENT' ? t.studentDashboard : t.teacherDashboard}</span>
+                <span>
+                  {user.role === 'STUDENT' ? t.studentDashboard : (user.role === 'ADMIN' ? (language === 'ar' ? 'لوحة تحكم الإدارة' : 'Admin Portal') : t.teacherDashboard)}
+                </span>
                 <ArrowIcon size={20} />
               </button>
             ) : (
@@ -254,8 +280,8 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             </h3>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
               {language === 'ar'
-                ? 'يقوم المعلم برفع ملف الكتاب المدرسي بصيغة PDF وتحديد المرحلة والصف والمادة بدقة لضمان عزل المناهج.'
-                : 'Teachers upload curriculum textbook PDFs strictly scoped to the exact stage, grade, and subject.'}
+                ? 'فهرسة وتصنيف الكتب المنهجية الرسمية المعتمدة لصفك الدراسي بدقة لضمان تركيز الطالب التام على مقرراته فقط.'
+                : 'Curriculum textbooks are mapped and indexed precisely to each student’s registered stage and grade.'}
             </p>
           </div>
 
@@ -349,7 +375,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             {t.featuresTitle}
           </h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            {language === 'ar' ? 'بنية هندسية وتربوية متكاملة مصممة لملايين الطلاب والمعلمين' : 'Built with high-scale architecture for millions of students and educators'}
+            {language === 'ar' ? 'بنية هندسية وتربوية متكاملة مصممة لملايين الطلاب في مختلف المراحل' : 'Built with high-scale architecture for millions of students across all stages'}
           </p>
         </div>
 
@@ -537,7 +563,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• درجة رقمية صامتة دون توضيح سبب الخطأ أو التصحيح.</li>
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• أسئلة عشوائية من الإنترنت لا تطابق كتاب الوزارة ومفاهيمه.</li>
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• تصحيح متأخر يفقد الطالب فرصة تثبيت المعلومة سريعاً.</li>
-              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• صعوبة حصر نقاط ضعف الفصل الدراسي لكل معلم.</li>
+              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• صعوبة حصر نقاط الضعف التراكمية لدى الطالب في كل وحدة دراسية.</li>
             </ul>
           </div>
 
@@ -620,7 +646,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
           </h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem', maxWidth: '680px', margin: '0.5rem auto 0', lineHeight: 1.6 }}>
             {language === 'ar'
-              ? 'معايير علمية وتطبيقية صارمة تضمن أعلى مستويات الدقة والأمان وتوفر للطالب والمعلم بيئة تعلم حقيقية موثوقة'
+              ? 'معايير علمية وتطبيقية صارمة تضمن أعلى مستويات الدقة والأمان وتوفر للطالب بيئة تقويم تشخيصي موثوقة'
               : 'Rigorous pedagogical and technical benchmarks ensuring peak diagnostic accuracy, student safety, and curriculum alignment.'}
           </p>
         </div>

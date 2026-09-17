@@ -153,6 +153,18 @@ class DatabaseManager {
         try {
           await this.query(`ALTER TABLE student_profiles ADD COLUMN school_type TEXT`);
         } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE books ADD COLUMN school_type TEXT DEFAULT 'كلاهما'`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE users ADD COLUMN super_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE users ADD COLUMN hybrid_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE users ADD COLUMN permissions TEXT`);
+        } catch (_) {}
 
         console.log('✅ Database schema verified and active.');
       }

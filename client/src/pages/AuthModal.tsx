@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, User, GraduationCap, Sparkles } from 'lucide-react';
+import { X, GraduationCap, Sparkles } from 'lucide-react';
 import { apiUrl } from '../utils/api';
 
 interface AuthModalProps {
@@ -18,7 +18,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 }) => {
   const { login, t, language } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
-  const [role, setRole] = useState<'STUDENT' | 'TEACHER'>('STUDENT');
+  const role = 'STUDENT';
 
   // Form Fields
   const [email, setEmail] = useState('');
@@ -30,7 +30,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const governorateId = '';
   const schoolId = '';
   const [schoolName, setSchoolName] = useState('');
-  const [specialization, setSpecialization] = useState('');
 
   // Secondary division & School type states
   const [section, setSection] = useState('علمي');
@@ -92,22 +91,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       };
 
       if (mode === 'register') {
-        payload.role = role;
+        payload.role = 'STUDENT';
         payload.fullName = fullName.trim();
-        if (role === 'STUDENT') {
-          payload.academicStageId = academicStageId;
-          payload.gradeId = gradeId;
-          payload.countryId = countryId;
-          payload.governorateId = governorateId;
-          payload.schoolId = schoolId;
-          payload.schoolName = schoolName;
-          payload.schoolType = schoolType;
-          if (isSecondaryStage) {
-            payload.section = isSec2Or3 && section === 'علمي' ? secondarySubDivision : section;
-          }
-        } else {
-          payload.specialization = specialization;
-          payload.schoolName = schoolName;
+        payload.academicStageId = academicStageId;
+        payload.gradeId = gradeId;
+        payload.countryId = countryId;
+        payload.governorateId = governorateId;
+        payload.schoolId = schoolId;
+        payload.schoolName = schoolName;
+        payload.schoolType = schoolType;
+        if (isSecondaryStage) {
+          payload.section = isSec2Or3 && section === 'علمي' ? secondarySubDivision : section;
         }
       }
 
@@ -223,22 +217,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <Sparkles size={16} />
             <span>{language === 'ar' ? 'تجربة سريعة بنقرة واحدة (Demo Access):' : 'Instant One-Click Demo Access:'}</span>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
             <button 
               type="button"
               className="btn btn-secondary btn-sm"
-              style={{ flex: 1, fontSize: '0.8rem', background: '#FFFFFF' }}
+              style={{ flex: 1, minWidth: '120px', fontSize: '0.78rem', background: '#FFFFFF' }}
               onClick={() => handleQuickDemoLogin('student@edu.eg')}
             >
-              👨‍🎓 {language === 'ar' ? 'طالب (الصف الأول الإعدادي)' : 'Student (Prep 1)'}
+              👨‍🎓 {language === 'ar' ? 'طالب (أولى إعدادي)' : 'Student (Prep 1)'}
             </button>
             <button 
               type="button"
               className="btn btn-secondary btn-sm"
-              style={{ flex: 1, fontSize: '0.8rem', background: '#FFFFFF' }}
-              onClick={() => handleQuickDemoLogin('teacher@edu.eg')}
+              style={{ flex: 1, minWidth: '120px', fontSize: '0.78rem', background: '#FFFFFF' }}
+              onClick={() => handleQuickDemoLogin('student2@edu.eg')}
             >
-              👩‍🏫 {language === 'ar' ? 'معلم (مادة العلوم)' : 'Teacher (Science)'}
+              👩‍🎓 {language === 'ar' ? 'طالب (تانية إعدادي)' : 'Student (Prep 2)'}
+            </button>
+            <button 
+              type="button"
+              className="btn btn-sm"
+              style={{ flex: 1, minWidth: '120px', fontSize: '0.78rem', background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D', fontWeight: 800 }}
+              onClick={() => handleQuickDemoLogin('admin@edu.eg')}
+            >
+              👑 {language === 'ar' ? 'بوابة الإدارة (Admin)' : 'Admin Portal'}
             </button>
           </div>
         </div>
@@ -280,29 +282,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <form onSubmit={handleSubmit}>
           {mode === 'register' && (
             <>
-              {/* Role Toggle */}
-              <div className="form-group">
-                <label className="form-label">{t.accountTypeLabel}</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <button
-                    type="button"
-                    className={`btn ${role === 'STUDENT' ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => setRole('STUDENT')}
-                    style={{ padding: '0.65rem' }}
-                  >
-                    <GraduationCap size={18} />
-                    <span>{t.studentRole}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn ${role === 'TEACHER' ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => setRole('TEACHER')}
-                    style={{ padding: '0.65rem' }}
-                  >
-                    <User size={18} />
-                    <span>{t.teacherRole}</span>
-                  </button>
-                </div>
+              {/* Student Only Notice */}
+              <div style={{
+                background: 'var(--primary-50)',
+                border: '1px solid var(--primary-200)',
+                borderRadius: 'var(--radius-md)',
+                padding: '0.65rem 0.85rem',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.825rem',
+                color: 'var(--primary-800)',
+                fontWeight: 700
+              }}>
+                <GraduationCap size={18} />
+                <span>{language === 'ar' ? 'تسجيل حساب طالب جديد بالمنظومة المدرسية' : 'New Student Registration'}</span>
               </div>
 
               {/* Full Name */}
@@ -434,32 +429,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       value={schoolName}
                       onChange={(e) => setSchoolName(e.target.value)}
                       placeholder={language === 'ar' ? 'اسم المدرسة (اختياري)' : 'School Name (optional)'}
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* Teacher Specific Fields */}
-              {role === 'TEACHER' && (
-                <>
-                  <div className="form-group">
-                    <label className="form-label">{t.specializationLabel}</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={specialization}
-                      onChange={(e) => setSpecialization(e.target.value)}
-                      placeholder={language === 'ar' ? 'معلم أول مادة العلوم' : 'Specialization'}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">{t.selectSchool}</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={schoolName}
-                      onChange={(e) => setSchoolName(e.target.value)}
-                      placeholder={language === 'ar' ? 'مدرسة النيل الحديثة' : 'School Name'}
                     />
                   </div>
                 </>

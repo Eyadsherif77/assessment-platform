@@ -48,6 +48,7 @@ export const TeacherDashboard: React.FC = () => {
   const [chapterNumber, setChapterNumber] = useState('1');
   const [chapterTitleAr, setChapterTitleAr] = useState('');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [schoolTypeTarget, setSchoolTypeTarget] = useState<'عربي' | 'لغات' | 'كلاهما'>('كلاهما');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -183,6 +184,7 @@ export const TeacherDashboard: React.FC = () => {
       formData.append('subject_id', selectedSubjectId);
       formData.append('chapter_number', chapterNumber);
       formData.append('chapter_title_ar', chapterTitleAr || 'الفصل الأول');
+      formData.append('school_type', schoolTypeTarget);
       formData.append('file', pdfFile);
 
       const res = await fetch(apiUrl('/api/books/upload'), {
@@ -362,6 +364,20 @@ export const TeacherDashboard: React.FC = () => {
             </div>
           )}
 
+          {user?.permissions && user.permissions.can_upload_books === false && (
+            <div style={{
+              background: '#FEF2F2',
+              border: '1.5px solid #FCA5A5',
+              color: '#DC2626',
+              padding: '1rem',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: '1.5rem',
+              fontWeight: 700
+            }}>
+              ⚠️ تم تعطيل صلاحية رفع الكتب والمناهج لهذا الحساب بواسطة إدارة المنصة.
+            </div>
+          )}
+
           <div className="card">
             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--primary-800)' }}>
               {language === 'ar' ? 'رفع كتاب وزاري أو مذكرة تعليمية بصيغة PDF' : 'Upload Ministry Textbook / Document'}
@@ -421,6 +437,22 @@ export const TeacherDashboard: React.FC = () => {
                 />
               </div>
 
+              <div className="form-group">
+                <label className="form-label">نوع المدرسة الموجَّه لها الكتاب</label>
+                <select
+                  className="form-select"
+                  value={schoolTypeTarget}
+                  onChange={(e) => setSchoolTypeTarget(e.target.value as 'عربي' | 'لغات' | 'كلاهما')}
+                >
+                  <option value="كلاهما">🏫 مدارس عربي ومدارس لغات (كلاهما)</option>
+                  <option value="عربي">🏫 مدارس عربي فقط</option>
+                  <option value="لغات">🌐 مدارس لغات فقط</option>
+                </select>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.3rem', display: 'block' }}>
+                  سيرى الطلاب فقط الكتب المناسبة لنوع مدرستهم المسجل
+                </span>
+              </div>
+
               <div className="responsive-form-grid-2">
                 <div>
                   <label className="form-label">رقم الفصل الأول</label>
@@ -464,12 +496,16 @@ export const TeacherDashboard: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={isUploading}
+                disabled={isUploading || user?.permissions?.can_upload_books === false}
                 className="btn btn-primary btn-lg"
                 style={{ width: '100%' }}
               >
                 <Upload size={20} />
-                <span>{isUploading ? t.uploadingBook : 'رفع الكتاب وبدء المعالجة الذكية بالخلفية'}</span>
+                <span>
+                  {user?.permissions?.can_upload_books === false
+                    ? 'رفع الكتب معطّل من قِبل الإدارة'
+                    : (isUploading ? t.uploadingBook : 'رفع الكتاب وبدء المعالجة الذكية بالخلفية')}
+                </span>
               </button>
             </form>
           </div>
@@ -503,6 +539,20 @@ export const TeacherDashboard: React.FC = () => {
       {/* TAB 2: EXAMS MANAGEMENT & STUDIO */}
       {activeTab === 'exams' && (
         <div>
+          {user?.permissions && user.permissions.can_create_exams === false && (
+            <div style={{
+              background: '#FEF2F2',
+              border: '1.5px solid #FCA5A5',
+              color: '#DC2626',
+              padding: '1rem',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: '1.5rem',
+              fontWeight: 700
+            }}>
+              ⚠️ تم تعطيل صلاحية تصميم وإنشاء الاختبارات لهذا الحساب بواسطة إدارة المنصة.
+            </div>
+          )}
+
           {/* Create Exam Form */}
           <div className="card" style={{ marginBottom: '2rem' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--primary-800)' }}>
@@ -676,11 +726,15 @@ export const TeacherDashboard: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={isCreatingExam}
+                disabled={isCreatingExam || user?.permissions?.can_create_exams === false}
                 className="btn btn-primary btn-lg"
                 style={{ width: '100%' }}
               >
-                <span>{isCreatingExam ? 'جاري حفظ الاختبار...' : t.createExamBtn}</span>
+                <span>
+                  {user?.permissions?.can_create_exams === false
+                    ? 'إنشاء الامتحانات معطّل من قِبل الإدارة'
+                    : (isCreatingExam ? 'جاري حفظ الاختبار...' : t.createExamBtn)}
+                </span>
               </button>
             </form>
           </div>

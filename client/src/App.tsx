@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { Home } from './pages/Home';
 import { StudentDashboard } from './pages/StudentDashboard';
 import { TeacherDashboard } from './pages/TeacherDashboard';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { AuthModal } from './pages/AuthModal';
 import { useScreenDetector } from './utils/useScreenDetector';
 
@@ -67,7 +68,8 @@ const PlatformApp: React.FC = () => {
         ) : (
           <>
             {user?.role === 'STUDENT' && <StudentDashboard />}
-            {(user?.role === 'TEACHER' || user?.role === 'ADMIN') && <TeacherDashboard />}
+            {user?.role === 'TEACHER' && <TeacherDashboard />}
+            {user?.role === 'ADMIN' && <AdminDashboard />}
             {!user && (
               <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                 <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>

@@ -4,9 +4,19 @@ import { apiUrl } from '../utils/api';
 
 export interface UserProfile {
   id: string;
+  super_id?: string | null;
+  hybrid_id?: string | null;
   email: string;
   role: 'STUDENT' | 'TEACHER' | 'ADMIN';
   fullName: string;
+  permissions?: {
+    can_upload_books?: boolean;
+    can_create_exams?: boolean;
+    can_delete_content?: boolean;
+    can_view_analytics?: boolean;
+    is_active?: boolean;
+    is_owner?: boolean;
+  } | null;
   profile?: {
     academic_stage_id?: string;
     grade_id?: string;
@@ -26,9 +36,12 @@ interface AuthContextType {
   token: string | null;
   language: Language;
   t: typeof translations['ar'];
+  isImpersonating: boolean;
   setLanguage: (lang: Language) => void;
   login: (token: string, user: UserProfile) => void;
   logout: () => void;
+  impersonateUser: (impersonationToken: string, impersonatedUser: UserProfile) => void;
+  exitImpersonation: () => void;
   isLoading: boolean;
 }
 
@@ -39,6 +52,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('edu_auth_user');
     return saved ? JSON.parse(saved) : null;
+  });
+  const [isImpersonating, setIsImpersonating] = useState<boolean>(() => {
+    return Boolean(localStorage.getItem('edu_admin_backup_token'));
   });
   const [language, setLanguageState] = useState<Language>(() => {
     return (localStorage.getItem('edu_lang') as Language) || 'ar';
@@ -72,7 +88,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(data.user);
           localStorage.setItem('edu_auth_user', JSON.stringify(data.user));
         } else {
-          logout();
+          // If token invalid and we are in impersonation, try to restore admin
+          if (localStorage.getItem('edu_admin_backup_token')) {
+            exitImpersonation();
+          } else {
+            logout();
+          }
         }
       } catch (e) {
         console.warn('Session verification error:', e);
@@ -93,8 +114,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setToken(null);
     setUser(null);
+    setIsImpersonating(false);
     localStorage.removeItem('edu_auth_token');
     localStorage.removeItem('edu_auth_user');
+    localStorage.removeItem('edu_admin_backup_token');
+    localStorage.removeItem('edu_admin_backup_user');
+  };
+
+  const impersonateUser = (impersonationToken: string, impersonatedUser: UserProfile) => {
+    // Backup current admin credentials
+    if (!localStorage.getItem('edu_admin_backup_token') && token && user) {
+      localStorage.setItem('edu_admin_backup_token', token);
+      localStorage.setItem('edu_admin_backup_user', JSON.stringify(user));
+    }
+    setToken(impersonationToken);
+    setUser(impersonatedUser);
+    setIsImpersonating(true);
+    localStorage.setItem('edu_auth_token', impersonationToken);
+    localStorage.setItem('edu_auth_user', JSON.stringify(impersonatedUser));
+  };
+
+  const exitImpersonation = () => {
+    const backupToken = localStorage.getItem('edu_admin_backup_token');
+    const backupUserStr = localStorage.getItem('edu_admin_backup_user');
+    if (backupToken && backupUserStr) {
+      const backupUser = JSON.parse(backupUserStr);
+      setToken(backupToken);
+      setUser(backupUser);
+      setIsImpersonating(false);
+      localStorage.setItem('edu_auth_token', backupToken);
+      localStorage.setItem('edu_auth_user', backupUserStr);
+      localStorage.removeItem('edu_admin_backup_token');
+      localStorage.removeItem('edu_admin_backup_user');
+    } else {
+      logout();
+    }
   };
 
   const t = translations[language];
@@ -106,9 +160,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         language,
         t,
+        isImpersonating,
         setLanguage,
         login,
         logout,
+        impersonateUser,
+        exitImpersonation,
         isLoading
       }}
     >

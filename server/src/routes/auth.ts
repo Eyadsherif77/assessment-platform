@@ -30,8 +30,11 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'الرجاء إدخال كافة البيانات الأساسية المطلوبة' });
     }
 
-    if (role !== 'STUDENT' && role !== 'TEACHER') {
-      return res.status(400).json({ error: 'نوع الحساب يجب أن يكون طالب أو معلم' });
+    const effectiveRole = role || 'STUDENT';
+    if (effectiveRole !== 'STUDENT') {
+      return res.status(400).json({
+        error: 'التسجيل الذاتي في المنصة مخصص حصرياً للطلاب. يتم إنشاء وتعيين حسابات المعلمين وإدارتها مركزياً من بوابة الإدارة.'
+      });
     }
 
     // Check existing email
@@ -40,61 +43,53 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
     }
 
+    // Student accounts have standard ID only (plain UUID)
     const userId = uuidv4();
     const passwordHash = await bcrypt.hash(password, 10);
 
     await db.query(
-      `INSERT INTO users (id, email, password_hash, role, full_name) VALUES ($1, $2, $3, $4, $5)`,
-      [userId, email.toLowerCase().trim(), passwordHash, role, fullName.trim()]
+      `INSERT INTO users (id, email, password_hash, role, full_name) VALUES ($1, $2, $3, 'STUDENT', $4)`,
+      [userId, email.toLowerCase().trim(), passwordHash, fullName.trim()]
     );
 
-    if (role === 'STUDENT') {
-      if (!academicStageId || !gradeId) {
-        return res.status(400).json({ error: 'يجب اختيار المرحلة الدراسية والصف الدراسي للطالب' });
-      }
-
-      const effectiveSchoolType = schoolType || school_type || 'عربي';
-
-      await db.query(
-        `INSERT INTO student_profiles (
-           user_id, full_name, country_id, governorate_id, school_id, school_name, academic_stage_id, grade_id, section, school_type
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          userId,
-          fullName.trim(),
-          countryId || null,
-          governorateId || null,
-          schoolId || null,
-          schoolName || null,
-          academicStageId,
-          gradeId,
-          section || null,
-          effectiveSchoolType
-        ]
-      );
-    } else if (role === 'TEACHER') {
-      await db.query(
-        `INSERT INTO teacher_profiles (
-           user_id, full_name, school_id, school_name, specialization
-         ) VALUES ($1, $2, $3, $4, $5)`,
-        [userId, fullName.trim(), schoolId || null, schoolName || null, specialization || null]
-      );
+    if (!academicStageId || !gradeId) {
+      return res.status(400).json({ error: 'يجب اختيار المرحلة الدراسية والصف الدراسي للطالب' });
     }
+
+    const effectiveSchoolType = schoolType || school_type || 'عربي';
+
+    await db.query(
+      `INSERT INTO student_profiles (
+         user_id, full_name, country_id, governorate_id, school_id, school_name, academic_stage_id, grade_id, section, school_type
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        userId,
+        fullName.trim(),
+        countryId || null,
+        governorateId || null,
+        schoolId || null,
+        schoolName || null,
+        academicStageId,
+        gradeId,
+        section || null,
+        effectiveSchoolType
+      ]
+    );
 
     const token = generateToken({
       id: userId,
       email: email.toLowerCase().trim(),
-      role,
+      role: 'STUDENT',
       fullName: fullName.trim()
     });
 
     return res.status(201).json({
-      message: 'تم إنشاء الحساب بنجاح',
+      message: 'تم إنشاء حساب الطالب بنجاح',
       token,
       user: {
         id: userId,
         email: email.toLowerCase().trim(),
-        role,
+        role: 'STUDENT',
         fullName: fullName.trim()
       }
     });
@@ -113,7 +108,7 @@ router.post('/login', async (req, res) => {
     }
 
     const userRes = await db.query(
-      `SELECT id, email, password_hash, role, full_name FROM users WHERE email = $1`,
+      `SELECT id, super_id, hybrid_id, email, password_hash, role, full_name, permissions, is_active FROM users WHERE email = $1`,
       [email.toLowerCase().trim()]
     );
 
@@ -122,6 +117,11 @@ router.post('/login', async (req, res) => {
     }
 
     const user = userRes.rows[0];
+
+    if (user.is_active === 0) {
+      return res.status(403).json({ error: 'تم تجميد هذا الحساب من قِبل إدارة المنصة. يرجى التواصل مع الإدارة.' });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' });
@@ -144,6 +144,15 @@ router.post('/login', async (req, res) => {
       profileData = tp.rows[0];
     }
 
+    let permissionsObj = null;
+    if (user.permissions) {
+      try {
+        permissionsObj = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+      } catch (_) {
+        permissionsObj = null;
+      }
+    }
+
     const token = generateToken({
       id: user.id,
       email: user.email,
@@ -156,9 +165,12 @@ router.post('/login', async (req, res) => {
       token,
       user: {
         id: user.id,
+        super_id: user.super_id || null,
+        hybrid_id: user.hybrid_id || null,
         email: user.email,
         role: user.role,
         fullName: user.full_name,
+        permissions: permissionsObj,
         profile: profileData
       }
     });
@@ -172,8 +184,13 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
-    let profileData: any = null;
+    const userQuery = await db.query(
+      `SELECT super_id, hybrid_id, permissions, is_active FROM users WHERE id = $1`,
+      [user.id]
+    );
+    const userRow = userQuery.rows[0] || {};
 
+    let profileData: any = null;
     if (user.role === 'STUDENT') {
       const sp = await db.query(
         `SELECT sp.*, s.name_ar as stage_name_ar, s.name_en as stage_name_en,
@@ -190,12 +207,24 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
       profileData = tp.rows[0];
     }
 
+    let permissionsObj = null;
+    if (userRow.permissions) {
+      try {
+        permissionsObj = typeof userRow.permissions === 'string' ? JSON.parse(userRow.permissions) : userRow.permissions;
+      } catch (_) {
+        permissionsObj = null;
+      }
+    }
+
     return res.json({
       user: {
         id: user.id,
+        super_id: userRow.super_id || null,
+        hybrid_id: userRow.hybrid_id || null,
         email: user.email,
         role: user.role,
         fullName: user.fullName,
+        permissions: permissionsObj,
         profile: profileData
       }
     });

@@ -28,6 +28,36 @@ export async function seedDatabase(): Promise<void> {
       console.warn('Grade sync note:', e);
     }
 
+    // Always ensure Admin / Owner user exists
+    try {
+      const adminCheck = await db.query(`SELECT id FROM users WHERE email = 'admin@edu.eg'`);
+      const passwordHash = await bcrypt.hash('123456', 10);
+      if (adminCheck.rows.length === 0) {
+        await db.query(
+          `INSERT INTO users (id, super_id, email, password_hash, role, full_name, permissions) VALUES ($1, 'SUPER-ADMIN-001', 'admin@edu.eg', $2, 'ADMIN', 'إدارة المنصة (المالك)', '{"is_owner":true}')`,
+          [uuidv4(), passwordHash]
+        );
+        console.log('👑 Admin user initialized: admin@edu.eg (superid: SUPER-ADMIN-001)');
+      } else {
+        await db.query(`UPDATE users SET super_id = 'SUPER-ADMIN-001' WHERE email = 'admin@edu.eg'`);
+      }
+
+      // Always ensure Teacher hybrid_id and permissions are populated
+      const defaultTeacherPerms = JSON.stringify({
+        can_upload_books: true,
+        can_create_exams: true,
+        can_delete_content: true,
+        can_view_analytics: true,
+        is_active: true
+      });
+      await db.query(
+        `UPDATE users SET hybrid_id = 'HYBRID-TEA-SCI-01', permissions = $1 WHERE email = 'teacher@edu.eg' AND (hybrid_id IS NULL OR hybrid_id = '')`,
+        [defaultTeacherPerms]
+      );
+    } catch (e) {
+      console.warn('Admin/Teacher sync note:', e);
+    }
+
     const existingStages = await db.query('SELECT COUNT(*) as count FROM academic_stages');
     if (parseInt(existingStages.rows[0].count, 10) > 0) {
       console.log('🌱 Database already seeded with academic stages. Skipping initial seed.');
@@ -141,12 +171,37 @@ export async function seedDatabase(): Promise<void> {
     // 7. Users & Profiles
     const passwordHash = await bcrypt.hash('123456', 10);
 
-    // Demo Teacher
-    const teacherId = uuidv4();
+    // Platform Owner / SuperAdmin (superid architecture)
+    const adminId = uuidv4();
     await db.query(
-      `INSERT OR IGNORE INTO users (id, email, password_hash, role, full_name) VALUES ($1, 'teacher@edu.eg', $2, 'TEACHER', 'أ. محمود عبد الرحمن')`,
-      [teacherId, passwordHash]
+      `INSERT OR IGNORE INTO users (id, super_id, email, password_hash, role, full_name, permissions) VALUES ($1, 'SUPER-ADMIN-001', 'admin@edu.eg', $2, 'ADMIN', 'إدارة المنصة (المالك)', '{"is_owner":true}')`,
+      [adminId, passwordHash]
     );
+    // Ensure existing admin has super_id
+    await db.query(
+      `UPDATE users SET super_id = 'SUPER-ADMIN-001' WHERE email = 'admin@edu.eg' AND (super_id IS NULL OR super_id = '')`
+    );
+
+    // Demo Teacher (hybrid_id architecture + permissions)
+    const teacherId = uuidv4();
+    const defaultTeacherPermissions = JSON.stringify({
+      can_upload_books: true,
+      can_create_exams: true,
+      can_delete_content: true,
+      can_view_analytics: true,
+      is_active: true
+    });
+
+    await db.query(
+      `INSERT OR IGNORE INTO users (id, hybrid_id, email, password_hash, role, full_name, permissions) VALUES ($1, 'HYBRID-TEA-SCI-01', 'teacher@edu.eg', $2, 'TEACHER', 'أ. محمود عبد الرحمن', $3)`,
+      [teacherId, passwordHash, defaultTeacherPermissions]
+    );
+    // Ensure existing teacher has hybrid_id and permissions
+    await db.query(
+      `UPDATE users SET hybrid_id = 'HYBRID-TEA-SCI-01', permissions = $1 WHERE email = 'teacher@edu.eg' AND (hybrid_id IS NULL OR hybrid_id = '')`,
+      [defaultTeacherPermissions]
+    );
+
     await db.query(
       `INSERT OR IGNORE INTO teacher_profiles (user_id, full_name, school_id, school_name, specialization) VALUES ($1, 'أ. محمود عبد الرحمن', $2, 'مدرسة المتفوقين الرسمية لغات', 'معلم أول مادة العلوم')`,
       [teacherId, school1Id]
@@ -392,9 +447,10 @@ export async function seedDatabase(): Promise<void> {
     );
 
     console.log('✅ Seed completed successfully! Demo accounts ready:');
-    console.log('   👩‍🏫 Teacher: teacher@edu.eg / 123456 (Science Specialist)');
-    console.log('   👨‍🎓 Student 1 (Prep 1): student@edu.eg / 123456');
-    console.log('   👩‍🎓 Student 2 (Prep 2): student2@edu.eg / 123456');
+    console.log('   👑 Owner/Admin: admin@edu.eg / 123456 (superid: SUPER-ADMIN-001)');
+    console.log('   👩‍🏫 Teacher: teacher@edu.eg / 123456 (hybrid_id: HYBRID-TEA-SCI-01)');
+    console.log('   👨‍🎓 Student 1 (Prep 1): student@edu.eg / 123456 (id only)');
+    console.log('   👩‍🎓 Student 2 (Prep 2): student2@edu.eg / 123456 (id only)');
   } catch (error) {
     console.error('❌ Error during database seeding:', error);
   }

@@ -7,10 +7,13 @@ PRAGMA foreign_keys=ON;
 -- 1. Identity & Reference Data
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
+    super_id TEXT,
+    hybrid_id TEXT,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('STUDENT', 'TEACHER', 'ADMIN')),
     full_name TEXT NOT NULL,
+    permissions TEXT DEFAULT '{"can_upload_books":true,"can_create_exams":true,"can_delete_content":true,"can_view_analytics":true,"is_active":true}',
     is_active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))

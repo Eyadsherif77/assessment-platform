@@ -14,6 +14,7 @@ import questionBanksRoutes from './routes/questionBanks.js';
 import examsRoutes from './routes/exams.js';
 import aiRoutes from './routes/ai.js';
 import analyticsRoutes from './routes/analytics.js';
+import adminRoutes from './routes/admin.js';
 
 dotenv.config();
 
@@ -60,6 +61,7 @@ app.use('/api/question-banks', questionBanksRoutes);
 app.use('/api/exams', examsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health Check
 app.get('/api/health', (req, res) => {

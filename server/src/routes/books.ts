@@ -45,7 +45,8 @@ router.post(
         grade_id,
         subject_id,
         chapter_number,
-        chapter_title_ar
+        chapter_title_ar,
+        school_type
       } = req.body;
 
       if (!title_ar || !academic_stage_id || !grade_id || !subject_id) {
@@ -56,12 +57,13 @@ router.post(
       const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
       const filePath = req.file ? req.file.path : '';
       const fileSize = req.file ? req.file.size : 0;
+      const effectiveSchoolType = school_type || 'كلاهما';
 
       await db.query(
         `INSERT INTO books (
            id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
-           file_url, file_size, processing_status
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING')`,
+           file_url, file_size, school_type, processing_status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING')`,
         [
           bookId,
           title_ar.trim(),
@@ -71,7 +73,8 @@ router.post(
           subject_id,
           req.user!.id,
           fileUrl,
-          fileSize
+          fileSize,
+          effectiveSchoolType
         ]
       );
 
@@ -142,6 +145,13 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
 
       params.push(req.studentProfile.gradeId);
       conditions.push(`b.grade_id = $${params.length}`);
+
+      // Filter by student's school_type: show books for their type OR 'كلاهما'
+      const studentSchoolType = (req.studentProfile as any).schoolType || null;
+      if (studentSchoolType) {
+        params.push(studentSchoolType);
+        conditions.push(`(b.school_type = $${params.length} OR b.school_type = 'كلاهما' OR b.school_type IS NULL)`);
+      }
     } else {
       // Optional query filters for teachers
       if (req.query.stage_id) {
