@@ -181,7 +181,6 @@ export const AdminDashboard: React.FC = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل الدخول إلى حساب المعلم');
 
-      // Seamlessly switch to teacher dashboard!
       impersonateUser(data.token, data.user);
     } catch (err: any) {
       showAlert(err.message, 'error');
@@ -201,7 +200,6 @@ export const AdminDashboard: React.FC = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل الدخول إلى حساب الطالب');
 
-      // Seamlessly switch to student dashboard!
       impersonateUser(data.token, data.user);
     } catch (err: any) {
       showAlert(err.message, 'error');
@@ -337,9 +335,9 @@ export const AdminDashboard: React.FC = () => {
       {/* Alert Banner */}
       {alertMessage && (
         <div style={{
-          background: alertMessage.type === 'success' ? 'var(--secondary-50)' : 'var(--danger-50)',
-          border: `1px solid ${alertMessage.type === 'success' ? 'var(--secondary-300)' : 'rgba(239, 68, 68, 0.4)'}`,
-          color: alertMessage.type === 'success' ? 'var(--secondary-700)' : 'var(--danger-600)',
+          background: alertMessage.type === 'success' ? '#F0FDF4' : '#FEF2F2',
+          border: `1px solid ${alertMessage.type === 'success' ? '#86EFAC' : '#FCA5A5'}`,
+          color: alertMessage.type === 'success' ? '#15803D' : '#DC2626',
           padding: '0.85rem 1.25rem',
           borderRadius: 'var(--radius-md)',
           marginBottom: '1.5rem',
@@ -347,26 +345,28 @@ export const AdminDashboard: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           gap: '0.5rem',
-          animation: 'fadeIn 0.2s ease-in'
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
         }}>
           {alertMessage.type === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
           <span>{alertMessage.text}</span>
         </div>
       )}
 
-      {/* Header Banner */}
+      {/* Header Banner with Modernized Admin Stats Cards */}
       <div className="card" style={{
         background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
         color: '#FFFFFF',
-        padding: '2rem',
+        padding: '2.25rem 2rem',
         borderRadius: 'var(--radius-xl)',
         marginBottom: '2rem',
-        boxShadow: 'var(--shadow-lg)',
+        boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.25)',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        border: '1px solid rgba(255, 255, 255, 0.1)'
       }}>
         <div style={{ position: 'relative', zIndex: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Top Badges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             <span style={{
               background: '#F59E0B',
               color: '#78350F',
@@ -376,121 +376,204 @@ export const AdminDashboard: React.FC = () => {
               borderRadius: 'var(--radius-full)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem'
+              gap: '0.35rem',
+              boxShadow: '0 2px 6px rgba(245, 158, 11, 0.3)'
             }}>
               👑 {language === 'ar' ? 'صلاحيات المالك الرئيسي (SuperAdmin)' : 'Owner / SuperAdmin'}
             </span>
             <span style={{
-              background: 'rgba(255,255,255,0.12)',
-              color: '#CBD5E1',
-              fontSize: '0.8rem',
+              background: 'rgba(255, 255, 255, 0.12)',
+              color: '#E2E8F0',
+              fontSize: '0.78rem',
               fontWeight: 700,
               padding: '0.35rem 0.85rem',
               borderRadius: 'var(--radius-full)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem'
+              gap: '0.35rem',
+              border: '1px solid rgba(255, 255, 255, 0.15)'
             }}>
               <Database size={13} />
               superid: {user?.super_id || 'SUPER-ADMIN-001'}
             </span>
           </div>
 
-          <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: '#FFFFFF' }}>
+          <h1 style={{ fontSize: '1.9rem', fontWeight: 800, margin: 0, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
             {language === 'ar' ? 'بوابة الرقابة والإدارة المركزية' : 'Central Platform Administration'}
           </h1>
-          <p style={{ color: '#94A3B8', marginTop: '0.5rem', maxWidth: '750px', lineHeight: 1.6, fontSize: '0.95rem' }}>
+          <p style={{ color: '#94A3B8', marginTop: '0.5rem', maxWidth: '750px', lineHeight: 1.6, fontSize: '0.925rem' }}>
             {language === 'ar'
               ? 'إدارة شاملة لكافة حسابات المعلمين والطلاب، فحص المحتوى المنشور، التحكم الدقيق في صلاحيات المعلمين، والدخول الفوري لحساب أي مستخدم.'
               : 'Master dashboard for managing teacher accounts, inspecting student learning diagnostics, granting granular permissions, and instant account impersonation.'}
           </p>
 
-          {/* Quick Metrics Bar */}
+          {/* Quick Metrics Bar (Redesigned Admin Stats Cards) */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
             gap: '1rem',
             marginTop: '1.75rem'
           }}>
-            <div style={{ background: 'rgba(255,255,255,0.07)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ fontSize: '0.8rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <GraduationCap size={15} color="#38BDF8" />
-                <span>{language === 'ar' ? 'إجمالي الطلاب' : 'Total Students'}</span>
+            {/* Stat 1: Students */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              backdropFilter: 'blur(8px)',
+              padding: '1.15rem 1.25rem',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              transition: 'transform var(--t-fast), border-color var(--t-fast)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                  {language === 'ar' ? 'إجمالي الطلاب' : 'Total Students'}
+                </span>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <GraduationCap size={17} color="#38BDF8" />
+                </div>
               </div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem', color: '#38BDF8' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#38BDF8', lineHeight: 1 }}>
                 {stats.totalStudents}
               </div>
+              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+                {language === 'ar' ? 'مسجلون بالمنظومة' : 'Active accounts'}
+              </div>
             </div>
 
-            <div style={{ background: 'rgba(255,255,255,0.07)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ fontSize: '0.8rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Users size={15} color="#A78BFA" />
-                <span>{language === 'ar' ? 'حسابات المعلمين' : 'Total Teachers'}</span>
+            {/* Stat 2: Teachers */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              backdropFilter: 'blur(8px)',
+              padding: '1.15rem 1.25rem',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              transition: 'transform var(--t-fast), border-color var(--t-fast)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                  {language === 'ar' ? 'حسابات المعلمين' : 'Total Teachers'}
+                </span>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(167, 139, 250, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={17} color="#A78BFA" />
+                </div>
               </div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem', color: '#A78BFA' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#A78BFA', lineHeight: 1 }}>
                 {stats.totalTeachers}
               </div>
+              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+                {language === 'ar' ? 'بمعرّفات هجينة' : 'Hybrid ID verified'}
+              </div>
             </div>
 
-            <div style={{ background: 'rgba(255,255,255,0.07)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ fontSize: '0.8rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <BookOpen size={15} color="#34D399" />
-                <span>{language === 'ar' ? 'الكتب والمناهج' : 'Curriculum Books'}</span>
+            {/* Stat 3: Curriculum Books */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              backdropFilter: 'blur(8px)',
+              padding: '1.15rem 1.25rem',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              transition: 'transform var(--t-fast), border-color var(--t-fast)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                  {language === 'ar' ? 'الكتب والمناهج' : 'Curriculum Books'}
+                </span>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(52, 211, 153, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <BookOpen size={17} color="#34D399" />
+                </div>
               </div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem', color: '#34D399' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#34D399', lineHeight: 1 }}>
                 {stats.totalBooks}
               </div>
+              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+                {language === 'ar' ? 'مفهرسة بالكامل' : 'AI vector indexed'}
+              </div>
             </div>
 
-            <div style={{ background: 'rgba(255,255,255,0.07)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ fontSize: '0.8rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <FileText size={15} color="#FBBF24" />
-                <span>{language === 'ar' ? 'الاختبارات المنشورة' : 'Active Exams'}</span>
+            {/* Stat 4: Active Exams */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              backdropFilter: 'blur(8px)',
+              padding: '1.15rem 1.25rem',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              transition: 'transform var(--t-fast), border-color var(--t-fast)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                  {language === 'ar' ? 'الاختبارات المنشورة' : 'Active Exams'}
+                </span>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FileText size={17} color="#FBBF24" />
+                </div>
               </div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem', color: '#FBBF24' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#FBBF24', lineHeight: 1 }}>
                 {stats.totalExams}
               </div>
+              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+                {language === 'ar' ? 'بمؤقت زمني وتصحيح' : 'Live timed quizzes'}
+              </div>
             </div>
 
-            <div style={{ background: 'rgba(255,255,255,0.07)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ fontSize: '0.8rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <TrendingUp size={15} color="#F472B6" />
-                <span>{language === 'ar' ? 'محاولات التقييم' : 'Student Attempts'}</span>
+            {/* Stat 5: Exam Attempts */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              backdropFilter: 'blur(8px)',
+              padding: '1.15rem 1.25rem',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              transition: 'transform var(--t-fast), border-color var(--t-fast)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                  {language === 'ar' ? 'محاولات التقييم' : 'Student Attempts'}
+                </span>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(244, 114, 182, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={17} color="#F472B6" />
+                </div>
               </div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 800, marginTop: '0.25rem', color: '#F472B6' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#F472B6', lineHeight: 1 }}>
                 {stats.totalExamAttempts}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+                {language === 'ar' ? 'بتشخيص تربوي فوري' : 'Automated evaluations'}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border-light)', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+      {/* Modern Tabs Navigation */}
+      <div style={{
+        display: 'flex',
+        gap: '0.5rem',
+        borderBottom: '2px solid var(--border-light)',
+        marginBottom: '1.75rem',
+        flexWrap: 'wrap'
+      }}>
         <button
           className={`tab-btn ${activeTab === 'teachers' ? 'active' : ''}`}
           onClick={() => setActiveTab('teachers')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', padding: '0.85rem 1.25rem' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', padding: '0.75rem 1.25rem', fontWeight: 700 }}
         >
-          <Users size={18} />
+          <Users size={17} />
           <span>{language === 'ar' ? `إدارة المعلمين (${teachers.length})` : `Teachers (${teachers.length})`}</span>
         </button>
 
         <button
           className={`tab-btn ${activeTab === 'students' ? 'active' : ''}`}
           onClick={() => setActiveTab('students')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', padding: '0.85rem 1.25rem' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', padding: '0.75rem 1.25rem', fontWeight: 700 }}
         >
-          <GraduationCap size={18} />
+          <GraduationCap size={17} />
           <span>{language === 'ar' ? `إدارة ومتابعة الطلاب (${students.length})` : `Students (${students.length})`}</span>
         </button>
 
         <button
           className={`tab-btn ${activeTab === 'architecture' ? 'active' : ''}`}
           onClick={() => setActiveTab('architecture')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', padding: '0.85rem 1.25rem' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', padding: '0.75rem 1.25rem', fontWeight: 700 }}
         >
-          <Database size={18} />
+          <Database size={17} />
           <span>{language === 'ar' ? 'معمارية المعرّفات (superid / hybrid_id / id)' : 'ID Architecture'}</span>
         </button>
       </div>
@@ -499,8 +582,8 @@ export const AdminDashboard: React.FC = () => {
       {activeTab === 'teachers' && (
         <div>
           {/* Top Actions: Search + Add Teacher Button */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: '240px', maxWidth: '400px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: '240px', maxWidth: '420px' }}>
               <Search size={16} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: language === 'ar' ? '0.85rem' : 'auto', left: language === 'en' ? '0.85rem' : 'auto', color: 'var(--text-muted)' }} />
               <input
                 type="text"
@@ -515,7 +598,7 @@ export const AdminDashboard: React.FC = () => {
             <button
               className="btn btn-primary"
               onClick={() => setAddTeacherModalOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800 }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, padding: '0.65rem 1.25rem' }}
             >
               <Plus size={18} />
               <span>{language === 'ar' ? 'إضافة معلم جديد' : 'Add New Teacher'}</span>
@@ -542,7 +625,8 @@ export const AdminDashboard: React.FC = () => {
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   gap: '1rem',
-                  boxShadow: 'var(--shadow-sm)'
+                  boxShadow: 'var(--shadow-sm)',
+                  borderRadius: 'var(--radius-lg)'
                 }}>
                   <div>
                     {/* Header: Name + hybrid_id */}
@@ -601,13 +685,13 @@ export const AdminDashboard: React.FC = () => {
 
                     {/* Permissions summary badges */}
                     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                      <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: teacher.permissions.can_upload_books ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_upload_books ? '#15803D' : '#9CA3AF' }}>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: teacher.permissions.can_upload_books ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_upload_books ? '#15803D' : '#9CA3AF', fontWeight: 700 }}>
                         {teacher.permissions.can_upload_books ? '✓ رفع كتب' : '✕ منع الكتب'}
                       </span>
-                      <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: teacher.permissions.can_create_exams ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_create_exams ? '#15803D' : '#9CA3AF' }}>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: teacher.permissions.can_create_exams ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_create_exams ? '#15803D' : '#9CA3AF', fontWeight: 700 }}>
                         {teacher.permissions.can_create_exams ? '✓ امتحانات' : '✕ منع الامتحانات'}
                       </span>
-                      <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: teacher.permissions.can_view_analytics ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_view_analytics ? '#15803D' : '#9CA3AF' }}>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: teacher.permissions.can_view_analytics ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_view_analytics ? '#15803D' : '#9CA3AF', fontWeight: 700 }}>
                         {teacher.permissions.can_view_analytics ? '✓ تحليلات' : '✕ حجب التحليلات'}
                       </span>
                     </div>
@@ -645,7 +729,7 @@ export const AdminDashboard: React.FC = () => {
       {activeTab === 'students' && (
         <div>
           {/* Search bar */}
-          <div style={{ marginBottom: '1.25rem', maxWidth: '450px' }}>
+          <div style={{ marginBottom: '1.5rem', maxWidth: '450px' }}>
             <div style={{ position: 'relative' }}>
               <Search size={16} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: language === 'ar' ? '0.85rem' : 'auto', left: language === 'en' ? '0.85rem' : 'auto', color: 'var(--text-muted)' }} />
               <input
@@ -668,21 +752,21 @@ export const AdminDashboard: React.FC = () => {
               لا يوجد طلاب مطابقين للبحث.
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', background: '#FFFFFF', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-light)', boxShadow: 'var(--shadow-sm)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', background: '#FFFFFF' }}>
                 <thead>
                   <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border-light)', textAlign: language === 'ar' ? 'right' : 'left' }}>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800 }}>اسم الطالب والبريد</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800 }}>المعرف القياسي (id)</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800 }}>المرحلة والصف</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800 }}>نوع المدرسة</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800 }}>المحاولات والدرجة</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, textAlign: 'center' }}>الإجراءات</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>اسم الطالب والبريد</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>المعرف القياسي (id)</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>المرحلة والصف</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>نوع المدرسة</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>المحاولات والدرجة</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)', textAlign: 'center' }}>الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredStudents.map(student => (
-                    <tr key={student.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <tr key={student.id} style={{ borderBottom: '1px solid var(--border-light)', transition: 'background var(--t-fast)' }}>
                       <td style={{ padding: '0.85rem 1rem' }}>
                         <div style={{ fontWeight: 800, color: 'var(--text-title)' }}>{student.fullName}</div>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{student.email}</div>
@@ -693,7 +777,7 @@ export const AdminDashboard: React.FC = () => {
                         </code>
                       </td>
                       <td style={{ padding: '0.85rem 1rem', fontSize: '0.85rem' }}>
-                        <div>{student.gradeNameAr}</div>
+                        <div style={{ fontWeight: 700 }}>{student.gradeNameAr}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{student.stageNameAr}</div>
                       </td>
                       <td style={{ padding: '0.85rem 1rem', fontSize: '0.825rem' }}>
@@ -740,22 +824,22 @@ export const AdminDashboard: React.FC = () => {
       {/* TAB 3: ID ARCHITECTURE & DB SCHEMA DOCUMENTATION */}
       {activeTab === 'architecture' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div className="card" style={{ padding: '1.75rem' }}>
+          <div className="card" style={{ padding: '2rem 1.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
               <Database size={22} color="var(--primary-600)" />
-              <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: 'var(--text-title)' }}>
                 {language === 'ar' ? 'معمارية المعرّفات تمهيداً لقاعدة البيانات السحابية' : 'Future Database ID Architecture'}
               </h2>
             </div>
 
-            <p style={{ color: 'var(--text-body)', lineHeight: 1.7, fontSize: '0.95rem' }}>
+            <p style={{ color: 'var(--text-body)', lineHeight: 1.7, fontSize: '0.925rem' }}>
               وفقاً للتصميم المعتمد، تم ضبط بنية المعرّفات في النظام للتوافق التام مع الترحيل المستقبلي لقاعدة البيانات الإنتاجية السحابية:
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginTop: '1.25rem' }}>
               {/* Owner */}
-              <div style={{ border: '2px solid #F59E0B', borderRadius: 'var(--radius-lg)', padding: '1.25rem', background: '#FFFBEB' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#B45309', fontWeight: 800, fontSize: '1.1rem' }}>
+              <div style={{ border: '1.5px solid #FCD34D', borderRadius: 'var(--radius-lg)', padding: '1.35rem', background: '#FFFDF5' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#B45309', fontWeight: 800, fontSize: '1.05rem' }}>
                   <span>👑 المالك والمدير العام (Owner / SuperAdmin)</span>
                 </div>
                 <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#78350F', lineHeight: 1.6 }}>
@@ -766,8 +850,8 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Teacher */}
-              <div style={{ border: '2px solid #6366F1', borderRadius: 'var(--radius-lg)', padding: '1.25rem', background: '#EEF2FF' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#4338CA', fontWeight: 800, fontSize: '1.1rem' }}>
+              <div style={{ border: '1.5px solid #C7D2FE', borderRadius: 'var(--radius-lg)', padding: '1.35rem', background: '#F5F7FF' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#4338CA', fontWeight: 800, fontSize: '1.05rem' }}>
                   <span>👩‍🏫 المعلم (Teacher)</span>
                 </div>
                 <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#312E81', lineHeight: 1.6 }}>
@@ -778,8 +862,8 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Student */}
-              <div style={{ border: '2px solid #10B981', borderRadius: 'var(--radius-lg)', padding: '1.25rem', background: '#ECFDF5' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#065F46', fontWeight: 800, fontSize: '1.1rem' }}>
+              <div style={{ border: '1.5px solid #A7F3D0', borderRadius: 'var(--radius-lg)', padding: '1.35rem', background: '#F0FDF4' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#065F46', fontWeight: 800, fontSize: '1.05rem' }}>
                   <span>👨‍🎓 الطالب (Student)</span>
                 </div>
                 <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#064E3B', lineHeight: 1.6 }}>

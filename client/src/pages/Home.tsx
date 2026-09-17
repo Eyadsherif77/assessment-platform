@@ -495,12 +495,16 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               background: 'var(--bg-main)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                <span className="badge badge-primary">المرحلة الابتدائية</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>صفوف (4 - 5 - 6)</span>
+                <span className="badge badge-primary">{language === 'ar' ? 'المرحلة الابتدائية' : 'Primary Stage'}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{language === 'ar' ? 'صفوف (4 - 5 - 6)' : 'Grades (4 - 5 - 6)'}</span>
               </div>
-              <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: '0.4rem' }}>التأسيس المعرفي والمهاري</h4>
+              <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: '0.4rem' }}>
+                {language === 'ar' ? 'التأسيس المعرفي والمهاري' : 'Foundational Knowledge & Skills'}
+              </h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                تأسيس المفاهيم العلمية واللغوية بأسئلة سهلة ومباشرة تركز على التذكر والفهم والاستكشاف.
+                {language === 'ar'
+                  ? 'تأسيس المفاهيم العلمية واللغوية بأسئلة سهلة ومباشرة تركز على التذكر والفهم والاستكشاف.'
+                  : 'Establishing core scientific and linguistic concepts with foundational questions focused on understanding and discovery.'}
               </p>
             </div>
 
@@ -513,12 +517,16 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               boxShadow: '0 8px 16px -4px rgba(37, 99, 235, 0.1)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                <span className="badge badge-success">المرحلة الإعدادية (نشطة بالكامل)</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--primary-700)', fontWeight: 700 }}>صفوف (1 - 2 - 3)</span>
+                <span className="badge badge-success">{language === 'ar' ? 'المرحلة الإعدادية (نشطة بالكامل)' : 'Preparatory Stage (Active)'}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--primary-700)', fontWeight: 700 }}>{language === 'ar' ? 'صفوف (1 - 2 - 3)' : 'Grades (1 - 2 - 3)'}</span>
               </div>
-              <h4 style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--primary-900)', marginBottom: '0.4rem' }}>الربط المنهجي العميق</h4>
+              <h4 style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--primary-900)', marginBottom: '0.4rem' }}>
+                {language === 'ar' ? 'الربط المنهجي العميق' : 'Deep Curriculum Alignment'}
+              </h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-body)', lineHeight: 1.6 }}>
-                كتاب العلوم وفصل المادة وخواصها مفهرس بالكامل، مع تقييم ذكي فوري بالذكاء الاصطناعي.
+                {language === 'ar'
+                  ? 'كتاب العلوم وفصل المادة وخواصها مفهرس بالكامل، مع تقييم ذكي فوري بالذكاء الاصطناعي.'
+                  : 'Science curriculum fully indexed with instant AI diagnostic assessment and lesson tracking.'}
               </p>
             </div>
 
@@ -530,12 +538,16 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               background: 'var(--bg-main)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                <span className="badge badge-primary">المرحلة الثانوية</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>صفوف (1 - 2 - 3)</span>
+                <span className="badge badge-primary">{language === 'ar' ? 'المرحلة الثانوية' : 'Secondary Stage'}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{language === 'ar' ? 'صفوف (1 - 2 - 3)' : 'Grades (1 - 2 - 3)'}</span>
               </div>
-              <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: '0.4rem' }}>دعم الشعب والتخصصات</h4>
+              <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: '0.4rem' }}>
+                {language === 'ar' ? 'دعم الشعب والتخصصات' : 'Track & Division Support'}
+              </h4>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                شعبة علمي وأدبي، مع تخصص (علمي علوم وعلمي رياضة) لاختبارات قياس الفهم والتحليل والتقويم.
+                {language === 'ar'
+                  ? 'شعبة علمي وأدبي، مع تخصص (علمي علوم وعلمي رياضة) لاختبارات قياس الفهم والتحليل والتقويم.'
+                  : 'Scientific and Literary tracks, with Science/Math division support measuring high-order thinking and analysis.'}
               </p>
             </div>
           </div>
@@ -560,10 +572,18 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
               ❌ {language === 'ar' ? 'الامتحانات التقليدية' : 'Traditional Exams'}
             </h3>
             <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• درجة رقمية صامتة دون توضيح سبب الخطأ أو التصحيح.</li>
-              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• أسئلة عشوائية من الإنترنت لا تطابق كتاب الوزارة ومفاهيمه.</li>
-              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• تصحيح متأخر يفقد الطالب فرصة تثبيت المعلومة سريعاً.</li>
-              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>• صعوبة حصر نقاط الضعف التراكمية لدى الطالب في كل وحدة دراسية.</li>
+              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>
+                • {language === 'ar' ? 'درجة رقمية صامتة دون توضيح سبب الخطأ أو التصحيح.' : 'Silent numerical score without explaining the cause of errors or corrections.'}
+              </li>
+              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>
+                • {language === 'ar' ? 'أسئلة عشوائية من الإنترنت لا تطابق كتاب الوزارة ومفاهيمه.' : 'Random internet questions disconnected from official curriculum concepts.'}
+              </li>
+              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>
+                • {language === 'ar' ? 'تصحيح متأخر يفقد الطالب فرصة تثبيت المعلومة سريعاً.' : 'Delayed feedback hindering quick reinforcement and active learning.'}
+              </li>
+              <li style={{ fontSize: '0.9rem', color: 'var(--text-body)' }}>
+                • {language === 'ar' ? 'صعوبة حصر نقاط الضعف التراكمية لدى الطالب في كل وحدة دراسية.' : 'Inability to track cumulative weaknesses across chapters.'}
+              </li>
             </ul>
           </div>
 
@@ -574,16 +594,16 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             </h3>
             <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
-                • تشخيص فوري لكل خطأ مع توجيه مباشر لرقم الصفحة في الكتاب.
+                • {language === 'ar' ? 'تشخيص فوري لكل خطأ مع توجيه مباشر لرقم الصفحة في الكتاب.' : 'Instant misconception diagnosis with direct page references in the textbook.'}
               </li>
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
-                • أسئلة مشتقة حصرياً وبدقة 100% من فصول وفقرات المنهج الرسمي.
+                • {language === 'ar' ? 'أسئلة مشتقة حصرياً وبدقة 100% من فصول وفقرات المنهج الرسمي.' : 'Questions 100% derived from official ministry chapters and passages.'}
               </li>
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
-                • تحليل تراكمي لمستوى الإتقان يحدد نقاط القوة والضعف للطالب.
+                • {language === 'ar' ? 'تحليل تراكمي لمستوى الإتقان يحدد نقاط القوة والضعف للطالب.' : 'Longitudinal mastery analysis mapping student strengths and weaknesses.'}
               </li>
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
-                • عداد تنازلي تفاعلي مع توزيع عشوائي للخيارات لمنع التخمين.
+                • {language === 'ar' ? 'عداد تنازلي تفاعلي مع توزيع عشوائي للخيارات لمنع التخمين.' : 'Interactive countdown timer with randomized choices preventing guessing.'}
               </li>
             </ul>
           </div>
@@ -841,7 +861,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
                 {language === 'ar' ? 'معايير الجودة والاعتماد الأكاديمي للتقويم التربوي' : 'Certified Academic Quality & Evaluation Standards'}
               </div>
               <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
-                {language === 'ar' ? 'مطور وفق أحدث نظريات القياس والتقويم بالذكاء الاصطناعي بواسطة فريق DevTech' : 'Engineered under modern psychometric & AI diagnostic frameworks by DevTech'}
+                {language === 'ar' ? 'مطور وفق أحدث نظريات القياس والتقويم بالذكاء الاصطناعي للمناهج التعليمية' : 'Engineered under modern psychometric & AI curriculum diagnostic frameworks'}
               </div>
             </div>
           </div>

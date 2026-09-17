@@ -135,25 +135,24 @@ const PlatformApp: React.FC = () => {
         )}
       </main>
 
-      {/* Footer */}
-      <footer style={{
-        borderTop: '1px solid var(--border-light)',
-        background: '#FFFFFF',
-        padding: '2rem 1.25rem',
-        marginTop: 'auto',
-        textAlign: 'center',
-        color: 'var(--text-muted)',
-        fontSize: '0.875rem'
-      }}>
-        <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-          <p style={{ fontWeight: 700, color: 'var(--primary-800)', marginBottom: '0.35rem' }}>
-            {t.brandName} • {language === 'ar' ? 'منظومة التقويم التشخيصي الذكي المستند للمناهج' : 'Diagnostic Educational Assessment Platform'}
-          </p>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
-            {language === 'ar' ? 'جميع الحقوق محفوظة © DevTech' : 'All rights reserved © DevTech'}
-          </p>
-        </div>
-      </footer>
+      {/* Footer (Only on Home View) */}
+      {activeView === 'home' && (
+        <footer style={{
+          borderTop: '1px solid var(--border-light)',
+          background: '#FFFFFF',
+          padding: '2rem 1.25rem',
+          marginTop: 'auto',
+          textAlign: 'center',
+          color: 'var(--text-muted)',
+          fontSize: '0.875rem'
+        }}>
+          <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
+            <p style={{ fontWeight: 700, color: 'var(--primary-800)', margin: 0 }}>
+              {t.brandName} • {language === 'ar' ? 'منظومة التقويم التشخيصي الذكي المستند للمناهج' : 'Diagnostic Educational Assessment Platform'}
+            </p>
+          </div>
+        </footer>
+      )}
 
       {/* Authentication Modal */}
       <AuthModal

@@ -229,7 +229,7 @@ router.get('/:id/chapters/:chapterId/chunks', authenticateToken, enforceStudentG
   try {
     const { id, chapterId } = req.params;
     const chunksRes = await db.query(
-      `SELECT id, page_number, chunk_index, content, metadata
+      `SELECT id, page_number, chunk_index, content, content AS chunk_text, metadata
        FROM book_chunks
        WHERE book_id = $1 AND chapter_id = $2
        ORDER BY chunk_index ASC`,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, GraduationCap, Sparkles } from 'lucide-react';
+import { X, Sparkles, CheckCircle2, Lock, Mail } from 'lucide-react';
 import { apiUrl } from '../utils/api';
 
 interface AuthModalProps {
@@ -16,9 +16,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onSuccess
 }) => {
-  const { login, t, language } = useAuth();
+  const { login, language } = useAuth();
+  const isAr = language === 'ar';
+
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
-  const role = 'STUDENT';
 
   // Form Fields
   const [email, setEmail] = useState('');
@@ -53,7 +54,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           if (Array.isArray(data)) {
             setStages(data);
             if (data.length > 0) {
-              setAcademicStageId(data[1]?.id || data[0]?.id); // Default to Preparatory if available
+              setAcademicStageId(data[1]?.id || data[0]?.id);
             }
           }
         })
@@ -129,19 +130,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleQuickDemoLogin = async (demoEmail: string) => {
     setError(null);
     setIsLoading(true);
+    setMode('login');
+    setEmail(demoEmail);
+    setPassword('123456');
+
     try {
       const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: demoEmail, password: '123456' })
       });
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل تسجيل الدخول التجريبي');
+      if (!res.ok) {
+        throw new Error(data.error || (isAr ? 'فشل تسجيل الدخول التجريبي' : 'Demo login failed'));
+      }
+
       login(data.token, data.user);
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || (isAr ? 'حدث خطأ في الدخول التجريبي' : 'Demo login error'));
     } finally {
       setIsLoading(false);
     }
@@ -151,334 +160,374 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 100,
+      zIndex: 200,
       backgroundColor: 'rgba(15, 23, 42, 0.65)',
       backdropFilter: 'blur(6px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '0.5rem'
+      padding: '1rem'
     }}>
-      <div 
-        className="card auth-modal-card" 
-        style={{
-          width: '100%',
-          maxWidth: '520px',
-          maxHeight: '94vh',
-          overflowY: 'auto',
-          WebkitOverflowScrolling: 'touch',
-          position: 'relative',
-          padding: '1.5rem 1.25rem',
-          borderRadius: 'var(--radius-xl)'
-        }}
-      >
+      <div className="auth-split-modal" style={{ position: 'relative' }}>
+        {/* Floating Close Button for Mobile & Desktop */}
         <button
+          type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={isAr ? 'إغلاق' : 'Close'}
           style={{
             position: 'absolute',
             top: '0.85rem',
-            left: language === 'ar' ? '0.85rem' : 'auto',
-            right: language === 'en' ? '0.85rem' : 'auto',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--text-muted)',
-            padding: '0.5rem',
+            left: isAr ? '0.85rem' : 'auto',
+            right: isAr ? 'auto' : '0.85rem',
+            zIndex: 30,
+            background: 'rgba(15, 23, 42, 0.45)',
+            color: '#FFFFFF',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            borderRadius: '50%',
+            width: '32px',
+            height: '32px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            minWidth: '40px',
-            minHeight: '40px',
-            borderRadius: '50%'
+            cursor: 'pointer',
+            backdropFilter: 'blur(6px)',
+            transition: 'all 0.2s ease',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
           }}
         >
-          <X size={22} />
+          <X size={18} />
         </button>
 
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary-700)' }}>
-            {mode === 'login' ? t.loginTitle : t.registerTitle}
-          </h2>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            {t.brandTagline}
-          </p>
-        </div>
+        {/* =========================================================
+            LEFT PANEL: EDUCATIONAL STORYTELLING & DEMO ACCESS
+            ========================================================= */}
+        <div className="auth-visual-panel">
+          <div>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: 'rgba(255, 255, 255, 0.15)',
+              padding: '0.35rem 0.85rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.75rem',
+              fontWeight: 800,
+              marginBottom: '1.25rem'
+            }}>
+              <Sparkles size={14} />
+              <span>{isAr ? 'منظومة التقويم الذكي المعتمدة 2026' : 'Certified Smart Assessment 2026'}</span>
+            </div>
 
-        {/* Quick Demo Logins Box */}
-        <div style={{
-          background: 'var(--primary-50)',
-          border: '1px solid var(--primary-200)',
-          borderRadius: 'var(--radius-md)',
-          padding: '1rem',
-          marginBottom: '1.5rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem', color: 'var(--primary-800)', marginBottom: '0.5rem' }}>
-            <Sparkles size={16} />
-            <span>{language === 'ar' ? 'تجربة سريعة بنقرة واحدة (Demo Access):' : 'Instant One-Click Demo Access:'}</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.4rem' }}>
-            <button 
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.78rem', background: '#FFFFFF', padding: '0.4rem 0.5rem' }}
-              onClick={() => handleQuickDemoLogin('student@edu.eg')}
-            >
-              👨‍🎓 {language === 'ar' ? 'أولى إعدادي' : 'Prep 1'}
-            </button>
-            <button 
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.78rem', background: '#FFFFFF', padding: '0.4rem 0.5rem' }}
-              onClick={() => handleQuickDemoLogin('student2@edu.eg')}
-            >
-              👩‍🎓 {language === 'ar' ? 'تانية إعدادي' : 'Prep 2'}
-            </button>
-            <button 
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.78rem', background: '#E0F2FE', color: '#0369A1', border: '1px solid #BAE6FD', fontWeight: 700, padding: '0.4rem 0.5rem' }}
-              onClick={() => handleQuickDemoLogin('teacher@edu.eg')}
-            >
-              👩‍🏫 {language === 'ar' ? 'معلم العلوم' : 'Teacher Demo'}
-            </button>
-            <button 
-              type="button"
-              className="btn btn-sm"
-              style={{ fontSize: '0.78rem', background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D', fontWeight: 800, padding: '0.4rem 0.5rem' }}
-              onClick={() => handleQuickDemoLogin('admin@edu.eg')}
-            >
-              👑 {language === 'ar' ? 'بوابة الإدارة' : 'Admin'}
-            </button>
-          </div>
-        </div>
+            <h3 style={{ fontSize: '1.6rem', fontWeight: 900, lineHeight: 1.3, marginBottom: '1rem', color: '#FFFFFF' }}>
+              {isAr ? 'التقييم من أجل التعليم والتشخيص الفوري' : 'Assessment for Learning & Instant Diagnostics'}
+            </h3>
 
-        {error && (
-          <div style={{
-            background: 'var(--danger-50)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: 'var(--danger-600)',
-            padding: '0.75rem 1rem',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '0.875rem',
-            marginBottom: '1.25rem'
-          }}>
-            {error}
-          </div>
-        )}
+            <p style={{ fontSize: '0.85rem', color: '#CBD5E1', lineHeight: 1.6, marginBottom: '1.75rem' }}>
+              {isAr
+                ? 'انضم إلى آلاف الطلاب واستمتع بأسئلة مشتقة 100% من كتاب الوزارة الرسمي لصفك مع إرشاد دقيق لرقم كل صفحة.'
+                : 'Join thousands of students with questions 100% grounded in official textbooks with precise page citations.'}
+            </p>
 
-        {/* Tab switch between Login and Register */}
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--border-light)', marginBottom: '1.5rem' }}>
-          <button
-            type="button"
-            className={`tab-btn ${mode === 'login' ? 'active' : ''}`}
-            style={{ flex: 1, textAlign: 'center' }}
-            onClick={() => { setMode('login'); setError(null); }}
-          >
-            {t.login}
-          </button>
-          <button
-            type="button"
-            className={`tab-btn ${mode === 'register' ? 'active' : ''}`}
-            style={{ flex: 1, textAlign: 'center' }}
-            onClick={() => { setMode('register'); setError(null); }}
-          >
-            {t.register}
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          {mode === 'register' && (
-            <>
-              {/* Student Only Notice */}
-              <div style={{
-                background: 'var(--primary-50)',
-                border: '1px solid var(--primary-200)',
-                borderRadius: 'var(--radius-md)',
-                padding: '0.65rem 0.85rem',
-                marginBottom: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                fontSize: '0.825rem',
-                color: 'var(--primary-800)',
-                fontWeight: 700
-              }}>
-                <GraduationCap size={18} />
-                <span>{language === 'ar' ? 'تسجيل حساب طالب جديد بالمنظومة المدرسية' : 'New Student Registration'}</span>
+            {/* Feature Checklist */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.825rem', color: '#F1F5F9' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CheckCircle2 size={16} color="#34D399" />
+                <span>{isAr ? 'عزل صارم لمنهج صفك الدراسي فقط' : 'Strict curriculum isolation to your registered grade'}</span>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CheckCircle2 size={16} color="#34D399" />
+                <span>{isAr ? 'تشخيص فوري للمفاهيم مع رقم الصفحة والفقرة' : 'Instant concept diagnosis citing exact page & paragraph'}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CheckCircle2 size={16} color="#34D399" />
+                <span>{isAr ? 'امتحانات بمؤقت زمني وتصحيح آلي فوري' : 'Timed practice exams with instant automated scoring'}</span>
+              </div>
+            </div>
+          </div>
 
-              {/* Full Name */}
+          {/* Quick Demo Accounts Area */}
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.1)',
+            padding: '1rem',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            marginTop: '1.5rem'
+          }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#FDE68A', marginBottom: '0.65rem' }}>
+              {isAr ? '⚡ دخول تجريبي فوري مباشر:' : '⚡ 1-Click Instant Demo Login:'}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem' }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => handleQuickDemoLogin('prep1@edu.eg')}
+                style={{ background: '#FFFFFF', color: 'var(--primary-800)', fontSize: '0.75rem', fontWeight: 800, padding: '0.55rem 0.25rem' }}
+                disabled={isLoading}
+              >
+                {isAr ? '👩‍🎓 أولى إعدادي' : '👩‍🎓 Prep 1'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => handleQuickDemoLogin('prep2@edu.eg')}
+                style={{ background: '#FFFFFF', color: 'var(--primary-800)', fontSize: '0.75rem', fontWeight: 800, padding: '0.55rem 0.25rem' }}
+                disabled={isLoading}
+              >
+                {isAr ? '👨‍🎓 ثانية إعدادي' : '👨‍🎓 Prep 2'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => handleQuickDemoLogin('prep3@edu.eg')}
+                style={{ background: '#FFFFFF', color: 'var(--primary-800)', fontSize: '0.75rem', fontWeight: 800, padding: '0.55rem 0.25rem' }}
+                disabled={isLoading}
+              >
+                {isAr ? '🎓 ثالثة إعدادي' : '🎓 Prep 3'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* =========================================================
+            RIGHT PANEL: RESPONSIVE ONBOARDING FORM
+            ========================================================= */}
+        <div className="auth-form-panel">
+          {/* Top Bar: Close Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            {/* Tabs Toggle */}
+            <div style={{
+              display: 'inline-flex',
+              background: 'var(--bg-subtle)',
+              padding: '0.25rem',
+              borderRadius: 'var(--radius-full)',
+              gap: '0.25rem'
+            }}>
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setError(null); }}
+                style={{
+                  background: mode === 'login' ? '#FFFFFF' : 'transparent',
+                  color: mode === 'login' ? 'var(--primary-800)' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '0.825rem',
+                  border: 'none',
+                  padding: '0.45rem 1.1rem',
+                  borderRadius: 'var(--radius-full)',
+                  cursor: 'pointer',
+                  boxShadow: mode === 'login' ? 'var(--shadow-xs)' : 'none'
+                }}
+              >
+                {isAr ? 'تسجيل الدخول' : 'Sign In'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('register'); setError(null); }}
+                style={{
+                  background: mode === 'register' ? '#FFFFFF' : 'transparent',
+                  color: mode === 'register' ? 'var(--primary-800)' : 'var(--text-muted)',
+                  fontWeight: 800,
+                  fontSize: '0.825rem',
+                  border: 'none',
+                  padding: '0.45rem 1.1rem',
+                  borderRadius: 'var(--radius-full)',
+                  cursor: 'pointer',
+                  boxShadow: mode === 'register' ? 'var(--shadow-xs)' : 'none'
+                }}
+              >
+                {isAr ? 'حساب جديد' : 'New Account'}
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem' }}
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '0.35rem', color: 'var(--text-title)' }}>
+            {isAr 
+              ? (mode === 'login' ? 'مرحباً بك مجدداً في المنصة' : 'أنشئ حسابك وانضم للتقويم الذكي')
+              : (mode === 'login' ? 'Welcome Back to the Platform' : 'Create Your Student Account')}
+          </h3>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+            {isAr
+              ? (mode === 'login'
+                  ? 'أدخل بيانات حساب الطالب للمتابعة واستكمال التقييمات.'
+                  : 'حدد صفك ومدرستك لربط حسابك بالمناهج المخصصة لصفك حصرياً.')
+              : (mode === 'login'
+                  ? 'Enter your student credentials to resume your assessments.'
+                  : 'Select your grade and school to access your tailored curriculum.')}
+          </p>
+
+          {error && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.825rem', marginBottom: '1rem', fontWeight: 700 }}>
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {mode === 'register' && (
               <div className="form-group">
-                <label className="form-label">{t.fullNameLabel}</label>
+                <label className="form-label">{isAr ? 'الاسم ثلاثي للطالب' : 'Student Full Name'}</label>
                 <input
                   type="text"
                   required
                   className="form-input"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder={language === 'ar' ? 'أحمد محمد إبراهيم' : 'Full Name'}
+                  onChange={e => setFullName(e.target.value)}
+                  placeholder={isAr ? 'محمد أحمد إبراهيم' : 'e.g. Ahmed Mohamed Ali'}
                 />
               </div>
+            )}
 
-              {/* Student Specific Fields: Stage & Grade */}
-              {role === 'STUDENT' && (
-                <>
-                  <div className="responsive-form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">{t.selectStage}</label>
-                      <select
-                        className="form-select"
-                        value={academicStageId}
-                        onChange={(e) => setAcademicStageId(e.target.value)}
-                        required
-                      >
-                        {stages.map((stage: any) => (
-                          <option key={stage.id} value={stage.id}>
-                            {language === 'ar' ? stage.name_ar : stage.name_en}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+            <div className="form-group">
+              <label className="form-label">{isAr ? 'البريد الإلكتروني' : 'Email Address'}</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="email"
+                  required
+                  className="form-input"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="student@edu.eg"
+                  style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
+                />
+                <Mail 
+                  size={16} 
+                  style={{ 
+                    position: 'absolute', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)', 
+                    [isAr ? 'right' : 'left']: '0.85rem', 
+                    color: 'var(--text-muted)' 
+                  }} 
+                />
+              </div>
+            </div>
 
-                    <div className="form-group">
-                      <label className="form-label">{t.selectGrade}</label>
-                      <select
-                        className="form-select"
-                        value={gradeId}
-                        onChange={(e) => setGradeId(e.target.value)}
-                        required
-                      >
-                        {availableGrades.map((g: any) => (
-                          <option key={g.id} value={g.id}>
-                            {language === 'ar' ? g.name_ar : g.name_en}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+            <div className="form-group">
+              <label className="form-label">{isAr ? 'كلمة المرور' : 'Password'}</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="password"
+                  required
+                  className="form-input"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
+                />
+                <Lock 
+                  size={16} 
+                  style={{ 
+                    position: 'absolute', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)', 
+                    [isAr ? 'right' : 'left']: '0.85rem', 
+                    color: 'var(--text-muted)' 
+                  }} 
+                />
+              </div>
+            </div>
+
+            {/* Registration Specific Selectors */}
+            {mode === 'register' && (
+              <>
+                <div className="responsive-form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'المرحلة الدراسية' : 'Academic Stage'}</label>
+                    <select
+                      className="form-select"
+                      value={academicStageId}
+                      onChange={e => setAcademicStageId(e.target.value)}
+                    >
+                      {stages.map(s => <option key={s.id} value={s.id}>{isAr ? s.name_ar : (s.name_en || s.name_ar)}</option>)}
+                    </select>
                   </div>
 
-                  {/* Secondary Stage Division Selector */}
-                  {isSecondaryStage && (
-                    <div style={{
-                      background: 'var(--primary-50)',
-                      border: '1.5px solid var(--primary-200)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '0.85rem 1rem',
-                      marginBottom: '1rem'
-                    }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--primary-800)', marginBottom: '0.5rem' }}>
-                        🎯 {language === 'ar' ? 'تحديد الشعبة للمرحلة الثانوية:' : 'Secondary Division:'}
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: isSec2Or3 && section === 'علمي' ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label className="form-label" style={{ fontSize: '0.8rem' }}>
-                            {language === 'ar' ? 'الشعبة' : 'Track'}
-                          </label>
-                          <select
-                            className="form-select"
-                            value={section}
-                            onChange={(e) => setSection(e.target.value)}
-                          >
-                            <option value="علمي">{language === 'ar' ? 'الشعبة العلمية (علمي)' : 'Scientific'}</option>
-                            <option value="أدبي">{language === 'ar' ? 'الشعبة الأدبية (أدبي)' : 'Literary'}</option>
-                          </select>
-                        </div>
-
-                        {isSec2Or3 && section === 'علمي' && (
-                          <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label className="form-label" style={{ fontSize: '0.8rem' }}>
-                              {language === 'ar' ? 'تخصص الشعبة العلمية' : 'Science Branch'}
-                            </label>
-                            <select
-                              className="form-select"
-                              value={secondarySubDivision}
-                              onChange={(e) => setSecondarySubDivision(e.target.value as any)}
-                            >
-                              <option value="علمي علوم">{language === 'ar' ? 'علمي علوم' : 'Science (Biology)'}</option>
-                              <option value="علمي رياضة">{language === 'ar' ? 'علمي رياضة' : 'Math (Engineering)'}</option>
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* School Type (عربي / لغات) */}
                   <div className="form-group">
-                    <label className="form-label">{language === 'ar' ? 'نوع المدرسة' : 'School Curriculum Type'}</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <button
-                        type="button"
-                        className={`btn ${schoolType === 'عربي' ? 'btn-primary' : 'btn-outline'}`}
-                        onClick={() => setSchoolType('عربي')}
-                        style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem' }}
-                      >
-                        🏫 {language === 'ar' ? 'مدارس عربي' : 'Arabic School'}
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${schoolType === 'لغات' ? 'btn-primary' : 'btn-outline'}`}
-                        onClick={() => setSchoolType('لغات')}
-                        style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem' }}
-                      >
-                        🌐 {language === 'ar' ? 'مدارس لغات' : 'Language School'}
-                      </button>
-                    </div>
+                    <label className="form-label">{isAr ? 'الصف الدراسي' : 'Grade Level'}</label>
+                    <select
+                      className="form-select"
+                      value={gradeId}
+                      onChange={e => setGradeId(e.target.value)}
+                    >
+                      {availableGrades.map((g: any) => <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="responsive-form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'نوع المدرسة' : 'School Type'}</label>
+                    <select
+                      className="form-select"
+                      value={schoolType}
+                      onChange={e => setSchoolType(e.target.value as any)}
+                    >
+                      <option value="عربي">{isAr ? 'مدارس عربي (حكومي / خاص)' : 'Arabic Curriculum Schools'}</option>
+                      <option value="لغات">{isAr ? 'مدارس لغات (تجريبي / متميز / دولي)' : 'Language & International Schools'}</option>
+                    </select>
                   </div>
 
-                  {/* School name */}
                   <div className="form-group">
-                    <label className="form-label">{t.selectSchool}</label>
+                    <label className="form-label">{isAr ? 'اسم المدرسة (اختياري)' : 'School Name (Optional)'}</label>
                     <input
                       type="text"
                       className="form-input"
                       value={schoolName}
-                      onChange={(e) => setSchoolName(e.target.value)}
-                      placeholder={language === 'ar' ? 'اسم المدرسة (اختياري)' : 'School Name (optional)'}
+                      onChange={e => setSchoolName(e.target.value)}
+                      placeholder={isAr ? 'مدرسة النيل الحديثة' : 'e.g. Nile Modern School'}
                     />
                   </div>
-                </>
-              )}
-            </>
-          )}
+                </div>
 
-          {/* Email */}
-          <div className="form-group">
-            <label className="form-label">{t.emailLabel}</label>
-            <input
-              type="email"
-              required
-              className="form-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-            />
-          </div>
+                {/* Secondary Divisions if Secondary Stage */}
+                {isSecondaryStage && (
+                  <div className="form-group" style={{ background: 'var(--bg-subtle)', padding: '0.85rem', borderRadius: 'var(--radius-md)' }}>
+                    <label className="form-label" style={{ fontWeight: 800 }}>{isAr ? 'الشعبة والتخصص الأكاديمي' : 'Academic Track & Specialization'}</label>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.35rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                        <input type="radio" name="sec_sec" checked={section === 'علمي'} onChange={() => setSection('علمي')} />
+                        <span>{isAr ? 'شعبة علمي' : 'Scientific Track'}</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                        <input type="radio" name="sec_sec" checked={section === 'أدبي'} onChange={() => setSection('أدبي')} />
+                        <span>{isAr ? 'شعبة أدبي' : 'Literary Track'}</span>
+                      </label>
+                    </div>
 
-          {/* Password */}
-          <div className="form-group">
-            <label className="form-label">{t.passwordLabel}</label>
-            <input
-              type="password"
-              required
-              className="form-input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
+                    {isSec2Or3 && section === 'علمي' && (
+                      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-light)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                          <input type="radio" name="sec_sub" checked={secondarySubDivision === 'علمي علوم'} onChange={() => setSecondarySubDivision('علمي علوم')} />
+                          <span>{isAr ? 'علمي علوم' : 'Science & Biology'}</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                          <input type="radio" name="sec_sub" checked={secondarySubDivision === 'علمي رياضة'} onChange={() => setSecondarySubDivision('علمي رياضة')} />
+                          <span>{isAr ? 'علمي رياضة' : 'Math & Engineering'}</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="btn btn-primary btn-lg"
-            style={{ width: '100%', marginTop: '0.75rem' }}
-          >
-            {isLoading ? (language === 'ar' ? 'جاري المعالجة...' : 'Processing...') : (mode === 'login' ? t.submitLogin : t.submitRegister)}
-          </button>
-        </form>
+            <button
+              type="submit"
+              className="btn btn-primary btn-lg"
+              disabled={isLoading}
+              style={{ width: '100%', marginTop: '0.5rem', fontWeight: 800 }}
+            >
+              {isLoading
+                ? (isAr ? 'جاري التحقق والمصادقة...' : 'Authenticating...')
+                : (mode === 'login' ? (isAr ? 'دخول لوحة التعلم' : 'Sign In to Learning Studio') : (isAr ? 'تأكيد إنشاء الحساب' : 'Confirm & Create Account'))}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

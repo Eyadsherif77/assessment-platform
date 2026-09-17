@@ -26,9 +26,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
       {/* Impersonation Banner for Admin accessing Teacher or Student accounts */}
       {isImpersonating && (
         <div style={{
-          background: 'linear-gradient(90deg, #F59E0B 0%, #D97706 100%)',
+          background: 'linear-gradient(90deg, #D97706 0%, #B45309 100%)',
           color: '#FFFFFF',
-          padding: '0.45rem 1rem',
+          padding: '0.45rem 1.25rem',
           fontSize: '0.825rem',
           fontWeight: 700,
           display: 'flex',
@@ -36,10 +36,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '0.5rem',
-          zIndex: 1000
+          zIndex: 1000,
+          boxShadow: '0 2px 8px rgba(180, 83, 9, 0.25)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>👁️</span>
+            <span style={{ fontSize: '1rem' }}>👁️</span>
             <span>
               {language === 'ar'
                 ? `وضع معاينة الإدارة: تتصفح حالياً بصفتك (${user?.role === 'TEACHER' ? 'معلم' : 'طالب'}): ${user?.fullName} [${user?.hybrid_id || user?.id}]`
@@ -51,12 +52,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
             onClick={() => { exitImpersonation(); setActiveView('dashboard'); }}
             style={{
               background: '#FFFFFF',
-              color: '#B45309',
+              color: '#92400E',
               border: 'none',
-              padding: '0.25rem 0.75rem',
+              padding: '0.25rem 0.85rem',
               fontWeight: 800,
               fontSize: '0.78rem',
-              borderRadius: 'var(--radius-sm)'
+              borderRadius: 'var(--radius-full)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
             }}
           >
             ⬅️ {language === 'ar' ? 'العودة للوحة الإدارة' : 'Exit to Admin Portal'}
@@ -71,7 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
           onClick={(e) => { e.preventDefault(); setActiveView('home'); }}
         >
           <div className="brand-icon">
-            <BookOpen size={22} />
+            <BookOpen size={20} />
           </div>
           <div className="brand-text">
             <div className="brand-title">{t.brandName}</div>
@@ -87,6 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
             className="btn btn-outline btn-sm lang-btn" 
             onClick={toggleLanguage}
             title={language === 'ar' ? 'Switch to English' : 'التحويل للعربية'}
+            style={{ padding: '0.35rem 0.65rem' }}
           >
             <Globe size={14} />
             <span className="lang-label">{language === 'ar' ? 'EN' : 'عربي'}</span>
@@ -99,6 +102,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                   className="btn btn-sm btn-primary nav-dashboard-btn"
                   onClick={() => setActiveView('dashboard')}
                   title={getDashboardLabel()}
+                  style={{ gap: '0.4rem' }}
                 >
                   <Sparkles size={14} />
                   <span className="nav-btn-text">
@@ -113,6 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                   className="btn btn-outline btn-sm nav-home-btn"
                   onClick={() => setActiveView('home')}
                   title={t.home}
+                  style={{ gap: '0.4rem' }}
                 >
                   <HomeIcon size={14} />
                   <span className="nav-btn-text">{t.home}</span>
@@ -122,19 +127,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                 </button>
               )}
 
-              {/* Desktop-Only User Badge (Kept in top bar on PC/Laptop) */}
+              {/* Desktop-Only User Badge */}
               <div className="user-badge-container desktop-user-badge">
-                <span className="badge badge-primary nav-user-badge">
+                <span className="badge badge-primary nav-user-badge" style={{ padding: '0.35rem 0.75rem', gap: '0.4rem' }}>
                   {user.role === 'STUDENT' && (
                     <>
                       <School size={13} />
-                      <span className="badge-text">{user.profile?.grade_name_ar || 'الصف الأول الإعدادي'}</span>
+                      <span className="badge-text">{language === 'ar' ? (user.profile?.grade_name_ar || 'الصف الأول الإعدادي') : (user.profile?.grade_name_en || 'Prep 1')}</span>
                     </>
                   )}
                   {user.role === 'TEACHER' && (
                     <>
                       <User size={13} />
-                      <span className="badge-text">{user.hybrid_id ? `معلم (${user.hybrid_id})` : t.teacherRole}</span>
+                      <span className="badge-text">{user.hybrid_id ? (language === 'ar' ? `معلم (${user.hybrid_id})` : `Teacher (${user.hybrid_id})`) : t.teacherRole}</span>
                     </>
                   )}
                   {user.role === 'ADMIN' && (
@@ -148,12 +153,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                 </span>
               </div>
 
-              {/* Logout Button - Always visible and accessible */}
+              {/* Logout Button */}
               <button 
                 className="btn btn-outline btn-sm logout-btn" 
                 onClick={() => { logout(); setActiveView('home'); }}
                 title={t.logout}
                 aria-label={t.logout}
+                style={{ padding: '0.4rem' }}
               >
                 <LogOut size={15} />
               </button>
@@ -162,22 +168,24 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
         </div>
       </div>
 
-      {/* Mobile-Only Student Info Strip - 100% visible on all phones without horizontal overflow */}
+      {/* Mobile-Only Student Info Strip */}
       {user && (
         <div className="mobile-student-strip">
           <div className="mobile-strip-inner">
             <span className="badge badge-primary mobile-grade-badge">
               <School size={12} />
-              <span>{user.profile?.grade_name_ar || (user.role === 'STUDENT' ? 'الصف الأول الإعدادي' : t.teacherRole)}</span>
+              <span>{language === 'ar' ? (user.profile?.grade_name_ar || (user.role === 'STUDENT' ? 'الصف الأول الإعدادي' : t.teacherRole)) : (user.profile?.grade_name_en || (user.role === 'STUDENT' ? 'Prep 1' : t.teacherRole))}</span>
             </span>
             {user.profile?.section && (
               <span className="badge mobile-section-badge">
-                شعبة: {user.profile.section}
+                {language === 'ar' ? `شعبة: ${user.profile.section}` : `Track: ${user.profile.section}`}
               </span>
             )}
             {user.profile?.school_type && (
               <span className="badge mobile-school-badge">
-                {user.profile.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}
+                {user.profile.school_type === 'لغات' 
+                  ? (language === 'ar' ? '🌐 مدارس لغات' : '🌐 Language School') 
+                  : (language === 'ar' ? '🏫 مدارس عربي' : '🏫 Arabic School')}
               </span>
             )}
           </div>

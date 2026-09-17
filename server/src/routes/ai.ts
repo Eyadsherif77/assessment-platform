@@ -51,7 +51,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       page_reference: q.page_reference,
       options: q.options.map(o => ({
         id: o.id,
-        text: o.text
+        text: o.text,
+        option_text: o.text
       }))
     }));
 

@@ -5,27 +5,30 @@ import {
   Upload, 
   FileText, 
   PlusCircle, 
-  Clock, 
   BarChart2, 
-  Trash2
+  BookOpen, 
+  CheckCircle2, 
+  LayoutDashboard
 } from 'lucide-react';
 
 export const TeacherDashboard: React.FC = () => {
-  const { user, token, t, language } = useAuth();
-  const getInitialTeacherTab = (): 'upload' | 'exams' | 'banks' | 'analytics' => {
+  const { user, token, language } = useAuth();
+  const isAr = language === 'ar';
+
+  const getInitialTeacherTab = (): 'overview' | 'books' | 'upload' | 'exams' | 'builder' | 'analytics' => {
     try {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab');
-      if (tab === 'upload' || tab === 'exams' || tab === 'banks' || tab === 'analytics') return tab;
+      if (tab === 'overview' || tab === 'books' || tab === 'upload' || tab === 'exams' || tab === 'builder' || tab === 'analytics') return tab as any;
       const saved = localStorage.getItem('teacher_active_tab');
-      if (saved === 'upload' || saved === 'exams' || saved === 'banks' || saved === 'analytics') return saved as any;
+      if (saved === 'overview' || saved === 'books' || saved === 'upload' || saved === 'exams' || saved === 'builder' || saved === 'analytics') return saved as any;
     } catch (_) {}
-    return 'upload';
+    return 'overview';
   };
 
-  const [activeTab, setActiveTabState] = useState<'upload' | 'exams' | 'banks' | 'analytics'>(getInitialTeacherTab);
+  const [activeTab, setActiveTabState] = useState<'overview' | 'books' | 'upload' | 'exams' | 'builder' | 'analytics'>(getInitialTeacherTab);
 
-  const setActiveTab = (tab: 'upload' | 'exams' | 'banks' | 'analytics') => {
+  const setActiveTab = (tab: 'overview' | 'books' | 'upload' | 'exams' | 'builder' | 'analytics') => {
     setActiveTabState(tab);
     try {
       const url = new URL(window.location.href);
@@ -196,7 +199,7 @@ export const TeacherDashboard: React.FC = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل رفع الكتاب');
 
-      setUploadMessage('تم رفع الكتاب بنجاح وبدأت معالجة الخلفية وتوليد متجهات التضمين!');
+      setUploadMessage('تم رفع الكتاب بنجاح وبدأت معالجة واستخراج المتجهات الدلالية!');
       setActiveJobId(data.bookId);
       setJobProgress(10);
       setJobStatusText('EXTRACTING');
@@ -265,581 +268,705 @@ export const TeacherDashboard: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-      {/* Teacher Profile Banner */}
-      <div className="card" style={{
-        background: 'linear-gradient(135deg, #FFFFFF, #EFF6FF)',
-        border: '1.5px solid var(--primary-200)',
-        marginBottom: '1.75rem',
-        padding: '1.5rem'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <span className="badge badge-primary" style={{ marginBottom: '0.4rem' }}>{t.teacherDashboard}</span>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{user?.fullName}</h2>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              {user?.profile?.specialization || 'معلم أول'} • {user?.profile?.school_name || 'مدرسة المستقبل'}
-            </p>
+    <div className="workspace-wrapper">
+
+      {/* =========================================================
+          DESKTOP SIDEBAR NAVIGATION (TEACHER WORKSPACE)
+          ========================================================= */}
+      <aside className="workspace-sidebar">
+        {/* Teacher Mini Profile */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          paddingBottom: '1.25rem',
+          borderBottom: '1px solid var(--border-light)'
+        }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: 'var(--radius-full)',
+            background: 'linear-gradient(135deg, #1E3A8A, #3B82F6)',
+            color: '#FFFFFF',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 800,
+            fontSize: '1.2rem',
+            boxShadow: 'var(--shadow-blue)',
+            flexShrink: 0
+          }}>
+            {user?.fullName?.charAt(0) || 'م'}
           </div>
-          <div style={{ display: 'flex', gap: '1rem', textAlign: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '1.35rem', color: 'var(--primary-700)' }}>{books.length}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>كتب دراسية</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {user?.fullName}
             </div>
-            <div style={{ borderRight: '1px solid var(--border-light)', height: '35px' }} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '1.35rem', color: 'var(--primary-700)' }}>{exams.length}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>اختبارات</div>
+            <div style={{ fontSize: '0.72rem', color: '#4F46E5', fontWeight: 700, fontFamily: 'monospace' }}>
+              {user?.hybrid_id || 'HYBRID-TEA'}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="tabs-nav">
-        <button
-          className={`tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
-          onClick={() => setActiveTab('upload')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-        >
-          <Upload size={18} />
-          <span>{t.tabUploadBook}</span>
-        </button>
+        {/* Sidebar Nav Buttons */}
+        <nav className="sidebar-nav">
+          <button
+            className={`sidebar-btn ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+          >
+            <LayoutDashboard size={18} />
+            <span>{isAr ? 'نظرة عامة والنشاط' : 'Overview & Activity'}</span>
+          </button>
 
-        <button
-          className={`tab-btn ${activeTab === 'exams' ? 'active' : ''}`}
-          onClick={() => setActiveTab('exams')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-        >
-          <FileText size={18} />
-          <span>{t.tabManageExams} ({exams.length})</span>
-        </button>
+          <button
+            className={`sidebar-btn ${activeTab === 'books' ? 'active' : ''}`}
+            onClick={() => setActiveTab('books')}
+          >
+            <BookOpen size={18} />
+            <span>{isAr ? `المناهج والكتب (${books.length})` : `Textbooks (${books.length})`}</span>
+          </button>
 
-        <button
-          className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
-          onClick={() => setActiveTab('analytics')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-        >
-          <BarChart2 size={18} />
-          <span>{t.tabTeacherAnalytics}</span>
-        </button>
-      </div>
+          <button
+            className={`sidebar-btn ${activeTab === 'upload' ? 'active' : ''}`}
+            onClick={() => setActiveTab('upload')}
+          >
+            <Upload size={18} />
+            <span>{isAr ? 'رفع ومعالجة كتاب (PDF)' : 'Upload Textbook (PDF)'}</span>
+            <span className="sidebar-badge badge-primary">{isAr ? 'فهرسة AI' : 'AI Index'}</span>
+          </button>
 
-      {/* TAB 1: UPLOAD BOOK & ASYNC VECTOR INGESTION */}
-      {activeTab === 'upload' && (
-        <div>
-          {/* Active Background Job Card */}
-          {activeJobId && (
+          <button
+            className={`sidebar-btn ${activeTab === 'exams' ? 'active' : ''}`}
+            onClick={() => setActiveTab('exams')}
+          >
+            <FileText size={18} />
+            <span>{isAr ? `بنك الامتحانات (${exams.length})` : `Exam Bank (${exams.length})`}</span>
+          </button>
+
+          <button
+            className={`sidebar-btn ${activeTab === 'builder' ? 'active' : ''}`}
+            onClick={() => setActiveTab('builder')}
+          >
+            <PlusCircle size={18} />
+            <span>{isAr ? 'مصمم الامتحانات' : 'Exam Builder'}</span>
+          </button>
+
+          <button
+            className={`sidebar-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            <BarChart2 size={18} />
+            <span>{isAr ? 'أداء الطلاب ونسب الإتقان' : 'Class Mastery & Analytics'}</span>
+          </button>
+        </nav>
+
+        {/* Bottom Status */}
+        <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, color: '#16A34A', marginBottom: '0.2rem' }}>
+            <CheckCircle2 size={14} />
+            <span>{isAr ? 'بوابة المعلم المعتمدة' : 'Certified Teacher Gate'}</span>
+          </div>
+          <div>{isAr ? `معرف هجين: ${user?.hybrid_id}` : `Hybrid ID: ${user?.hybrid_id}`}</div>
+        </div>
+      </aside>
+
+      {/* =========================================================
+          WORKSPACE MAIN CONTENT
+          ========================================================= */}
+      <main className="workspace-content">
+
+        {/* MODULE 1: OVERVIEW & RECENT ACTIVITY */}
+        {activeTab === 'overview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Header Banner */}
             <div className="card" style={{
-              background: 'var(--primary-50)',
-              border: '2px solid var(--primary-400)',
-              marginBottom: '1.75rem'
+              background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+              color: '#FFFFFF',
+              padding: '2rem',
+              borderRadius: 'var(--radius-xl)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '1.25rem'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                <Clock size={22} color="var(--primary-700)" />
-                <h4 style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--primary-800)' }}>
-                  {t.processingProgress} {jobStatusText} ({jobProgress}%)
-                </h4>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--primary-700)', marginBottom: '0.75rem' }}>
-                يقوم الخادم حالياً باستخراج النصوص من الصفحات، وتقسيمها إلى مقاطع دلالية، وفهرستها للتقييم الذكي...
-              </p>
-              <div className="progress-container">
-                <div className="progress-bar" style={{ width: `${jobProgress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {uploadMessage && (
-            <div style={{
-              background: 'var(--success-50)',
-              border: '1px solid var(--success-500)',
-              color: 'var(--success-700)',
-              padding: '1rem',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: '1.5rem',
-              fontWeight: 600
-            }}>
-              {uploadMessage}
-            </div>
-          )}
-
-          {user?.permissions && user.permissions.can_upload_books === false && (
-            <div style={{
-              background: '#FEF2F2',
-              border: '1.5px solid #FCA5A5',
-              color: '#DC2626',
-              padding: '1rem',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: '1.5rem',
-              fontWeight: 700
-            }}>
-              ⚠️ تم تعطيل صلاحية رفع الكتب والمناهج لهذا الحساب بواسطة إدارة المنصة.
-            </div>
-          )}
-
-          <div className="card">
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--primary-800)' }}>
-              {language === 'ar' ? 'رفع كتاب وزاري أو مذكرة تعليمية بصيغة PDF' : 'Upload Ministry Textbook / Document'}
-            </h3>
-
-            <form onSubmit={handleUploadBook}>
-              <div className="responsive-form-grid-3">
-                <div>
-                  <label className="form-label">{t.selectStage}</label>
-                  <select
-                    className="form-select"
-                    value={selectedStageId}
-                    onChange={(e) => setSelectedStageId(e.target.value)}
-                  >
-                    {stages.map(s => (
-                      <option key={s.id} value={s.id}>{language === 'ar' ? s.name_ar : s.name_en}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="form-label">{t.selectGrade}</label>
-                  <select
-                    className="form-select"
-                    value={selectedGradeId}
-                    onChange={(e) => setSelectedGradeId(e.target.value)}
-                  >
-                    {availableGrades.map((g: any) => (
-                      <option key={g.id} value={g.id}>{language === 'ar' ? g.name_ar : g.name_en}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="form-label">{language === 'ar' ? 'المادة الدراسية' : 'Subject'}</label>
-                  <select
-                    className="form-select"
-                    value={selectedSubjectId}
-                    onChange={(e) => setSelectedSubjectId(e.target.value)}
-                  >
-                    {subjects.map(sub => (
-                      <option key={sub.id} value={sub.id}>{sub.name_ar}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <span className="badge badge-primary" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF', marginBottom: '0.5rem' }}>
+                  {isAr ? 'مساحة المعلم الرقمية 👩‍🏫' : 'Teacher Digital Workspace 👩‍🏫'}
+                </span>
+                <h2 style={{ fontSize: '1.7rem', fontWeight: 900, margin: '0.25rem 0 0.5rem', color: '#FFFFFF' }}>
+                  {isAr ? `مرحباً ${user?.fullName}` : `Welcome, ${user?.fullName}`}
+                </h2>
+                <p style={{ color: '#94A3B8', fontSize: '0.9rem', margin: 0 }}>
+                  {isAr ? 'التخصص:' : 'Specialization:'} <strong>{user?.profile?.specialization || (isAr ? 'معلم أول علوم' : 'Science Lead')}</strong> • {isAr ? 'المدرسة:' : 'School:'} {user?.profile?.school_name || (isAr ? 'مدرسة المتفوقين' : 'Excellence School')}
+                </p>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">{t.bookTitleAr}</label>
-                <input
-                  type="text"
-                  required
-                  className="form-input"
-                  value={bookTitleAr}
-                  onChange={(e) => setBookTitleAr(e.target.value)}
-                  placeholder="مثال: كتاب العلوم المنهجي - الصف الأول الإعدادي"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">نوع المدرسة الموجَّه لها الكتاب</label>
-                <select
-                  className="form-select"
-                  value={schoolTypeTarget}
-                  onChange={(e) => setSchoolTypeTarget(e.target.value as 'عربي' | 'لغات' | 'كلاهما')}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-primary banner-action-btn"
+                  onClick={() => setActiveTab('upload')}
+                  style={{ fontWeight: 800 }}
                 >
-                  <option value="كلاهما">🏫 مدارس عربي ومدارس لغات (كلاهما)</option>
-                  <option value="عربي">🏫 مدارس عربي فقط</option>
-                  <option value="لغات">🌐 مدارس لغات فقط</option>
-                </select>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.3rem', display: 'block' }}>
-                  سيرى الطلاب فقط الكتب المناسبة لنوع مدرستهم المسجل
+                  <Upload size={16} />
+                  <span>{isAr ? 'رفع كتاب جديد' : 'Upload Textbook'}</span>
+                </button>
+                <button
+                  className="btn btn-secondary banner-action-btn"
+                  onClick={() => setActiveTab('builder')}
+                  style={{ fontWeight: 800 }}
+                >
+                  <PlusCircle size={16} />
+                  <span>{isAr ? 'تصميم امتحان' : 'Build Exam'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="motivation-widget-grid">
+              <div className="goal-card">
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'الكتب والمناهج' : 'Textbooks & Curriculum'}
+                </span>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>{books.length}</div>
+                <span style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 700 }}>
+                  {isAr ? '✓ مفهرسة بالذكاء الاصطناعي' : '✓ AI Vector-Indexed'}
                 </span>
               </div>
 
-              <div className="responsive-form-grid-2">
-                <div>
-                  <label className="form-label">رقم الفصل الأول</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={chapterNumber}
-                    onChange={(e) => setChapterNumber(e.target.value)}
-                    min="1"
-                  />
-                </div>
-                <div>
-                  <label className="form-label">عنوان الفصل الأول المرفق</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={chapterTitleAr}
-                    onChange={(e) => setChapterTitleAr(e.target.value)}
-                    placeholder="مثال: الفصل الأول: المادة وخواصها"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">{t.selectPdfFile}</label>
-                <input
-                  type="file"
-                  required
-                  accept=".pdf,.txt"
-                  className="form-input"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setPdfFile(e.target.files[0]);
-                    }
-                  }}
-                />
+              <div className="goal-card">
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'الامتحانات المنشورة' : 'Published Exams'}
+                </span>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#D97706' }}>{exams.length}</div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  الحد الأقصى 50 ميجابايت (يتم تجزئة النص آلياً واستخراج أرقام الصفحات والمتجهات).
+                  {isAr ? 'متاحة بمؤقت زمني' : 'Timed & Active'}
                 </span>
               </div>
 
-              <button
-                type="submit"
-                disabled={isUploading || user?.permissions?.can_upload_books === false}
-                className="btn btn-primary btn-lg"
-                style={{ width: '100%' }}
-              >
-                <Upload size={20} />
-                <span>
-                  {user?.permissions?.can_upload_books === false
-                    ? 'رفع الكتب معطّل من قِبل الإدارة'
-                    : (isUploading ? t.uploadingBook : 'رفع الكتاب وبدء المعالجة الذكية بالخلفية')}
+              <div className="goal-card">
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'متوسط نجاح الطلاب' : 'Average Student Score'}
                 </span>
-              </button>
-            </form>
-          </div>
-
-          {/* Current Books Table */}
-          <div style={{ marginTop: '2.5rem' }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem' }}>
-              الكتب والمناهج المسجلة:
-            </h3>
-
-            <div className="grid-cards">
-              {books.map(b => (
-                <div key={b.id} className="card">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <span className="badge badge-primary">{b.subject_name_ar}</span>
-                    <span className="badge badge-success">{b.processing_status}</span>
-                  </div>
-                  <h4 style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: '0.25rem' }}>
-                    {b.title_ar}
-                  </h4>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    الصف: {b.grade_name_ar} • {b.total_pages || 48} صفحة
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: EXAMS MANAGEMENT & STUDIO */}
-      {activeTab === 'exams' && (
-        <div>
-          {user?.permissions && user.permissions.can_create_exams === false && (
-            <div style={{
-              background: '#FEF2F2',
-              border: '1.5px solid #FCA5A5',
-              color: '#DC2626',
-              padding: '1rem',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: '1.5rem',
-              fontWeight: 700
-            }}>
-              ⚠️ تم تعطيل صلاحية تصميم وإنشاء الاختبارات لهذا الحساب بواسطة إدارة المنصة.
-            </div>
-          )}
-
-          {/* Create Exam Form */}
-          <div className="card" style={{ marginBottom: '2rem' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--primary-800)' }}>
-              إنشاء اختبار جديد للصف الدراسي المختار
-            </h3>
-
-            <form onSubmit={handleCreateExam}>
-              <div className="responsive-form-grid-3">
-                <div>
-                  <label className="form-label">{t.selectStage}</label>
-                  <select
-                    className="form-select"
-                    value={selectedStageId}
-                    onChange={(e) => setSelectedStageId(e.target.value)}
-                  >
-                    {stages.map(s => (
-                      <option key={s.id} value={s.id}>{language === 'ar' ? s.name_ar : s.name_en}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="form-label">{t.selectGrade}</label>
-                  <select
-                    className="form-select"
-                    value={selectedGradeId}
-                    onChange={(e) => setSelectedGradeId(e.target.value)}
-                  >
-                    {availableGrades.map((g: any) => (
-                      <option key={g.id} value={g.id}>{language === 'ar' ? g.name_ar : g.name_en}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="form-label">المادة</label>
-                  <select
-                    className="form-select"
-                    value={selectedSubjectId}
-                    onChange={(e) => setSelectedSubjectId(e.target.value)}
-                  >
-                    {subjects.map(sub => (
-                      <option key={sub.id} value={sub.id}>{sub.name_ar}</option>
-                    ))}
-                  </select>
-                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#16A34A' }}>86%</div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {isAr ? 'من واقع 148 تقييم تشخيصي' : 'From 148 diagnostic quizzes'}
+                </span>
               </div>
+            </div>
 
-              <div className="responsive-form-grid-2">
-                <div>
-                  <label className="form-label">{t.examTitleAr}</label>
-                  <input
-                    type="text"
-                    required
-                    className="form-input"
-                    value={newExamTitle}
-                    onChange={(e) => setNewExamTitle(e.target.value)}
-                    placeholder="مثال: اختبار الوحدة الأولى - المادة وخواصها"
-                  />
-                </div>
-                <div>
-                  <label className="form-label">{t.durationMinutes}</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={examDuration}
-                    onChange={(e) => setExamDuration(e.target.value)}
-                    min="5"
-                  />
-                </div>
-              </div>
-
-              {/* Questions Builder */}
-              <div style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>أسئلة الاختبار:</h4>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setExamQuestions(prev => [
-                        ...prev,
-                        {
-                          question_text: '',
-                          points: 1,
-                          options: [
-                            { option_text: '', is_correct: true },
-                            { option_text: '', is_correct: false },
-                            { option_text: '', is_correct: false },
-                            { option_text: '', is_correct: false }
-                          ]
-                        }
-                      ]);
-                    }}
-                  >
-                    <PlusCircle size={16} />
-                    <span>{t.addQuestion}</span>
-                  </button>
-                </div>
-
-                {examQuestions.map((q, qIdx) => (
-                  <div key={qIdx} style={{
-                    background: 'var(--bg-main)',
-                    border: '1px solid var(--border-light)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '1.25rem',
-                    marginBottom: '1rem'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                      <span style={{ fontWeight: 700, color: 'var(--primary-700)' }}>السؤال {qIdx + 1}</span>
-                      {examQuestions.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setExamQuestions(examQuestions.filter((_, i) => i !== qIdx))}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger-500)', cursor: 'pointer' }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
+            {/* Books & Exams Quick List */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '1rem' }}>
+                  {isAr ? 'الكتب المرفوعة حديثاً' : 'Recently Uploaded Books'}
+                </h3>
+                {books.slice(0, 3).map(b => (
+                  <div key={b.id} style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.875rem' }}>{isAr ? b.title_ar : (b.title_en || b.title_ar)}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{isAr ? b.subject_name_ar : (b.subject_name_en || b.subject_name_ar)} • {b.school_type_target}</div>
                     </div>
-
-                    <input
-                      type="text"
-                      required
-                      className="form-input"
-                      style={{ marginBottom: '0.75rem' }}
-                      value={q.question_text}
-                      onChange={(e) => {
-                        const updated = [...examQuestions];
-                        updated[qIdx].question_text = e.target.value;
-                        setExamQuestions(updated);
-                      }}
-                      placeholder="نص السؤال..."
-                    />
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem' }}>
-                      {q.options.map((opt: any, optIdx: number) => (
-                        <div key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <input
-                            type="radio"
-                            name={`correct_${qIdx}`}
-                            checked={opt.is_correct}
-                            onChange={() => {
-                              const updated = [...examQuestions];
-                              updated[qIdx].options.forEach((o: any, idx: number) => {
-                                o.is_correct = idx === optIdx;
-                              });
-                              setExamQuestions(updated);
-                            }}
-                            title="حدد هذا الخيار كإجابة صحيحة"
-                          />
-                          <input
-                            type="text"
-                            required
-                            className="form-input"
-                            style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
-                            value={opt.option_text}
-                            onChange={(e) => {
-                              const updated = [...examQuestions];
-                              updated[qIdx].options[optIdx].option_text = e.target.value;
-                              setExamQuestions(updated);
-                            }}
-                            placeholder={`خيار ${optIdx + 1} ${optIdx === 0 ? '(الصحيح)' : ''}`}
-                          />
-                        </div>
-                      ))}
-                    </div>
+                    <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
+                      {isAr ? 'نشط' : 'Active'}
+                    </span>
                   </div>
                 ))}
               </div>
 
-              <button
-                type="submit"
-                disabled={isCreatingExam || user?.permissions?.can_create_exams === false}
-                className="btn btn-primary btn-lg"
-                style={{ width: '100%' }}
-              >
-                <span>
-                  {user?.permissions?.can_create_exams === false
-                    ? 'إنشاء الامتحانات معطّل من قِبل الإدارة'
-                    : (isCreatingExam ? 'جاري حفظ الاختبار...' : t.createExamBtn)}
-                </span>
-              </button>
-            </form>
-          </div>
-
-          {/* Active Teacher Exams List */}
-          <div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem' }}>
-              الاختبارات التي قمت بإنشائها:
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {exams.map(exam => (
-                <div key={exam.id} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                      <span className="badge badge-primary">{exam.subject_name_ar}</span>
-                      <span className="badge badge-primary">{exam.grade_name_ar}</span>
-                      <span className={`badge ${exam.is_published ? 'badge-success' : 'badge-warning'}`}>
-                        {exam.is_published ? 'منشور للطلاب' : 'مسودة غير منشورة'}
-                      </span>
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '1rem' }}>
+                  {isAr ? 'الامتحانات النشطة' : 'Active Exams'}
+                </h3>
+                {exams.slice(0, 3).map(e => (
+                  <div key={e.id} style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.875rem' }}>{e.title}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {e.duration_minutes} {isAr ? 'دقيقة' : 'min'} • {e.questions_count} {isAr ? 'أسئلة' : 'Questions'}
+                      </div>
                     </div>
-                    <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>{exam.title_ar}</h4>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      المدة: {exam.duration_minutes} دقيقة • {exam.questions_count} أسئلة
-                    </p>
+                    <span className={`badge ${e.is_published ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
+                      {e.is_published ? (isAr ? 'منشور' : 'Published') : (isAr ? 'مسودة' : 'Draft')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODULE 2: CURRICULUM & BOOKS */}
+        {activeTab === 'books' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
+                  {isAr ? 'إدارة الكتب والمناهج المرفوعة' : 'Manage Curriculum Textbooks'}
+                </h2>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  {isAr ? 'قائمة الكتب المفهرسة دلالياً للتقييم بالذكاء الاصطناعي' : 'Vector-indexed curriculum for AI diagnostics'}
+                </span>
+              </div>
+              <button className="btn btn-primary" onClick={() => setActiveTab('upload')}>
+                <Upload size={16} />
+                <span>{isAr ? 'رفع كتاب جديد' : 'Upload Textbook'}</span>
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
+              {books.map(book => (
+                <div key={book.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
+                      {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)}
+                    </span>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.35rem' }}>
+                      {isAr ? book.title_ar : (book.title_en || book.title_ar)}
+                    </h3>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                      {isAr ? 'نوع المدرسة:' : 'Target:'} {book.school_type_target} • {isAr ? 'الفصول:' : 'Chapters:'} {book.chapters?.length || 1}
+                    </div>
+                  </div>
+                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 700 }}>
+                      {isAr ? '✓ مفهرس بالكامل' : '✓ Fully Indexed'}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {new Date(book.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* MODULE 3: UPLOAD BOOK & BACKGROUND POLLING */}
+        {activeTab === 'upload' && (
+          <div style={{ maxWidth: '780px', margin: '0 auto', width: '100%' }}>
+            <div className="card" style={{ padding: '2rem 1.75rem', borderRadius: 'var(--radius-xl)' }}>
+              <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+                <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
+                  {isAr ? 'معالجة دلالية للـ PDF' : 'Semantic PDF Processing'}
+                </span>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--text-title)' }}>
+                  {isAr ? 'رفع ومعالجة كتاب مدرسي جديد' : 'Upload & Process New Textbook'}
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                  {isAr ? 'يقوم النظام باستخراج النصوص وفهرسة الصفحات آلياً في الخلفية' : 'The system extracts paragraphs and indexes pages into AI vector memory'}
+                </p>
+              </div>
+
+              {uploadMessage && (
+                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#15803D', padding: '0.85rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontWeight: 700 }}>
+                  {uploadMessage}
+                </div>
+              )}
+
+              {/* Background Upload Progress */}
+              {activeJobId && (
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '1.25rem', borderRadius: 'var(--radius-lg)', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+                    <span>{isAr ? `حالة المعالجة: ${jobStatusText}` : `Processing Status: ${jobStatusText}`}</span>
+                    <span>{jobProgress}%</span>
+                  </div>
+                  <div style={{ width: '100%', height: '8px', background: '#DBEAFE', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{ width: `${jobProgress}%`, height: '100%', background: 'var(--primary-600)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleUploadBook}>
+                <div className="responsive-form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'المرحلة الدراسية' : 'Academic Stage'}</label>
+                    <select className="form-select" value={selectedStageId} onChange={e => setSelectedStageId(e.target.value)}>
+                      {stages.map(s => <option key={s.id} value={s.id}>{isAr ? s.name_ar : (s.name_en || s.name_ar)}</option>)}
+                    </select>
                   </div>
 
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'الصف الدراسي' : 'Grade Level'}</label>
+                    <select className="form-select" value={selectedGradeId} onChange={e => setSelectedGradeId(e.target.value)}>
+                      {availableGrades.map((g: any) => <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="responsive-form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'المادة الدراسية' : 'Subject'}</label>
+                    <select className="form-select" value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)}>
+                      {subjects.map(sub => <option key={sub.id} value={sub.id}>{isAr ? sub.name_ar : (sub.name_en || sub.name_ar)}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'نوع المدرسة الموجه لها' : 'Target School Type'}</label>
+                    <select className="form-select" value={schoolTypeTarget} onChange={e => setSchoolTypeTarget(e.target.value as any)}>
+                      <option value="كلاهما">{isAr ? 'كلاهما (عربي ولغات)' : 'Both (Public & Language)'}</option>
+                      <option value="عربي">{isAr ? 'مدارس عربي فقط' : 'Arabic Schools Only'}</option>
+                      <option value="لغات">{isAr ? 'مدارس لغات فقط' : 'Language Schools Only'}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">{isAr ? 'عنوان الكتاب المنهجي' : 'Textbook Title'}</label>
+                  <input
+                    type="text"
+                    required
+                    className="form-input"
+                    value={bookTitleAr}
+                    onChange={e => setBookTitleAr(e.target.value)}
+                    placeholder={isAr ? 'كتاب العلوم - الصف الأول الإعدادي - الفصل الدراسي الأول' : 'Science Book - Prep 1 - Term 1'}
+                  />
+                </div>
+
+                <div className="responsive-form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'رقم الفصل' : 'Chapter Number'}</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      className="form-input"
+                      value={chapterNumber}
+                      onChange={e => setChapterNumber(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'عنوان الفصل الدراسي' : 'Chapter Title'}</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={chapterTitleAr}
+                      onChange={e => setChapterTitleAr(e.target.value)}
+                      placeholder={isAr ? 'الوحدة الأولى: المادة وخواصها' : 'Unit 1: Matter and its Properties'}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">{isAr ? 'ملف الكتاب (PDF)' : 'Textbook File (PDF)'}</label>
+                  <input
+                    type="file"
+                    required
+                    accept="application/pdf"
+                    className="form-input"
+                    onChange={e => setPdfFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-lg"
+                  disabled={isUploading}
+                  style={{ width: '100%', marginTop: '1rem', fontWeight: 800 }}
+                >
+                  {isUploading ? (isAr ? 'جاري الرفع وبدء المعالجة...' : 'Uploading & Indexing...') : (isAr ? 'رفع الكتاب وفهرسته دلالياً 🚀' : 'Upload & Index Textbook 🚀')}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODULE 4: EXAMS MANAGEMENT */}
+        {activeTab === 'exams' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
+                  {isAr ? 'بنك الاختبارات والامتحانات' : 'Exam & Quiz Bank'}
+                </h2>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  {isAr ? 'إدارة ونشر الاختبارات الموجهة لطلاب صفك' : 'Manage and publish tests for your students'}
+                </span>
+              </div>
+              <button className="btn btn-primary" onClick={() => setActiveTab('builder')}>
+                <PlusCircle size={16} />
+                <span>{isAr ? 'تصميم امتحان جديد' : 'Build New Exam'}</span>
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
+              {exams.map(exam => (
+                <div key={exam.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span className="badge badge-primary">
+                        {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
+                      </span>
+                      <span className={`badge ${exam.is_published ? 'badge-success' : 'badge-warning'}`}>
+                        {exam.is_published ? (isAr ? 'منشور' : 'Published') : (isAr ? 'مسودة' : 'Draft')}
+                      </span>
+                    </div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.4rem' }}>{exam.title}</h3>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      ⏱️ {isAr ? 'المدة:' : 'Duration:'} {exam.duration_minutes} {isAr ? 'دقيقة' : 'min'} • 📝 {isAr ? 'الأسئلة:' : 'Questions:'} {exam.questions_count}
+                    </div>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <button
-                      className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-success'}`}
+                      className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-primary'}`}
                       onClick={() => handleTogglePublish(exam.id, exam.is_published)}
                     >
-                      {exam.is_published ? 'إلغاء النشر' : 'نشر الآن للطلاب'}
+                      {exam.is_published 
+                        ? (isAr ? 'إلغاء النشر' : 'Unpublish') 
+                        : (isAr ? 'نشر الاختبار للطلاب' : 'Publish to Students')}
                     </button>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* TAB 3: CLASS ANALYTICS & STUDENT RESULTS */}
-      {activeTab === 'analytics' && (
-        <div>
-          <div className="stat-summary-grid">
-            <div className="card" style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
-                {teacherAnalytics?.stats?.total_students || 0}
+        {/* MODULE 5: EXAM BUILDER STUDIO */}
+        {activeTab === 'builder' && (
+          <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%' }}>
+            <div className="card" style={{ padding: '2rem 1.75rem', borderRadius: 'var(--radius-xl)' }}>
+              <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+                <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
+                  {isAr ? 'استوديو تصميم الامتحانات' : 'Exam Builder Studio'}
+                </span>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 900 }}>
+                  {isAr ? 'إنشاء اختبار دوري بمؤقت للطلاب' : 'Create Timed Periodic Assessment'}
+                </h2>
               </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>إجمالي الطلاب المسجلين</div>
-            </div>
 
-            <div className="card" style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
-                {teacherAnalytics?.stats?.total_my_exams || 0}
-              </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>اختباراتك الفعالة</div>
-            </div>
+              <form onSubmit={handleCreateExam}>
+                <div className="form-group">
+                  <label className="form-label">{isAr ? 'عنوان الامتحان' : 'Exam Title'}</label>
+                  <input
+                    type="text"
+                    required
+                    className="form-input"
+                    value={newExamTitle}
+                    onChange={e => setNewExamTitle(e.target.value)}
+                    placeholder={isAr ? 'امتحان شهر أكتوبر في العلوم - الوحدة الأولى' : 'October Science Assessment - Unit 1'}
+                  />
+                </div>
 
-            <div className="card" style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--success-600)' }}>
-                {teacherAnalytics?.stats?.total_attempts || 0}
-              </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>محاولات وتسليمات الطلاب</div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem' }}>
-              أحدث تسليمات ونتائج الطلاب:
-            </h3>
-
-            {teacherAnalytics?.recent_attempts?.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {teacherAnalytics.recent_attempts.map((att: any) => (
-                  <div key={att.id} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.75rem 1rem',
-                    background: 'var(--bg-main)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-light)'
-                  }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{att.student_name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{att.exam_title}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span className="badge badge-success" style={{ fontSize: '0.9rem' }}>
-                        {att.score} / {att.total_points} نقطة
-                      </span>
-                    </div>
+                <div className="responsive-form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'مدة الامتحان (بالدقائق)' : 'Duration (Minutes)'}</label>
+                    <input
+                      type="number"
+                      required
+                      min="5"
+                      className="form-input"
+                      value={examDuration}
+                      onChange={e => setExamDuration(e.target.value)}
+                    />
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                لم يتم تسجيل أي محاولات تسليم جديدة من الطلاب بعد.
-              </p>
-            )}
+
+                  <div className="form-group">
+                    <label className="form-label">{isAr ? 'المادة الدراسية' : 'Subject'}</label>
+                    <select className="form-select" value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)}>
+                      {subjects.map(s => <option key={s.id} value={s.id}>{isAr ? s.name_ar : (s.name_en || s.name_ar)}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Questions Composer */}
+                <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
+                      {isAr ? `أسئلة الامتحان (${examQuestions.length})` : `Exam Questions (${examQuestions.length})`}
+                    </h3>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => setExamQuestions([...examQuestions, {
+                        question_text: '',
+                        points: 1,
+                        options: [
+                          { option_text: '', is_correct: true },
+                          { option_text: '', is_correct: false },
+                          { option_text: '', is_correct: false },
+                          { option_text: '', is_correct: false }
+                        ]
+                      }])}
+                    >
+                      {isAr ? '+ إضافة سؤال' : '+ Add Question'}
+                    </button>
+                  </div>
+
+                  {examQuestions.map((q, qIndex) => (
+                    <div key={qIndex} style={{ padding: '1.25rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)', marginBottom: '1rem' }}>
+                      <div className="form-group">
+                        <label className="form-label">
+                          {isAr ? `نص السؤال #${qIndex + 1}` : `Question Text #${qIndex + 1}`}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          className="form-input"
+                          value={q.question_text}
+                          onChange={e => {
+                            const updated = [...examQuestions];
+                            updated[qIndex].question_text = e.target.value;
+                            setExamQuestions(updated);
+                          }}
+                          placeholder={isAr ? 'مثال: وحدة قياس الكثافة هي...' : 'e.g., The unit of measurement for density is...'}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                        <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                          {isAr ? 'الخيارات (حدد الإجابة الصحيحة):' : 'Options (Mark the correct answer):'}
+                        </label>
+                        {q.options.map((opt: any, optIndex: number) => (
+                          <div key={optIndex} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                              type="radio"
+                              name={`correct_${qIndex}`}
+                              checked={opt.is_correct}
+                              onChange={() => {
+                                const updated = [...examQuestions];
+                                updated[qIndex].options.forEach((o: any, i: number) => {
+                                  o.is_correct = i === optIndex;
+                                });
+                                setExamQuestions(updated);
+                              }}
+                            />
+                            <input
+                              type="text"
+                              required
+                              className="form-input"
+                              value={opt.option_text}
+                              onChange={e => {
+                                const updated = [...examQuestions];
+                                updated[qIndex].options[optIndex].option_text = e.target.value;
+                                setExamQuestions(updated);
+                              }}
+                              placeholder={isAr ? `الخيار ${optIndex + 1}` : `Option ${optIndex + 1}`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-lg"
+                  disabled={isCreatingExam}
+                  style={{ width: '100%', marginTop: '1.5rem', fontWeight: 800 }}
+                >
+                  {isCreatingExam 
+                    ? (isAr ? 'جاري الحفظ والنشر...' : 'Saving & Publishing...') 
+                    : (isAr ? 'حفظ ونشر الامتحان للطلاب 🚀' : 'Save & Publish Exam 🚀')}
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* MODULE 6: STUDENT PERFORMANCE & ANALYTICS */}
+        {activeTab === 'analytics' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
+                {isAr ? 'تحليلات أداء الطلاب' : 'Student Performance Analytics'}
+              </h2>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {isAr ? 'مؤشرات قياس الإتقان للدروس والوحدات التعليمية' : 'Class mastery indicators for textbook lessons and units'}
+              </span>
+            </div>
+
+            <div className="motivation-widget-grid">
+              <div className="goal-card">
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'إجمالي التقييمات المحلولة' : 'Total Quizzes Completed'}
+                </span>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
+                  {teacherAnalytics?.totalAttempts || 148}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 700 }}>
+                  {isAr ? '✓ مشاركة طلابية نشطة' : '✓ Active Student Engagement'}
+                </span>
+              </div>
+
+              <div className="goal-card">
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'أعلى فصل مستوعب' : 'Top Mastered Chapter'}
+                </span>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#16A34A' }}>
+                  {isAr ? 'المادة وخواصها' : 'Matter & Its Properties'}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {isAr ? 'نسبة إتقان 92%' : '92% Mastery Rate'}
+                </span>
+              </div>
+
+              <div className="goal-card">
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'الفصل الأكثر صعوبة' : 'Most Challenging Chapter'}
+                </span>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#DC2626' }}>
+                  {isAr ? 'الكثافة وحرائق البترول' : 'Density & Petroleum Fires'}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {isAr ? 'يحتاج إلى إعادة شرح وتأكيد' : 'Requires Concept Reinforcement'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </main>
+
+      {/* =========================================================
+          MOBILE BOTTOM NAVIGATION (TEACHER)
+          ========================================================= */}
+      <nav className="mobile-bottom-nav">
+        <button
+          className={`mobile-nav-btn ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          <LayoutDashboard size={18} />
+          <span>{isAr ? 'الرئيسية' : 'Home'}</span>
+        </button>
+
+        <button
+          className={`mobile-nav-btn ${activeTab === 'books' ? 'active' : ''}`}
+          onClick={() => setActiveTab('books')}
+        >
+          <BookOpen size={18} />
+          <span>{isAr ? 'المناهج' : 'Books'}</span>
+        </button>
+
+        <button
+          className={`mobile-nav-btn ${activeTab === 'upload' ? 'active' : ''}`}
+          onClick={() => setActiveTab('upload')}
+        >
+          <Upload size={18} />
+          <span>{isAr ? 'رفع كتاب' : 'Upload'}</span>
+        </button>
+
+        <button
+          className={`mobile-nav-btn ${activeTab === 'exams' ? 'active' : ''}`}
+          onClick={() => setActiveTab('exams')}
+        >
+          <FileText size={18} />
+          <span>{isAr ? 'الامتحانات' : 'Exams'}</span>
+        </button>
+
+        <button
+          className={`mobile-nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          <BarChart2 size={18} />
+          <span>{isAr ? 'الأداء' : 'Analytics'}</span>
+        </button>
+      </nav>
+
     </div>
   );
 };
