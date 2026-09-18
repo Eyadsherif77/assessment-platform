@@ -198,6 +198,18 @@ class DatabaseManager {
               // Ignore harmless table already exists warnings
             }
           }
+
+          // Safe high-performance indexing for question bank caching
+          try {
+            await this.tidbConn.execute(`CREATE INDEX idx_qbank_chapter ON question_bank_items (chapter_id)`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`CREATE INDEX idx_qbank_opt_item ON question_bank_options (question_item_id)`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`CREATE INDEX idx_book_chunks_lookup ON book_chunks (academic_stage_id, grade_id, subject_id, book_id, chapter_id)`);
+          } catch (_) {}
+
           console.log('✅ TiDB Cloud schema verified and active.');
         }
         return;

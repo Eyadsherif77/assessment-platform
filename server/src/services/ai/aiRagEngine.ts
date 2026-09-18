@@ -123,7 +123,113 @@ class AIRagEngine {
   }
 
   /**
-   * Generate questions grounded strictly in the retrieved textbook chunks.
+   * Check if questions already exist in the Question Bank in TiDB.
+   * If found, serves them instantly for $0.00 AI cost.
+   */
+  private async getQuestionsFromBank(chapterId: string, count: number): Promise<GroundedQuestion[] | null> {
+    try {
+      const itemsRes = await db.query(
+        `SELECT id, question_text, difficulty, bloom_level, explanation, page_reference
+         FROM question_bank_items
+         WHERE chapter_id = $1`,
+        [chapterId]
+      );
+
+      if (itemsRes.rows.length >= count) {
+        const selectedItems = shuffleArray(itemsRes.rows).slice(0, count);
+        const questions: GroundedQuestion[] = [];
+
+        for (const item of selectedItems) {
+          const optRes = await db.query(
+            `SELECT id, option_text, is_correct FROM question_bank_options WHERE question_item_id = $1`,
+            [item.id]
+          );
+
+          if (optRes.rows.length >= 2) {
+            questions.push({
+              id: item.id,
+              question_text: item.question_text,
+              options: shuffleArray(optRes.rows.map((o: any) => ({
+                id: o.id,
+                text: o.option_text,
+                is_correct: o.is_correct === 1 || o.is_correct === true || o.is_correct === '1'
+              }))),
+              difficulty: item.difficulty || 'MEDIUM',
+              bloom_level: item.bloom_level || 'COMPREHENSION',
+              page_reference: item.page_reference || 1,
+              source_excerpt: '',
+              explanation: item.explanation || ''
+            });
+          }
+        }
+
+        if (questions.length >= count) {
+          console.log(`⚡ [Smart Question Bank] Served ${questions.length} questions from TiDB cache for chapter ${chapterId} (Cost: $0.00)`);
+          return questions;
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Question bank cache lookup error:', err);
+    }
+    return null;
+  }
+
+  /**
+   * Save AI-generated questions to the Question Bank so future student tests are served for $0.00.
+   */
+  private async saveQuestionsToBank(params: {
+    academicStageId: string;
+    gradeId: string;
+    subjectId: string;
+    chapterId: string;
+  }, questions: GroundedQuestion[]): Promise<void> {
+    try {
+      let bankRes = await db.query(
+        `SELECT id FROM question_banks WHERE subject_id = $1 AND grade_id = $2 LIMIT 1`,
+        [params.subjectId, params.gradeId]
+      );
+
+      let bankId: string;
+      if (bankRes.rows.length === 0) {
+        bankId = uuidv4();
+        await db.query(
+          `INSERT INTO question_banks (id, subject_id, academic_stage_id, grade_id, title, description)
+           VALUES ($1, $2, $3, $4, 'بنك الأسئلة الذكي المعتمد', 'بنك الأسئلة الذكي التراكمي المعتمد من المناهج المدرسية الرسمية')`,
+          [bankId, params.subjectId, params.academicStageId, params.gradeId]
+        );
+      } else {
+        bankId = bankRes.rows[0].id;
+      }
+
+      for (const q of questions) {
+        const dupCheck = await db.query(
+          `SELECT id FROM question_bank_items WHERE chapter_id = $1 AND question_text = $2`,
+          [params.chapterId, q.question_text]
+        );
+        if (dupCheck.rows.length === 0) {
+          await db.query(
+            `INSERT INTO question_bank_items (id, bank_id, chapter_id, question_text, question_type, difficulty, bloom_level, explanation, page_reference)
+             VALUES ($1, $2, $3, $4, 'MULTIPLE_CHOICE', $5, $6, $7, $8)`,
+            [q.id, bankId, params.chapterId, q.question_text, q.difficulty, q.bloom_level, q.explanation, q.page_reference]
+          );
+
+          for (const opt of q.options) {
+            await db.query(
+              `INSERT INTO question_bank_options (id, question_item_id, option_text, is_correct)
+               VALUES ($1, $2, $3, $4)`,
+              [opt.id, q.id, opt.text, opt.is_correct ? 1 : 0]
+            );
+          }
+        }
+      }
+      console.log(`💾 [Smart Question Bank] Cached ${questions.length} questions in TiDB for chapter ${params.chapterId}`);
+    } catch (err) {
+      console.warn('⚠️ Error saving questions to bank cache:', err);
+    }
+  }
+
+  /**
+   * Generate questions: checks Smart Question Bank first ($0.00), falls back to AI, and caches results.
    */
   public async generateQuestions(params: {
     academicStageId: string;
@@ -133,6 +239,15 @@ class AIRagEngine {
     chapterId: string;
     count?: number;
   }): Promise<GroundedQuestion[]> {
+    const requiredCount = params.count || 3;
+
+    // 1. Try Smart Question Bank in TiDB ($0.00 AI Cost, instant response)
+    const cachedQuestions = await this.getQuestionsFromBank(params.chapterId, requiredCount);
+    if (cachedQuestions && cachedQuestions.length >= requiredCount) {
+      return cachedQuestions;
+    }
+
+    // 2. Otherwise retrieve textbook chunks
     const chunks = await this.retrieveGroundedChunks({
       ...params,
       limit: 6
@@ -142,21 +257,32 @@ class AIRagEngine {
       throw new Error('لا توجد فقرات كتاب مستخرجة لهذا الفصل الدراسي حتى الآن.');
     }
 
+    let generatedQuestions: GroundedQuestion[] = [];
+
     // Try Gemini API if key is present
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey) {
       try {
-        const questions = await this.callGeminiForQuestions(chunks, params.count || 3);
+        const questions = await this.callGeminiForQuestions(chunks, requiredCount);
         if (questions && questions.length > 0) {
-          return questions;
+          generatedQuestions = questions;
         }
       } catch (err) {
         console.warn('⚠️ Gemini question generation error, using grounded textbook parser:', err);
       }
     }
 
-    // Deterministic, grounded textbook generator from actual chunks
-    return this.generateGroundedFallbackQuestions(chunks);
+    // Deterministic grounded fallback if API call fails
+    if (generatedQuestions.length === 0) {
+      generatedQuestions = this.generateGroundedFallbackQuestions(chunks);
+    }
+
+    // 3. Cache newly generated questions to Question Bank for future 0$ reuse
+    if (generatedQuestions.length > 0) {
+      this.saveQuestionsToBank(params, generatedQuestions).catch(e => console.warn('Cache save note:', e));
+    }
+
+    return generatedQuestions;
   }
 
   private async callGeminiForQuestions(chunks: RetrievedChunk[], count: number): Promise<GroundedQuestion[] | null> {
