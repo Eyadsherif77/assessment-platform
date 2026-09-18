@@ -62,6 +62,7 @@ export const TeacherDashboard: React.FC = () => {
   const [exams, setExams] = useState<any[]>([]);
   const [newExamTitle, setNewExamTitle] = useState('');
   const [examDuration, setExamDuration] = useState('30');
+  const [examSchoolType, setExamSchoolType] = useState<'عربي' | 'لغات' | 'كلاهما'>('كلاهما');
   const [examQuestions, setExamQuestions] = useState<any[]>([
     {
       question_text: '',
@@ -248,6 +249,7 @@ export const TeacherDashboard: React.FC = () => {
           grade_id: selectedGradeId,
           subject_id: selectedSubjectId,
           duration_minutes: parseInt(examDuration, 10) || 30,
+          school_type: examSchoolType,
           is_published: true,
           questions: examQuestions
         })
@@ -465,7 +467,9 @@ export const TeacherDashboard: React.FC = () => {
                   <div key={b.id} style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontWeight: 800, fontSize: '0.875rem' }}>{isAr ? b.title_ar : (b.title_en || b.title_ar)}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{isAr ? b.subject_name_ar : (b.subject_name_en || b.subject_name_ar)} • {b.school_type_target}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {isAr ? b.subject_name_ar : (b.subject_name_en || b.subject_name_ar)} • {b.school_type === 'عربي' ? (isAr ? '🏫 مدارس عربي' : 'Arabic') : b.school_type === 'لغات' ? (isAr ? '🌐 مدارس لغات' : 'Language') : (isAr ? '🤝 عام ولغات' : 'Common')}
+                      </div>
                     </div>
                     <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
                       {isAr ? 'نشط' : 'Active'}
@@ -524,8 +528,25 @@ export const TeacherDashboard: React.FC = () => {
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.35rem' }}>
                       {isAr ? book.title_ar : (book.title_en || book.title_ar)}
                     </h3>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                      {isAr ? 'نوع المدرسة:' : 'Target:'} {book.school_type_target} • {isAr ? 'الفصول:' : 'Chapters:'} {book.chapters?.length || 1}
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', margin: '0.4rem 0 0.75rem' }}>
+                      <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
+                        {isAr ? book.grade_name_ar : (book.grade_name_en || book.grade_name_ar)}
+                      </span>
+                      <span className="badge" style={{ 
+                        fontSize: '0.72rem', 
+                        background: book.school_type === 'لغات' ? '#EFF6FF' : book.school_type === 'عربي' ? '#F0FDF4' : '#F5F3FF',
+                        color: book.school_type === 'لغات' ? '#1D4ED8' : book.school_type === 'عربي' ? '#15803D' : '#6D28D9',
+                        border: `1px solid ${book.school_type === 'لغات' ? '#BFDBFE' : book.school_type === 'عربي' ? '#BBF7D0' : '#DDD6FE'}`
+                      }}>
+                        {book.school_type === 'عربي' 
+                          ? (isAr ? '🏫 مدارس عربي' : 'Arabic')
+                          : book.school_type === 'لغات'
+                          ? (isAr ? '🌐 مدارس لغات' : 'Language')
+                          : (isAr ? '🤝 عام ولغات (كلاهما)' : 'Both')}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                      {isAr ? 'الفصول:' : 'Chapters:'} {book.chapters?.length || 1}
                     </div>
                   </div>
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -603,12 +624,17 @@ export const TeacherDashboard: React.FC = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">{isAr ? 'نوع المدرسة الموجه لها' : 'Target School Type'}</label>
+                    <label className="form-label">{isAr ? 'نوع المدرسة الموجه لها الكتاب' : 'Target School Type'}</label>
                     <select className="form-select" value={schoolTypeTarget} onChange={e => setSchoolTypeTarget(e.target.value as any)}>
-                      <option value="كلاهما">{isAr ? 'كلاهما (عربي ولغات)' : 'Both (Public & Language)'}</option>
-                      <option value="عربي">{isAr ? 'مدارس عربي فقط' : 'Arabic Schools Only'}</option>
-                      <option value="لغات">{isAr ? 'مدارس لغات فقط' : 'Language Schools Only'}</option>
+                      <option value="كلاهما">{isAr ? '🤝 كلاهما (منهج مشترك كاللغة العربية والدين)' : '🤝 Both (Common like Arabic/Religion)'}</option>
+                      <option value="عربي">{isAr ? '🏫 مدارس عربي فقط (مثل الرياضيات أو العلوم بالعربي)' : '🏫 Arabic Schools Only (Math/Science in Arabic)'}</option>
+                      <option value="لغات">{isAr ? '🌐 مدارس لغات فقط (مثل Math أو Science بالإنجليزية)' : '🌐 Language Schools Only (Math/Science in English)'}</option>
                     </select>
+                    <div style={{ fontSize: '0.73rem', color: 'var(--primary-700)', marginTop: '0.3rem', fontWeight: 600 }}>
+                      {isAr 
+                        ? '🔗 سيتم ربط الكتاب حصرياً بطلاب الصف ونوع المدرسة المحددين أعلاه.' 
+                        : '🔗 Strictly linked only to students of matching grade & school type.'}
+                    </div>
                   </div>
                 </div>
 
@@ -769,6 +795,18 @@ export const TeacherDashboard: React.FC = () => {
                     <select className="form-select" value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)}>
                       {subjects.map(s => <option key={s.id} value={s.id}>{isAr ? s.name_ar : (s.name_en || s.name_ar)}</option>)}
                     </select>
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                  <label className="form-label">{isAr ? 'نوع المدرسة المستهدفة للاختبار' : 'Target School Type'}</label>
+                  <select className="form-select" value={examSchoolType} onChange={e => setExamSchoolType(e.target.value as any)}>
+                    <option value="كلاهما">{isAr ? '🤝 كلاهما (عربي ولغات) — متاح للجميع' : '🤝 Both (Public & Language)'}</option>
+                    <option value="عربي">{isAr ? '🏫 مدارس عربي فقط' : '🏫 Arabic Schools Only'}</option>
+                    <option value="لغات">{isAr ? '🌐 مدارس لغات فقط' : '🌐 Language Schools Only'}</option>
+                  </select>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--primary-700)', marginTop: '0.25rem', fontWeight: 600 }}>
+                    {isAr ? '🔗 سيظهر الاختبار حصرياً لطلاب الصف ونوع المدرسة المحددين.' : '🔗 Strictly linked only to students matching this grade & school type.'}
                   </div>
                 </div>
 

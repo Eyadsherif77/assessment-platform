@@ -42,6 +42,7 @@ interface AuthContextType {
   logout: () => void;
   impersonateUser: (impersonationToken: string, impersonatedUser: UserProfile) => void;
   exitImpersonation: () => void;
+  updateUserProfile: (newProfile: any) => void;
   isLoading: boolean;
 }
 
@@ -151,6 +152,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUserProfile = (newProfile: any) => {
+    if (!user) return;
+    const updatedUser = { ...user, profile: { ...user.profile, ...newProfile } };
+    setUser(updatedUser);
+    localStorage.setItem('edu_auth_user', JSON.stringify(updatedUser));
+  };
+
   const t = translations[language];
 
   return (
@@ -166,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         impersonateUser,
         exitImpersonation,
+        updateUserProfile,
         isLoading
       }}
     >

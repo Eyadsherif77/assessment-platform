@@ -19,9 +19,9 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
     }
 
-    // Verify book belongs to student's grade
+    // Verify book belongs to student's grade & school_type
     const bookRes = await db.query(
-      `SELECT id, title_ar, academic_stage_id, grade_id FROM books WHERE id = $1`,
+      `SELECT id, title_ar, academic_stage_id, grade_id, school_type FROM books WHERE id = $1`,
       [book_id]
     );
 
@@ -29,8 +29,14 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       return res.status(404).json({ error: 'الكتاب غير موجود' });
     }
 
-    if (bookRes.rows[0].grade_id !== studentProfile.gradeId) {
+    const book = bookRes.rows[0];
+    if (book.grade_id !== studentProfile.gradeId) {
       return res.status(403).json({ error: 'غير مصرح لك بإجراء تقييم لكتاب خارج صفك الدراسي' });
+    }
+
+    const studentSchoolType = studentProfile.schoolType || 'عربي';
+    if (book.school_type && book.school_type !== 'كلاهما' && book.school_type !== studentSchoolType) {
+      return res.status(403).json({ error: 'غير مصرح لك بإجراء تقييم لكتاب غير مخصص لنوع مدرستك' });
     }
 
     const questions = await aiRagEngine.generateQuestions({

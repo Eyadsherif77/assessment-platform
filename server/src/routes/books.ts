@@ -144,7 +144,7 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
     const params: any[] = [];
     const conditions: string[] = [];
 
-    // If student, strictly enforce their own academic stage and grade
+    // If student, strictly enforce their own academic stage, grade, and school_type
     if (req.user?.role === 'STUDENT' && req.studentProfile) {
       params.push(req.studentProfile.academicStageId);
       conditions.push(`b.academic_stage_id = $${params.length}`);
@@ -152,12 +152,10 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       params.push(req.studentProfile.gradeId);
       conditions.push(`b.grade_id = $${params.length}`);
 
-      // Filter by student's school_type: show books for their type OR 'كلاهما'
-      const studentSchoolType = (req.studentProfile as any).schoolType || null;
-      if (studentSchoolType) {
-        params.push(studentSchoolType);
-        conditions.push(`(b.school_type = $${params.length} OR b.school_type = 'كلاهما' OR b.school_type IS NULL)`);
-      }
+      // Filter by student's school_type: show books for their specific type OR 'كلاهما' (common books)
+      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      params.push(studentSchoolType);
+      conditions.push(`(b.school_type = $${params.length} OR b.school_type = 'كلاهما' OR b.school_type IS NULL)`);
     } else {
       // Optional query filters for teachers
       if (req.query.stage_id) {
@@ -167,6 +165,10 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       if (req.query.grade_id) {
         params.push(req.query.grade_id);
         conditions.push(`b.grade_id = $${params.length}`);
+      }
+      if (req.query.school_type) {
+        params.push(req.query.school_type);
+        conditions.push(`b.school_type = $${params.length}`);
       }
     }
 
@@ -209,10 +211,14 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
 
     const book = bookRes.rows[0];
 
-    // Enforce student grade permission
+    // Enforce student grade & school_type permissions
     if (req.user?.role === 'STUDENT' && req.studentProfile) {
       if (book.grade_id !== req.studentProfile.gradeId) {
         return res.status(403).json({ error: 'لا يمكنك الوصول إلى كتاب غير مخصص لصفك الدراسي' });
+      }
+      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      if (book.school_type && book.school_type !== 'كلاهما' && book.school_type !== studentSchoolType) {
+        return res.status(403).json({ error: 'لا يمكنك الوصول إلى كتاب غير مخصص لنوع مدرستك' });
       }
     }
 
@@ -234,6 +240,25 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
 router.get('/:id/chapters/:chapterId/chunks', authenticateToken, enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
     const { id, chapterId } = req.params;
+
+    // Enforce student grade & school_type permissions before reading chunks
+    if (req.user?.role === 'STUDENT' && req.studentProfile) {
+      const bookCheck = await db.query(
+        `SELECT grade_id, school_type FROM books WHERE id = $1`,
+        [id]
+      );
+      if (bookCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'الكتاب غير موجود' });
+      }
+      if (bookCheck.rows[0].grade_id !== req.studentProfile.gradeId) {
+        return res.status(403).json({ error: 'غير مصرح بالوصول لمحتوى صف دراسي آخر' });
+      }
+      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      if (bookCheck.rows[0].school_type && bookCheck.rows[0].school_type !== 'كلاهما' && bookCheck.rows[0].school_type !== studentSchoolType) {
+        return res.status(403).json({ error: 'غير مصرح بالوصول لمحتوى غير مخصص لنوع مدرستك' });
+      }
+    }
+
     const chunksRes = await db.query(
       `SELECT id, page_number, chunk_index, content, content AS chunk_text, metadata
        FROM book_chunks

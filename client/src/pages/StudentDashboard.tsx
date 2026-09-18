@@ -16,11 +16,12 @@ import {
   Flame,
   Target,
   LayoutDashboard,
-  ShieldCheck
+  ShieldCheck,
+  Edit3
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
-  const { user, token, language } = useAuth();
+  const { user, token, language, updateUserProfile } = useAuth();
   const isAr = language === 'ar';
   const ArrowIcon = isAr ? ArrowLeft : ArrowRight;
 
@@ -85,11 +86,17 @@ export const StudentDashboard: React.FC = () => {
   // Learning Analytics Data
   const [analytics, setAnalytics] = useState<any | null>(null);
 
-  // Fetch books & exams on mount
-  useEffect(() => {
-    if (!token) return;
+  // Profile edit modal state
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [allStages, setAllStages] = useState<any[]>([]);
+  const [editStageId, setEditStageId] = useState(user?.profile?.academic_stage_id || '');
+  const [editGradeId, setEditGradeId] = useState(user?.profile?.grade_id || '');
+  const [editSchoolType, setEditSchoolType] = useState<'عربي' | 'لغات'>((user?.profile?.school_type as any) || 'عربي');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-    // 1. Fetch Grade-Restricted Books
+  // Reload student restricted books and exams
+  const reloadStudentContent = () => {
+    if (!token) return;
     fetch(apiUrl('/api/books'), {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -99,12 +106,13 @@ export const StudentDashboard: React.FC = () => {
           setBooks(data);
           if (data.length > 0) {
             handleSelectAiBook(data[0]);
+          } else {
+            setSelectedAiBook(null);
           }
         }
       })
       .catch(console.error);
 
-    // 2. Fetch Grade-Restricted Exams
     fetch(apiUrl('/api/exams'), {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -113,8 +121,68 @@ export const StudentDashboard: React.FC = () => {
         if (Array.isArray(data)) setExams(data);
       })
       .catch(console.error);
+  };
 
-    // 3. Fetch Analytics
+  const handleOpenProfileModal = () => {
+    setEditStageId(user?.profile?.academic_stage_id || '');
+    setEditGradeId(user?.profile?.grade_id || '');
+    setEditSchoolType((user?.profile?.school_type as any) || 'عربي');
+    setShowProfileModal(true);
+
+    if (allStages.length === 0) {
+      fetch(apiUrl('/api/meta/stages'))
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setAllStages(data);
+            if (!editStageId && data.length > 0) {
+              setEditStageId(data[0].id);
+            }
+          }
+        })
+        .catch(console.error);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editStageId || !editGradeId) return;
+
+    setIsSavingProfile(true);
+    try {
+      const res = await fetch(apiUrl('/api/auth/profile'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          academicStageId: editStageId,
+          gradeId: editGradeId,
+          schoolType: editSchoolType
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحديث البيانات');
+
+      if (data.profile) {
+        updateUserProfile(data.profile);
+      }
+      setShowProfileModal(false);
+      reloadStudentContent();
+      alert(isAr ? 'تم تحديث الصف الدراسي ونوع المدرسة بنجاح! تم تحديث المناهج والاختبارات المطابقة.' : 'Grade and school type updated successfully!');
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Fetch books & exams on mount
+  useEffect(() => {
+    if (!token) return;
+    reloadStudentContent();
     loadAnalytics();
   }, [token]);
 
@@ -353,12 +421,24 @@ export const StudentDashboard: React.FC = () => {
           }}>
             {user?.fullName?.charAt(0) || 'ط'}
           </div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user?.fullName}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              {isAr ? (user?.profile?.grade_name_ar || 'الصف الأول الإعدادي') : (user?.profile?.grade_name_en || 'Prep 1')}
+              <div style={{ fontWeight: 600 }}>{isAr ? (user?.profile?.grade_name_ar || 'الصف الأول الإعدادي') : (user?.profile?.grade_name_en || 'Prep 1')}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--primary-700)', fontWeight: 700 }}>
+                  {user?.profile?.school_type === 'لغات' ? (isAr ? '🌐 مدارس لغات' : '🌐 Language School') : (isAr ? '🏫 مدارس عربي' : '🏫 Arabic School')}
+                </span>
+                <button
+                  onClick={handleOpenProfileModal}
+                  title={isAr ? 'تغيير الصف أو نوع المدرسة' : 'Change grade or school type'}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-600)', padding: '2px', display: 'flex' }}
+                >
+                  <Edit3 size={13} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -457,9 +537,19 @@ export const StudentDashboard: React.FC = () => {
                 </h2>
                 <p style={{ color: '#CBD5E1', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>
                   {isAr
-                    ? <>أنت مسجل في <strong>{user?.profile?.grade_name_ar || 'الصف الأول الإعدادي'}</strong> • مناهج معتمدة ومفهرسة بنسبة 100%.</>
-                    : <>Enrolled in <strong>{user?.profile?.grade_name_en || 'Prep 1'}</strong> • 100% textbook-grounded curriculum.</>}
+                    ? <>أنت مسجل في <strong>{user?.profile?.grade_name_ar || 'الصف الأول الإعدادي'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}</strong> • مناهج وكتب مخصصة ومطابقة 100%.</>
+                    : <>Enrolled in <strong>{user?.profile?.grade_name_en || 'Prep 1'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'}</strong> • 100% textbook-grounded curriculum.</>}
                 </p>
+                <div style={{ marginTop: '0.6rem' }}>
+                  <button
+                    onClick={handleOpenProfileModal}
+                    className="btn btn-outline btn-sm"
+                    style={{ color: '#FFFFFF', borderColor: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', padding: '0.25rem 0.65rem' }}
+                  >
+                    <Edit3 size={12} style={{ marginInlineEnd: '4px' }} />
+                    <span>{isAr ? 'تعديل الصف أو نوع المدرسة ⚙️' : 'Change Grade / School Type ⚙️'}</span>
+                  </button>
+                </div>
               </div>
 
               <button
@@ -705,9 +795,14 @@ export const StudentDashboard: React.FC = () => {
                           <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.25rem' }}>
                             {isAr ? b.title_ar : (b.title_en || b.title_ar)}
                           </h4>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            {isAr ? b.subject_name_ar : (b.subject_name_en || b.subject_name_ar)} • {b.school_type_target || (isAr ? 'عام ولغات' : 'Public & Language')}
-                          </span>
+                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.2rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {isAr ? b.subject_name_ar : (b.subject_name_en || b.subject_name_ar)}
+                            </span>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: b.school_type === 'لغات' ? '#1D4ED8' : b.school_type === 'عربي' ? '#15803D' : '#6D28D9' }}>
+                              • {b.school_type === 'عربي' ? (isAr ? '🏫 عربي' : 'Arabic') : b.school_type === 'لغات' ? (isAr ? '🌐 لغات' : 'Language') : (isAr ? '🤝 عام ولغات' : 'Common')}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1140,8 +1235,8 @@ export const StudentDashboard: React.FC = () => {
                 </h2>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   {isAr 
-                    ? `مخصصة ومقيدة بصفك الدراسي: ${user?.profile?.grade_name_ar || 'الصف الأول الإعدادي'}`
-                    : `Restricted to your grade: ${user?.profile?.grade_name_en || 'Prep 1'}`}
+                    ? `مخصصة ومقيدة بصفك الدراسي (${user?.profile?.grade_name_ar || 'الصف الأول الإعدادي'}) ونوع مدرستك (${user?.profile?.school_type === 'لغات' ? 'مدارس لغات' : 'مدارس عربي'})`
+                    : `Restricted to your grade (${user?.profile?.grade_name_en || 'Prep 1'}) and school (${user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'})`}
                 </span>
               </div>
             </div>
@@ -1156,6 +1251,23 @@ export const StudentDashboard: React.FC = () => {
                     <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 0.35rem' }}>
                       {isAr ? book.title_ar : (book.title_en || book.title_ar)}
                     </h3>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', margin: '0.4rem 0 0.75rem' }}>
+                      <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
+                        {isAr ? book.grade_name_ar : (book.grade_name_en || book.grade_name_ar)}
+                      </span>
+                      <span className="badge" style={{ 
+                        fontSize: '0.72rem', 
+                        background: book.school_type === 'لغات' ? '#EFF6FF' : book.school_type === 'عربي' ? '#F0FDF4' : '#F5F3FF',
+                        color: book.school_type === 'لغات' ? '#1D4ED8' : book.school_type === 'عربي' ? '#15803D' : '#6D28D9',
+                        border: `1px solid ${book.school_type === 'لغات' ? '#BFDBFE' : book.school_type === 'عربي' ? '#BBF7D0' : '#DDD6FE'}`
+                      }}>
+                        {book.school_type === 'عربي' 
+                          ? (isAr ? '🏫 مدارس عربي' : 'Arabic')
+                          : book.school_type === 'لغات'
+                          ? (isAr ? '🌐 مدارس لغات' : 'Language')
+                          : (isAr ? '🤝 عام ولغات (كلاهما)' : 'Both')}
+                      </span>
+                    </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
                       {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)} • {isAr ? `${book.chapters?.length || 1} فصول مفهرسة` : `${book.chapters?.length || 1} Indexed Chapters`}
                     </div>
@@ -1408,9 +1520,26 @@ export const StudentDashboard: React.FC = () => {
                 {exams.map(exam => (
                   <div key={exam.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <div>
-                      <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
-                        {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
-                      </span>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                        <span className="badge badge-primary">
+                          {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
+                        </span>
+                        <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
+                          {isAr ? exam.grade_name_ar : (exam.grade_name_en || exam.grade_name_ar)}
+                        </span>
+                        <span className="badge" style={{ 
+                          fontSize: '0.72rem', 
+                          background: exam.effective_school_type === 'لغات' ? '#EFF6FF' : exam.effective_school_type === 'عربي' ? '#F0FDF4' : '#F5F3FF',
+                          color: exam.effective_school_type === 'لغات' ? '#1D4ED8' : exam.effective_school_type === 'عربي' ? '#15803D' : '#6D28D9',
+                          border: `1px solid ${exam.effective_school_type === 'لغات' ? '#BFDBFE' : exam.effective_school_type === 'عربي' ? '#BBF7D0' : '#DDD6FE'}`
+                        }}>
+                          {exam.effective_school_type === 'عربي' 
+                            ? (isAr ? '🏫 مدارس عربي' : 'Arabic')
+                            : exam.effective_school_type === 'لغات'
+                            ? (isAr ? '🌐 مدارس لغات' : 'Language')
+                            : (isAr ? '🤝 عام ولغات' : 'Common')}
+                        </span>
+                      </div>
                       <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.4rem' }}>{exam.title}</h3>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         ⏱️ {isAr ? `المدة: ${exam.duration_minutes} دقيقة` : `Duration: ${exam.duration_minutes} mins`} • 📝 {isAr ? `الأسئلة: ${exam.questions_count}` : `Questions: ${exam.questions_count}`}
@@ -1560,6 +1689,123 @@ export const StudentDashboard: React.FC = () => {
           <span>{isAr ? 'الإتقان' : 'Mastery'}</span>
         </button>
       </nav>
+
+      {/* Quick Profile Edit Modal (Grade & School Type) */}
+      {showProfileModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem'
+        }}>
+          <div className="card" style={{
+            maxWidth: '520px',
+            width: '100%',
+            background: 'var(--bg-card)',
+            borderRadius: 'var(--radius-xl)',
+            padding: '2rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid var(--border-light)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-light)' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 900, margin: 0 }}>
+                  {isAr ? '⚙️ تعديل الصف الدراسي ونوع المدرسة' : '⚙️ Change Grade & School Type'}
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {isAr ? 'يتم ربط وتحديث الكتب والاختبارات فوراً بناءً على اختيارك' : 'Textbooks & exams update immediately based on selection'}
+                </span>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowProfileModal(false)}
+                style={{ fontSize: '1.2rem', padding: '0.2rem 0.5rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 700 }}>{isAr ? 'المرحلة الدراسية' : 'Academic Stage'}</label>
+                <select
+                  className="form-select"
+                  value={editStageId}
+                  onChange={e => {
+                    const newStageId = e.target.value;
+                    setEditStageId(newStageId);
+                    const stage = allStages.find(s => s.id === newStageId);
+                    if (stage && stage.grades && stage.grades.length > 0) {
+                      setEditGradeId(stage.grades[0].id);
+                    }
+                  }}
+                >
+                  {allStages.map(s => (
+                    <option key={s.id} value={s.id}>{isAr ? s.name_ar : (s.name_en || s.name_ar)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 700 }}>{isAr ? 'الصف الدراسي' : 'Grade Level'}</label>
+                <select
+                  className="form-select"
+                  value={editGradeId}
+                  onChange={e => setEditGradeId(e.target.value)}
+                >
+                  {(() => {
+                    const currentStage = allStages.find(s => s.id === editStageId) || allStages[0];
+                    const gradesList = currentStage?.grades || [];
+                    return gradesList.map((g: any) => (
+                      <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>
+                    ));
+                  })()}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 700 }}>{isAr ? 'نوع المدرسة' : 'School Type'}</label>
+                <select
+                  className="form-select"
+                  value={editSchoolType}
+                  onChange={e => setEditSchoolType(e.target.value as any)}
+                >
+                  <option value="عربي">{isAr ? '🏫 مدارس عربي (حكومي / خاص عربي)' : '🏫 Arabic Schools'}</option>
+                  <option value="لغات">{isAr ? '🌐 مدارس لغات (تجريبي / متميز / دولي)' : '🌐 Language Schools'}</option>
+                </select>
+                <div style={{ fontSize: '0.75rem', color: 'var(--primary-700)', marginTop: '0.35rem', lineHeight: 1.4 }}>
+                  {editSchoolType === 'عربي'
+                    ? (isAr ? '✓ ستظهر لك الكتب باللغة العربية (مثل العلوم والرياضيات بالعربي) والمناهج المشتركة كاللغة العربية والتربية الدينية.' : '✓ Shows Arabic curriculum & common textbooks.')
+                    : (isAr ? '✓ ستظهر لك كتب اللغات الإنجليزية (مثل Math و Science) والمناهج المشتركة كاللغة العربية والتربية الدينية.' : '✓ Shows English curriculum (Math/Science) & common textbooks.')}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setShowProfileModal(false)}
+                >
+                  {isAr ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isSavingProfile}
+                  style={{ fontWeight: 800 }}
+                >
+                  {isSavingProfile ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ وتحديث المناهج 💾' : 'Save & Update Curricula 💾')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

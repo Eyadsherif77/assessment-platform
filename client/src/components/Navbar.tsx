@@ -128,7 +128,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
               )}
 
               {/* Desktop-Only User Badge */}
-              <div className="user-badge-container desktop-user-badge">
+              <div className="user-badge-container desktop-user-badge" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                 <span className="badge badge-primary nav-user-badge" style={{ padding: '0.35rem 0.75rem', gap: '0.4rem' }}>
                   {user.role === 'STUDENT' && (
                     <>
@@ -151,6 +151,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                     </>
                   )}
                 </span>
+                {user.role === 'STUDENT' && (
+                  <span className="badge" style={{
+                    padding: '0.35rem 0.65rem',
+                    fontSize: '0.78rem',
+                    background: user.profile?.school_type === 'لغات' ? '#EFF6FF' : '#F0FDF4',
+                    color: user.profile?.school_type === 'لغات' ? '#1D4ED8' : '#15803D',
+                    border: `1px solid ${user.profile?.school_type === 'لغات' ? '#BFDBFE' : '#BBF7D0'}`
+                  }}>
+                    {user.profile?.school_type === 'لغات'
+                      ? (language === 'ar' ? '🌐 مدارس لغات' : '🌐 Language School')
+                      : (language === 'ar' ? '🏫 مدارس عربي' : '🏫 Arabic School')}
+                  </span>
+                )}
               </div>
 
               {/* Logout Button */}

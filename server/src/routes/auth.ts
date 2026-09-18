@@ -233,4 +233,46 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Update Student Profile (Grade, Stage, School Type)
+router.put('/profile', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'STUDENT') {
+      return res.status(403).json({ error: 'تعديل الملف الشخصي مخصص للطلاب حالياً' });
+    }
+
+    const { academicStageId, gradeId, schoolType, schoolName, section } = req.body;
+    if (!academicStageId || !gradeId) {
+      return res.status(400).json({ error: 'المرحلة الدراسية والصف الدراسي مطلوبان' });
+    }
+
+    const effectiveSchoolType = schoolType || 'عربي';
+
+    await db.query(
+      `UPDATE student_profiles 
+       SET academic_stage_id = $1, grade_id = $2, school_type = $3, 
+           school_name = COALESCE($4, school_name), section = COALESCE($5, section)
+       WHERE user_id = $6`,
+      [academicStageId, gradeId, effectiveSchoolType, schoolName || null, section || null, user.id]
+    );
+
+    const sp = await db.query(
+      `SELECT sp.*, s.name_ar as stage_name_ar, s.name_en as stage_name_en,
+              g.name_ar as grade_name_ar, g.name_en as grade_name_en
+       FROM student_profiles sp
+       JOIN academic_stages s ON sp.academic_stage_id = s.id
+       JOIN grades g ON sp.grade_id = g.id
+       WHERE sp.user_id = $1`,
+      [user.id]
+    );
+
+    return res.json({
+      message: 'تم تحديث بيانات الصف الدراسي ونوع المدرسة بنجاح',
+      profile: sp.rows[0]
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في تحديث الملف الشخصي: ' + err.message });
+  }
+});
+
 export default router;

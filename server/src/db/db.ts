@@ -241,6 +241,9 @@ class DatabaseManager {
           await this.query(`ALTER TABLE books ADD COLUMN school_type TEXT DEFAULT 'كلاهما'`);
         } catch (_) {}
         try {
+          await this.query(`ALTER TABLE exams ADD COLUMN school_type TEXT DEFAULT 'كلاهما'`);
+        } catch (_) {}
+        try {
           await this.query(`ALTER TABLE users ADD COLUMN super_id TEXT`);
         } catch (_) {}
         try {
@@ -248,6 +251,13 @@ class DatabaseManager {
         } catch (_) {}
         try {
           await this.query(`ALTER TABLE users ADD COLUMN permissions TEXT`);
+        } catch (_) {}
+
+        // Ensure no NULL school_type values exist in database
+        try {
+          await this.query(`UPDATE student_profiles SET school_type = 'عربي' WHERE school_type IS NULL OR school_type = ''`);
+          await this.query(`UPDATE books SET school_type = 'كلاهما' WHERE school_type IS NULL OR school_type = ''`);
+          await this.query(`UPDATE exams SET school_type = 'كلاهما' WHERE school_type IS NULL OR school_type = ''`);
         } catch (_) {}
 
         console.log('✅ Database schema verified and active.');

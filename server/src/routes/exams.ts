@@ -12,17 +12,19 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       SELECT e.*, s.name_ar as subject_name_ar, s.name_en as subject_name_en,
              st.name_ar as stage_name_ar, g.name_ar as grade_name_ar,
              u.full_name as teacher_name,
+             COALESCE(e.school_type, b.school_type, 'كلاهما') as effective_school_type,
              (SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id) as questions_count
       FROM exams e
       JOIN subjects s ON e.subject_id = s.id
       JOIN academic_stages st ON e.academic_stage_id = st.id
       JOIN grades g ON e.grade_id = g.id
       JOIN users u ON e.teacher_id = u.id
+      LEFT JOIN books b ON e.book_id = b.id
     `;
     const params: any[] = [];
     const conditions: string[] = [];
 
-    // Students only see published exams matching their stage & grade
+    // Students only see published exams strictly matching their stage, grade & school_type
     if (req.user?.role === 'STUDENT' && req.studentProfile) {
       params.push(req.studentProfile.academicStageId);
       conditions.push(`e.academic_stage_id = $${params.length}`);
@@ -31,6 +33,10 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       conditions.push(`e.grade_id = $${params.length}`);
 
       conditions.push(`e.is_published = 1`);
+
+      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      params.push(studentSchoolType);
+      conditions.push(`(COALESCE(e.school_type, b.school_type, 'كلاهما') = $${params.length} OR COALESCE(e.school_type, b.school_type, 'كلاهما') = 'كلاهما' OR COALESCE(e.school_type, b.school_type) IS NULL)`);
     } else if (req.user?.role === 'TEACHER') {
       // Teachers see their own exams or all
       if (req.query.my_only === 'true') {
@@ -44,6 +50,10 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       if (req.query.grade_id) {
         params.push(req.query.grade_id);
         conditions.push(`e.grade_id = $${params.length}`);
+      }
+      if (req.query.school_type) {
+        params.push(req.query.school_type);
+        conditions.push(`(e.school_type = $${params.length} OR e.school_type = 'كلاهما')`);
       }
     }
 
@@ -77,6 +87,7 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
       chapter_id,
       duration_minutes = 30,
       is_published = false,
+      school_type = 'كلاهما',
       questions
     } = req.body;
 
@@ -88,8 +99,8 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
     await db.query(
       `INSERT INTO exams (
          id, title_ar, title_en, teacher_id, academic_stage_id, grade_id, subject_id,
-         book_id, chapter_id, duration_minutes, is_published
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+         book_id, chapter_id, duration_minutes, is_published, school_type
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         examId,
         title_ar.trim(),
@@ -101,7 +112,8 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
         book_id || null,
         chapter_id || null,
         duration_minutes,
-        is_published ? 1 : 0
+        is_published ? 1 : 0,
+        school_type || 'كلاهما'
       ]
     );
 
@@ -181,6 +193,10 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
       if (!exam.is_published) {
         return res.status(403).json({ error: 'هذا الاختبار غير منشور حالياً' });
       }
+      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      if (exam.school_type && exam.school_type !== 'كلاهما' && exam.school_type !== studentSchoolType) {
+        return res.status(403).json({ error: 'هذا الاختبار غير مخصص لنوع مدرستك' });
+      }
     }
 
     // Fetch questions
@@ -227,6 +243,10 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
     const exam = examRes.rows[0];
     if (exam.grade_id !== req.studentProfile?.gradeId) {
       return res.status(403).json({ error: 'الاختبار غير مخصص لصفك الدراسي' });
+    }
+    const studentSchoolType = req.studentProfile?.schoolType || 'عربي';
+    if (exam.school_type && exam.school_type !== 'كلاهما' && exam.school_type !== studentSchoolType) {
+      return res.status(403).json({ error: 'الاختبار غير مخصص لنوع مدرستك' });
     }
 
     // Fetch all questions and their correct options

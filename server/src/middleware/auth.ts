@@ -17,6 +17,7 @@ export interface StudentProfileInfo {
   schoolId?: string;
   countryId?: string;
   governorateId?: string;
+  schoolType: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -40,10 +41,10 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
     req.user = decoded;
 
-    // If student, attach their verified grade & stage
+    // If student, attach their verified grade, stage & school_type
     if (decoded.role === 'STUDENT') {
       const profile = await db.query(
-        `SELECT academic_stage_id, grade_id, school_id, country_id, governorate_id 
+        `SELECT academic_stage_id, grade_id, school_id, country_id, governorate_id, school_type 
          FROM student_profiles WHERE user_id = $1`,
         [decoded.id]
       );
@@ -53,7 +54,8 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
           gradeId: profile.rows[0].grade_id,
           schoolId: profile.rows[0].school_id,
           countryId: profile.rows[0].country_id,
-          governorateId: profile.rows[0].governorate_id
+          governorateId: profile.rows[0].governorate_id,
+          schoolType: profile.rows[0].school_type || 'عربي'
         };
       }
     }
@@ -94,6 +96,13 @@ export function enforceStudentGrade(req: AuthenticatedRequest, res: Response, ne
     if (requestedGradeId && requestedGradeId !== req.studentProfile.gradeId) {
       return res.status(403).json({ 
         error: 'غير مصرح لك بالوصول إلى محتوى صف دراسي آخر غير صفك المسجل' 
+      });
+    }
+
+    const requestedSchoolType = req.query.school_type || req.body?.school_type;
+    if (requestedSchoolType && requestedSchoolType !== 'كلاهما' && requestedSchoolType !== req.studentProfile.schoolType) {
+      return res.status(403).json({
+        error: 'غير مصرح لك بالوصول إلى محتوى مخصص لنوع مدرسة مختلف عن مدرستك المسجلة'
       });
     }
   }
