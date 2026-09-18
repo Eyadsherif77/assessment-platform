@@ -84,17 +84,39 @@ router.post(
         ]
       );
 
-      // Trigger background extraction & embedding job
+      // Trigger extraction & embedding job
       if (filePath) {
-        jobQueue.addJob({
-          bookId,
-          filePath,
-          academicStageId: academic_stage_id,
-          gradeId: grade_id,
-          subjectId: subject_id,
-          chapterNumber: chapter_number ? parseInt(chapter_number, 10) : 1,
-          chapterTitleAr: chapter_title_ar || 'الوحدة الأولى'
-        });
+        if (process.env.VERCEL) {
+          try {
+            await jobQueue.processJobDirectly({
+              bookId,
+              filePath,
+              academicStageId: academic_stage_id,
+              gradeId: grade_id,
+              subjectId: subject_id,
+              chapterNumber: chapter_number ? parseInt(chapter_number, 10) : 1,
+              chapterTitleAr: chapter_title_ar || 'الوحدة الأولى'
+            });
+            return res.status(201).json({
+              message: 'تم رفع الكتاب ومعالجة النصوص وتوليد متجهات التضمين بنجاح.',
+              bookId,
+              status: 'COMPLETED'
+            });
+          } catch (jobErr: any) {
+            console.error('Vercel ingestion error:', jobErr);
+            return res.status(500).json({ error: 'فشلت معالجة الكتاب: ' + jobErr.message });
+          }
+        } else {
+          jobQueue.addJob({
+            bookId,
+            filePath,
+            academicStageId: academic_stage_id,
+            gradeId: grade_id,
+            subjectId: subject_id,
+            chapterNumber: chapter_number ? parseInt(chapter_number, 10) : 1,
+            chapterTitleAr: chapter_title_ar || 'الوحدة الأولى'
+          });
+        }
       }
 
       return res.status(201).json({

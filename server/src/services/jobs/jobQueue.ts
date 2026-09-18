@@ -33,19 +33,7 @@ class JobQueueService {
     return this.jobStatuses.get(bookId) || { status: 'UNKNOWN', progress: 0 };
   }
 
-  private async processNext(): Promise<void> {
-    if (this.isProcessing || this.queue.length === 0) {
-      return;
-    }
-
-    this.isProcessing = true;
-    const job = this.queue.shift();
-
-    if (!job) {
-      this.isProcessing = false;
-      return;
-    }
-
+  public async processJobDirectly(job: BookIngestionJob): Promise<void> {
     try {
       console.log(`⚙️ [JobQueue] Starting extraction & vectorization for book: ${job.bookId}`);
       this.jobStatuses.set(job.bookId, { status: 'EXTRACTING', progress: 10 });
@@ -195,6 +183,27 @@ class JobQueueService {
         `UPDATE books SET processing_status = 'FAILED', processing_error = $2 WHERE id = $1`,
         [job.bookId, errMsg]
       );
+      throw err;
+    }
+  }
+
+  private async processNext(): Promise<void> {
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+    const job = this.queue.shift();
+
+    if (!job) {
+      this.isProcessing = false;
+      return;
+    }
+
+    try {
+      await this.processJobDirectly(job);
+    } catch (_) {
+      // Errors handled inside processJobDirectly
     } finally {
       this.isProcessing = false;
       this.processNext();
