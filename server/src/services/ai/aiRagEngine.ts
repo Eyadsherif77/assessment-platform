@@ -124,9 +124,10 @@ class AIRagEngine {
 
   /**
    * Check if questions already exist in the Question Bank in TiDB.
-   * If found, serves them instantly for $0.00 AI cost.
+   * If studentId is provided, filters out questions the student has already seen,
+   * guaranteeing the student never gets the same question twice!
    */
-  private async getQuestionsFromBank(chapterId: string, count: number): Promise<GroundedQuestion[] | null> {
+  private async getQuestionsFromBank(chapterId: string, count: number, studentId?: string): Promise<GroundedQuestion[] | null> {
     try {
       const itemsRes = await db.query(
         `SELECT id, question_text, difficulty, bloom_level, explanation, page_reference
@@ -135,8 +136,45 @@ class AIRagEngine {
         [chapterId]
       );
 
-      if (itemsRes.rows.length >= count) {
-        const selectedItems = shuffleArray(itemsRes.rows).slice(0, count);
+      if (itemsRes.rows.length === 0) return null;
+
+      let candidateRows = itemsRes.rows;
+
+      // Deduplication: prevent the same student from seeing questions they already solved
+      if (studentId) {
+        try {
+          const evalRes = await db.query(
+            `SELECT questions_data FROM ai_evaluations WHERE student_id = $1 AND chapter_id = $2`,
+            [studentId, chapterId]
+          );
+          const seenIds = new Set<string>();
+          for (const row of evalRes.rows) {
+            try {
+              const qList = typeof row.questions_data === 'string' ? JSON.parse(row.questions_data) : row.questions_data;
+              if (Array.isArray(qList)) {
+                qList.forEach((q: any) => { if (q.id) seenIds.add(q.id); });
+              }
+            } catch (_) {}
+          }
+
+          const unseen = candidateRows.filter((r: any) => !seenIds.has(r.id));
+          if (unseen.length >= count) {
+            candidateRows = unseen;
+          } else if (unseen.length > 0) {
+            // Student saw most questions, mix unseen questions first
+            const seen = candidateRows.filter((r: any) => seenIds.has(r.id));
+            candidateRows = [...unseen, ...shuffleArray(seen)];
+          } else {
+            // Student has seen ALL existing questions in bank!
+            // Return null so AI generates fresh questions to expand the bank!
+            console.log(`🔄 Student ${studentId} mastered all ${itemsRes.rows.length} questions in bank for chapter ${chapterId}. Generating fresh questions.`);
+            return null;
+          }
+        } catch (_) {}
+      }
+
+      if (candidateRows.length >= count) {
+        const selectedItems = shuffleArray(candidateRows).slice(0, count);
         const questions: GroundedQuestion[] = [];
 
         for (const item of selectedItems) {
@@ -164,7 +202,7 @@ class AIRagEngine {
         }
 
         if (questions.length >= count) {
-          console.log(`⚡ [Smart Question Bank] Served ${questions.length} questions from TiDB cache for chapter ${chapterId} (Cost: $0.00)`);
+          console.log(`⚡ [Smart Question Bank] Served ${questions.length} unique unseen questions from TiDB for chapter ${chapterId} (Cost: $0.00)`);
           return questions;
         }
       }
@@ -232,6 +270,7 @@ class AIRagEngine {
    * Generate questions: checks Smart Question Bank first ($0.00), falls back to AI, and caches results.
    */
   public async generateQuestions(params: {
+    studentId?: string;
     academicStageId: string;
     gradeId: string;
     subjectId: string;
@@ -241,8 +280,8 @@ class AIRagEngine {
   }): Promise<GroundedQuestion[]> {
     const requiredCount = params.count || 3;
 
-    // 1. Try Smart Question Bank in TiDB ($0.00 AI Cost, instant response)
-    const cachedQuestions = await this.getQuestionsFromBank(params.chapterId, requiredCount);
+    // 1. Try Smart Question Bank in TiDB ($0.00 AI Cost, instant response, student deduplication)
+    const cachedQuestions = await this.getQuestionsFromBank(params.chapterId, requiredCount, params.studentId);
     if (cachedQuestions && cachedQuestions.length >= requiredCount) {
       return cachedQuestions;
     }

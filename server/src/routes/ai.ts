@@ -34,6 +34,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
     }
 
     const questions = await aiRagEngine.generateQuestions({
+      studentId: req.user!.id,
       academicStageId: studentProfile.academicStageId,
       gradeId: studentProfile.gradeId,
       subjectId: subject_id,
