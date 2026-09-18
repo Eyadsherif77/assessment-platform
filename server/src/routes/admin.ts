@@ -183,7 +183,7 @@ router.put('/teachers/:id/permissions', async (req: AuthenticatedRequest, res) =
     const { id } = req.params;
     const { permissions, is_active } = req.body;
 
-    const teacherCheck = await db.query('SELECT id, permissions FROM users WHERE id = $1 AND role = "TEACHER"', [id]);
+    const teacherCheck = await db.query("SELECT id, permissions FROM users WHERE id = $1 AND role = 'TEACHER'", [id]);
     if (teacherCheck.rows.length === 0) {
       return res.status(404).json({ error: 'حساب المعلم غير موجود' });
     }
