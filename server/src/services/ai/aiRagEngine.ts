@@ -279,7 +279,11 @@ class AIRagEngine {
 
     // 3. Cache newly generated questions to Question Bank for future 0$ reuse
     if (generatedQuestions.length > 0) {
-      this.saveQuestionsToBank(params, generatedQuestions).catch(e => console.warn('Cache save note:', e));
+      try {
+        await this.saveQuestionsToBank(params, generatedQuestions);
+      } catch (e) {
+        console.warn('Cache save note:', e);
+      }
     }
 
     return generatedQuestions;
