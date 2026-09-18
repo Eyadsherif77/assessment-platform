@@ -69,6 +69,24 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Root welcome & API status
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    platform: 'منصة التقييم من أجل التعليم',
+    description: 'National AI Assessment Platform API Service',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      meta: '/api/meta',
+      auth: '/api/auth',
+      books: '/api/books',
+      exams: '/api/exams'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({
@@ -145,4 +163,6 @@ async function startServer() {
   }
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
