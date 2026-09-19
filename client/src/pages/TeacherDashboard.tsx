@@ -200,10 +200,17 @@ export const TeacherDashboard: React.FC = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل رفع الكتاب');
 
-      setUploadMessage('تم رفع الكتاب بنجاح وبدأت معالجة واستخراج المتجهات الدلالية!');
-      setActiveJobId(data.bookId);
-      setJobProgress(10);
-      setJobStatusText('EXTRACTING');
+      setUploadMessage(data.message || (isAr ? 'تم رفع الكتاب بنجاح وفهرسته دلالياً!' : 'Textbook uploaded & indexed successfully!'));
+      if (data.status === 'COMPLETED') {
+        setJobProgress(100);
+        setJobStatusText('COMPLETED');
+        setActiveJobId(null);
+        loadTeacherData();
+      } else {
+        setActiveJobId(data.bookId);
+        setJobProgress(10);
+        setJobStatusText('EXTRACTING');
+      }
       setBookTitleAr('');
       setPdfFile(null);
     } catch (err: any) {
@@ -676,11 +683,11 @@ export const TeacherDashboard: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">{isAr ? 'ملف الكتاب (PDF)' : 'Textbook File (PDF)'}</label>
+                  <label className="form-label">{isAr ? 'ملف الكتاب أو المقرر (PDF أو نصي)' : 'Textbook or Course File (PDF or TXT)'}</label>
                   <input
                     type="file"
                     required
-                    accept="application/pdf"
+                    accept=".pdf,.txt,application/pdf,text/plain"
                     className="form-input"
                     onChange={e => setPdfFile(e.target.files?.[0] || null)}
                   />

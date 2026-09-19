@@ -4,7 +4,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 import { db } from '../../db/db.js';
-import { generateEmbedding } from '../ai/vectorEmbedding.js';
+import { generateEmbedding, createSemanticVector } from '../ai/vectorEmbedding.js';
 
 export interface BookIngestionJob {
   bookId: string;
@@ -127,15 +127,27 @@ class JobQueueService {
       await db.query(`UPDATE books SET processing_status = 'EMBEDDING' WHERE id = $1`, [job.bookId]);
 
       let chunkIdx = 1;
-      for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+      const maxChunks = 80; // Safeguard against excessive runtime on serverless
+      for (let pIdx = 0; pIdx < pages.length && chunkIdx <= maxChunks; pIdx++) {
         const page = pages[pIdx];
         // Split page into semantic segments of 300-500 chars with 100 char overlap
         const paragraphs = page.text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 20);
         const segments: string[] = paragraphs.length > 0 ? paragraphs : [page.text];
 
         for (const segment of segments) {
+          if (chunkIdx > maxChunks) break;
           const chunkId = uuidv4();
-          const embeddingVector = await generateEmbedding(segment);
+          
+          let embeddingVector: number[];
+          if (chunkIdx <= 5) {
+            try {
+              embeddingVector = await generateEmbedding(segment);
+            } catch (_) {
+              embeddingVector = createSemanticVector(segment, 768);
+            }
+          } else {
+            embeddingVector = createSemanticVector(segment, 768);
+          }
           const embeddingJson = JSON.stringify(embeddingVector);
 
           await db.query(

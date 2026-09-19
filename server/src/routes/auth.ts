@@ -30,10 +30,10 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'الرجاء إدخال كافة البيانات الأساسية المطلوبة' });
     }
 
-    const effectiveRole = role || 'STUDENT';
-    if (effectiveRole !== 'STUDENT') {
+    const effectiveRole = (role || 'STUDENT').toUpperCase().trim();
+    if (effectiveRole !== 'STUDENT' && effectiveRole !== 'TEACHER') {
       return res.status(400).json({
-        error: 'التسجيل الذاتي في المنصة مخصص حصرياً للطلاب. يتم إنشاء وتعيين حسابات المعلمين وإدارتها مركزياً من بوابة الإدارة.'
+        error: 'الدور المحدد غير مدعوم للتسجيل الذاتي. يرجى اختيار طالب أو معلم.'
       });
     }
 
@@ -43,10 +43,67 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
     }
 
-    // Student accounts have standard ID only (plain UUID)
     const userId = uuidv4();
     const passwordHash = await bcrypt.hash(password, 10);
 
+    if (effectiveRole === 'TEACHER') {
+      const cleanSpec = specialization ? specialization.substring(0, 3).toUpperCase() : 'GEN';
+      const hybridId = `HYBRID-TEA-${cleanSpec}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const defaultPerms = {
+        can_upload_books: true,
+        can_create_exams: true,
+        can_delete_content: true,
+        can_view_analytics: true,
+        is_active: true
+      };
+
+      await db.query(
+        `INSERT INTO users (id, hybrid_id, email, password_hash, role, full_name, permissions, is_active)
+         VALUES ($1, $2, $3, $4, 'TEACHER', $5, $6, 1)`,
+        [
+          userId,
+          hybridId,
+          email.toLowerCase().trim(),
+          passwordHash,
+          fullName.trim(),
+          JSON.stringify(defaultPerms)
+        ]
+      );
+
+      await db.query(
+        `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization)
+         VALUES ($1, $2, $3, $4)`,
+        [userId, fullName.trim(), schoolName || null, specialization || null]
+      );
+
+      const token = generateToken({
+        id: userId,
+        email: email.toLowerCase().trim(),
+        role: 'TEACHER',
+        fullName: fullName.trim()
+      });
+
+      return res.status(201).json({
+        message: 'تم إنشاء حساب المعلم بنجاح',
+        token,
+        user: {
+          id: userId,
+          hybrid_id: hybridId,
+          email: email.toLowerCase().trim(),
+          role: 'TEACHER',
+          fullName: fullName.trim(),
+          permissions: defaultPerms,
+          profile: {
+            user_id: userId,
+            full_name: fullName.trim(),
+            school_name: schoolName || null,
+            specialization: specialization || null
+          }
+        }
+      });
+    }
+
+    // Student accounts have standard ID only (plain UUID)
     await db.query(
       `INSERT INTO users (id, email, password_hash, role, full_name) VALUES ($1, $2, $3, 'STUDENT', $4)`,
       [userId, email.toLowerCase().trim(), passwordHash, fullName.trim()]
@@ -96,6 +153,82 @@ router.post('/register', async (req, res) => {
   } catch (error: any) {
     console.error('Registration error:', error);
     return res.status(500).json({ error: 'حدث خطأ أثناء إنشاء الحساب: ' + error.message });
+  }
+});
+
+// Dedicated Register Teacher Endpoint
+router.post('/register-teacher', async (req, res) => {
+  try {
+    const { email, password, fullName, specialization, schoolName } = req.body;
+
+    if (!email || !password || !fullName) {
+      return res.status(400).json({ error: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور واسم المعلم بالكامل' });
+    }
+
+    const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
+    }
+
+    const userId = uuidv4();
+    const cleanSpec = specialization ? specialization.substring(0, 3).toUpperCase() : 'GEN';
+    const hybridId = `HYBRID-TEA-${cleanSpec}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const passwordHash = await bcrypt.hash(password, 10);
+    const defaultPerms = {
+      can_upload_books: true,
+      can_create_exams: true,
+      can_delete_content: true,
+      can_view_analytics: true,
+      is_active: true
+    };
+
+    await db.query(
+      `INSERT INTO users (id, hybrid_id, email, password_hash, role, full_name, permissions, is_active)
+       VALUES ($1, $2, $3, $4, 'TEACHER', $5, $6, 1)`,
+      [
+        userId,
+        hybridId,
+        email.toLowerCase().trim(),
+        passwordHash,
+        fullName.trim(),
+        JSON.stringify(defaultPerms)
+      ]
+    );
+
+    await db.query(
+      `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization)
+       VALUES ($1, $2, $3, $4)`,
+      [userId, fullName.trim(), schoolName || null, specialization || null]
+    );
+
+    const token = generateToken({
+      id: userId,
+      email: email.toLowerCase().trim(),
+      role: 'TEACHER',
+      fullName: fullName.trim()
+    });
+
+    return res.status(201).json({
+      message: 'تم إنشاء حساب المعلم بنجاح',
+      token,
+      user: {
+        id: userId,
+        hybrid_id: hybridId,
+        email: email.toLowerCase().trim(),
+        role: 'TEACHER',
+        fullName: fullName.trim(),
+        permissions: defaultPerms,
+        profile: {
+          user_id: userId,
+          full_name: fullName.trim(),
+          school_name: schoolName || null,
+          specialization: specialization || null
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error('Teacher registration error:', error);
+    return res.status(500).json({ error: 'حدث خطأ أثناء إنشاء حساب المعلم: ' + error.message });
   }
 });
 
