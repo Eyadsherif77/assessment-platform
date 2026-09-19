@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
+import { extractTextFromPdf, extractTextFromTxt } from '../utils/pdfExtractor';
 import { 
   Upload, 
   FileText, 
@@ -169,52 +170,106 @@ export const TeacherDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [activeJobId]);
 
-  // Upload book handler
+  // Upload book handler (Client-side extraction for zero payload limits + safe response parsing)
   const handleUploadBook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bookTitleAr || !selectedStageId || !selectedGradeId || !selectedSubjectId || !pdfFile) {
-      alert('الرجاء إدخال كافة بيانات الكتاب واختيار الملف');
+      alert(isAr ? 'الرجاء إدخال كافة بيانات الكتاب واختيار الملف' : 'Please enter all book details and select a file');
       return;
     }
 
     setIsUploading(true);
     setUploadMessage(null);
+    setJobProgress(10);
+    setJobStatusText('EXTRACTING');
 
     try {
-      const formData = new FormData();
-      formData.append('title_ar', bookTitleAr);
-      formData.append('academic_stage_id', selectedStageId);
-      formData.append('grade_id', selectedGradeId);
-      formData.append('subject_id', selectedSubjectId);
-      formData.append('chapter_number', chapterNumber);
-      formData.append('chapter_title_ar', chapterTitleAr || 'الفصل الأول');
-      formData.append('school_type', schoolTypeTarget);
-      formData.append('file', pdfFile);
+      const isPdf = pdfFile.name.toLowerCase().endsWith('.pdf') || pdfFile.type === 'application/pdf';
+      const isTxt = pdfFile.name.toLowerCase().endsWith('.txt') || pdfFile.type === 'text/plain';
 
-      const res = await fetch(apiUrl('/api/books/upload'), {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
+      let pages: { pageNumber: number; text: string }[] = [];
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل رفع الكتاب');
-
-      setUploadMessage(data.message || (isAr ? 'تم رفع الكتاب بنجاح وفهرسته دلالياً!' : 'Textbook uploaded & indexed successfully!'));
-      if (data.status === 'COMPLETED') {
-        setJobProgress(100);
-        setJobStatusText('COMPLETED');
-        setActiveJobId(null);
-        loadTeacherData();
-      } else {
-        setActiveJobId(data.bookId);
-        setJobProgress(10);
-        setJobStatusText('EXTRACTING');
+      if (isPdf) {
+        setUploadMessage(isAr ? 'جاري استخراج وفهرسة نصوص الكتاب بدون قيود الحجم...' : 'Extracting textbook text without file size limits...');
+        pages = await extractTextFromPdf(pdfFile, (current, total) => {
+          const pct = Math.min(85, Math.round((current / total) * 75) + 10);
+          setJobProgress(pct);
+          setUploadMessage(isAr ? `جاري قراءة صفحات الكتاب: صفحة ${current} من ${total}...` : `Reading textbook: page ${current} of ${total}...`);
+        });
+      } else if (isTxt) {
+        setUploadMessage(isAr ? 'جاري معالجة نصوص المقرر...' : 'Processing course text...');
+        pages = await extractTextFromTxt(pdfFile);
       }
+
+      let res: Response;
+      if (pages.length > 0) {
+        setUploadMessage(isAr ? 'جاري حفظ الكتاب وفهرسة المقاطع دلالياً...' : 'Saving textbook and indexing semantic vectors...');
+        setJobProgress(90);
+        res = await fetch(apiUrl('/api/books/upload-parsed'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            title_ar: bookTitleAr,
+            academic_stage_id: selectedStageId,
+            grade_id: selectedGradeId,
+            subject_id: selectedSubjectId,
+            chapter_number: chapterNumber,
+            chapter_title_ar: chapterTitleAr || 'الفصل الأول',
+            school_type: schoolTypeTarget,
+            file_size: pdfFile.size,
+            file_name: pdfFile.name,
+            pages
+          })
+        });
+      } else {
+        // Fallback to standard multipart upload
+        const formData = new FormData();
+        formData.append('title_ar', bookTitleAr);
+        formData.append('academic_stage_id', selectedStageId);
+        formData.append('grade_id', selectedGradeId);
+        formData.append('subject_id', selectedSubjectId);
+        formData.append('chapter_number', chapterNumber);
+        formData.append('chapter_title_ar', chapterTitleAr || 'الفصل الأول');
+        formData.append('school_type', schoolTypeTarget);
+        formData.append('file', pdfFile);
+
+        res = await fetch(apiUrl('/api/books/upload'), {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData
+        });
+      }
+
+      // Safe JSON parsing to prevent Safari "The string did not match the expected pattern" error
+      let data: any = {};
+      const responseText = await res.text();
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (!res.ok) {
+          throw new Error(responseText.slice(0, 250) || (isAr ? 'فشل معالجة الكتاب على الخادم.' : 'Server processing failed.'));
+        }
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || (isAr ? 'فشل رفع ومعالجة الكتاب.' : 'Failed to upload textbook.'));
+      }
+
+      setUploadMessage(data.message || (isAr ? 'تم رفع ومعالجة الكتاب وفهرسته دلالياً بنجاح!' : 'Textbook uploaded & indexed successfully!'));
+      setJobProgress(100);
+      setJobStatusText('COMPLETED');
+      setActiveJobId(null);
+      loadTeacherData();
       setBookTitleAr('');
       setPdfFile(null);
     } catch (err: any) {
-      alert(err.message);
+      console.error('Upload book error:', err);
+      const msg = err.message || (isAr ? 'حدث خطأ أثناء معالجة الكتاب' : 'An error occurred while processing textbook');
+      setUploadMessage(msg);
+      alert(msg);
     } finally {
       setIsUploading(false);
     }

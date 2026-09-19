@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
 import { jobQueue } from '../services/jobs/jobQueue.js';
+import { createSemanticVector } from '../services/ai/vectorEmbedding.js';
 
 const router = Router();
 
@@ -132,6 +133,146 @@ router.post(
     } catch (err: any) {
       console.error('Book upload error:', err);
       return res.status(500).json({ error: 'حدث خطأ أثناء رفع الكتاب: ' + err.message });
+    }
+  }
+);
+
+// Upload parsed textbook pages (direct JSON from client-side extractor - bypassing payload limits)
+router.post(
+  '/upload-parsed',
+  authenticateToken,
+  requireRole(['TEACHER', 'ADMIN']),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const {
+        title_ar,
+        title_en,
+        academic_stage_id,
+        grade_id,
+        subject_id,
+        chapter_number,
+        chapter_title_ar,
+        school_type,
+        file_size,
+        file_name,
+        pages
+      } = req.body;
+
+      if (!title_ar || !academic_stage_id || !grade_id || !subject_id) {
+        return res.status(400).json({ error: 'الرجاء ملء جميع الحقول الإلزامية للكتاب' });
+      }
+
+      const pagesList: { pageNumber: number; text: string }[] = Array.isArray(pages) ? pages : [];
+      if (pagesList.length === 0) {
+        return res.status(400).json({ error: 'لم يتم العثور على صفحات أو نصوص مستخرجة في هذا الملف.' });
+      }
+
+      const bookId = uuidv4();
+      const effectiveSchoolType = school_type || 'كلاهما';
+      const effectiveFileSize = Number(file_size) || 0;
+      const effectiveFileName = file_name ? `/uploads/${file_name}` : '/uploads/course_book.pdf';
+
+      // 1. Insert book record
+      await db.query(
+        `INSERT INTO books (
+           id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
+           file_url, file_size, total_pages, school_type, processing_status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'COMPLETED')`,
+        [
+          bookId,
+          title_ar.trim(),
+          title_en ? title_en.trim() : title_ar.trim(),
+          academic_stage_id,
+          grade_id,
+          subject_id,
+          req.user!.id,
+          effectiveFileName,
+          effectiveFileSize,
+          pagesList.length,
+          effectiveSchoolType
+        ]
+      );
+
+      // 2. Insert primary chapter
+      const chapterId = uuidv4();
+      const chNum = parseInt(chapter_number, 10) || 1;
+      const chTitle = chapter_title_ar ? chapter_title_ar.trim() : 'الوحدة الأولى: المنهج الدراسي';
+      const firstPageNum = pagesList[0].pageNumber || 1;
+      const lastPageNum = pagesList[pagesList.length - 1].pageNumber || pagesList.length;
+
+      await db.query(
+        `INSERT INTO book_chapters (
+           id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          chapterId,
+          bookId,
+          chNum,
+          chTitle,
+          `Chapter ${chNum}`,
+          firstPageNum,
+          lastPageNum,
+          `محتوى ${chTitle} المستخرج ومفهرس دلالياً لدعم التقييم التشخيصي وبنوك الأسئلة.`
+        ]
+      );
+
+      // 3. Insert book pages
+      for (const p of pagesList) {
+        const pageId = uuidv4();
+        await db.query(
+          `INSERT INTO book_pages (id, book_id, page_number, raw_text, char_count)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [pageId, bookId, p.pageNumber, p.text, p.text.length]
+        );
+      }
+
+      // 4. Create semantic chunks
+      let chunkIdx = 1;
+      const maxChunks = 120;
+      for (let i = 0; i < pagesList.length && chunkIdx <= maxChunks; i++) {
+        const page = pagesList[i];
+        if (!page.text || page.text.trim().length < 15) continue;
+
+        const paragraphs = page.text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 20);
+        const segments = paragraphs.length > 0 ? paragraphs : [page.text];
+
+        for (const segment of segments) {
+          if (chunkIdx > maxChunks) break;
+          const chunkId = uuidv4();
+          const vector = createSemanticVector(segment, 768);
+
+          await db.query(
+            `INSERT INTO book_chunks (
+               id, book_id, chapter_id, academic_stage_id, grade_id, subject_id,
+               page_number, chunk_index, content, metadata, embedding
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              chunkId,
+              bookId,
+              chapterId,
+              academic_stage_id,
+              grade_id,
+              subject_id,
+              page.pageNumber,
+              chunkIdx++,
+              segment,
+              JSON.stringify({ page: page.pageNumber, charCount: segment.length, bookTitle: title_ar.trim() }),
+              JSON.stringify(vector)
+            ]
+          );
+        }
+      }
+
+      return res.status(201).json({
+        message: `تم رفع ومعالجة الكتاب بنجاح (${pagesList.length} صفحة و ${chunkIdx - 1} مقطع دلالي مفهرس).`,
+        bookId,
+        totalPages: pagesList.length,
+        chunksCount: chunkIdx - 1,
+        status: 'COMPLETED'
+      });
+    } catch (err: any) {
+      console.error('Parsed book upload error:', err);
+      return res.status(500).json({ error: 'حدث خطأ أثناء حفظ الكتاب المفهرس: ' + err.message });
     }
   }
 );
