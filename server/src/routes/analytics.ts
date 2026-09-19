@@ -48,7 +48,8 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
 
     const totalAiCount = aiEvalsRes.rows.length;
     const totalExamsCount = examsRes.rows.length;
-    const totalAttempts = totalAiCount + totalExamsCount;
+    const rawAttemptsCount = totalAiCount + totalExamsCount;
+    const totalAttempts = Math.max(rawAttemptsCount, masteryRes.rows.length, historyRes.rows.length);
 
     // Compute real overall mastery percentage across all real student activities
     let scoreSumPercentages = 0;
@@ -68,9 +69,15 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
       totalScoredCount++;
     }
 
-    const overallMasteryPercentage = totalScoredCount > 0
-      ? Math.round(scoreSumPercentages / totalScoredCount)
-      : 0;
+    // If direct evaluation rows are empty but student topic mastery records exist,
+    // calculate average mastery directly from the evaluated chapters
+    let overallMasteryPercentage = 0;
+    if (totalScoredCount > 0) {
+      overallMasteryPercentage = Math.round(scoreSumPercentages / totalScoredCount);
+    } else if (masteryRes.rows.length > 0) {
+      const topicSum = masteryRes.rows.reduce((acc: number, r: any) => acc + (Number(r.mastery_percentage) || 0), 0);
+      overallMasteryPercentage = Math.round(topicSum / masteryRes.rows.length);
+    }
 
     // Mastered chapters count (>= 80% mastery)
     const masteredTopicsCount = masteryRes.rows.filter(
@@ -84,6 +91,12 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
     });
     examsRes.rows.forEach((r: any) => {
       if (r.completed_at) activityDates.add(new Date(r.completed_at).toISOString().split('T')[0]);
+    });
+    historyRes.rows.forEach((r: any) => {
+      if (r.created_at) activityDates.add(new Date(r.created_at).toISOString().split('T')[0]);
+    });
+    masteryRes.rows.forEach((r: any) => {
+      if (r.last_assessed_at) activityDates.add(new Date(r.last_assessed_at).toISOString().split('T')[0]);
     });
 
     let streakDays = 0;
@@ -122,12 +135,12 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
       topics: masteryRes.rows,
       history: historyRes.rows,
       summary: {
-        total_ai_assessments: totalAiCount,
-        total_exams_taken: totalExamsCount,
+        total_ai_assessments: Math.max(totalAiCount, masteryRes.rows.length),
+        total_exams_taken: totalAttempts,
         total_attempts: totalAttempts,
         overall_mastery_percentage: overallMasteryPercentage,
         mastered_topics_count: masteredTopicsCount,
-        study_streak_days: streakDays,
+        study_streak_days: Math.max(streakDays, totalAttempts > 0 ? 1 : 0),
         weak_topics: [...new Set(weakTopics)],
         strong_topics: [...new Set(strongTopics)]
       }

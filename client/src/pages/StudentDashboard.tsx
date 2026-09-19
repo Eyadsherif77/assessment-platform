@@ -158,6 +158,17 @@ export const StudentDashboard: React.FC = () => {
   // Learning Analytics Data
   const [analytics, setAnalytics] = useState<any | null>(null);
 
+  const calculatedMastery = (analytics?.summary?.overall_mastery_percentage !== undefined && analytics?.summary?.overall_mastery_percentage > 0)
+    ? analytics.summary.overall_mastery_percentage
+    : (analytics?.topics && analytics.topics.length > 0
+        ? Math.round(analytics.topics.reduce((acc: number, t: any) => acc + (Number(t.mastery_percentage) || 0), 0) / analytics.topics.length)
+        : 0);
+
+  const totalCompletedAssessments = analytics?.summary?.total_exams_taken 
+    || analytics?.summary?.total_attempts 
+    || analytics?.topics?.length 
+    || 0;
+
   // Profile edit modal state
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [allStages, setAllStages] = useState<any[]>([]);
@@ -642,12 +653,12 @@ export const StudentDashboard: React.FC = () => {
                   <Award size={18} color="#16A34A" />
                 </div>
                 <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#16A34A' }}>
-                  {`${analytics?.summary?.overall_mastery_percentage ?? 0}%`}
+                  {`${calculatedMastery}%`}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#16A34A', fontWeight: 700 }}>
-                  {(analytics?.summary?.overall_mastery_percentage || 0) >= 80 
+                  {calculatedMastery >= 80 
                     ? (isAr ? '✓ أداء متقدم ومطابق لمواصفات الوزارة' : '✓ Advanced performance matching specs')
-                    : (analytics?.summary?.total_attempts || 0) > 0
+                    : totalCompletedAssessments > 0
                     ? (isAr ? '📈 قيد التطوير والتحسين المستمر' : '📈 Developing in progress')
                     : (isAr ? '🌟 ابدأ أول تقييم لتحديد مستواك' : '🌟 Take your first quiz to assess level')}
                 </div>
@@ -1738,7 +1749,7 @@ export const StudentDashboard: React.FC = () => {
                   {isAr ? 'مستوى الإتقان التراكمي' : 'Cumulative Mastery'}
                 </span>
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#16A34A' }}>
-                  {`${analytics?.summary?.overall_mastery_percentage ?? 0}%`}
+                  {`${calculatedMastery}%`}
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {isAr ? 'وفق معايير التقييم التشخيصي' : 'Based on diagnostic evaluations'}
@@ -1750,7 +1761,7 @@ export const StudentDashboard: React.FC = () => {
                   {isAr ? 'الامتحانات المكتملة' : 'Completed Exams'}
                 </span>
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
-                  {analytics?.summary?.total_exams_taken ?? 0}
+                  {totalCompletedAssessments}
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {isAr ? 'بمعدل تصحيح فوري' : 'With instant diagnosis'}
