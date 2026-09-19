@@ -10,6 +10,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 import { createSemanticVector } from '../services/ai/vectorEmbedding.js';
+import { cleanArabicText } from '../utils/arabicTextNormalizer.js';
 
 const router = Router();
 
@@ -171,7 +172,10 @@ router.post(
         return res.status(400).json({ error: 'الرجاء ملء جميع الحقول الإلزامية للكتاب' });
       }
 
-      const pagesList: { pageNumber: number; text: string }[] = Array.isArray(pages) ? pages : [];
+      const rawPages: { pageNumber: number; text: string }[] = Array.isArray(pages) ? pages : [];
+      const pagesList = rawPages
+        .map(p => ({ pageNumber: p.pageNumber, text: cleanArabicText(p.text) }))
+        .filter(p => p.text.length > 10);
       if (pagesList.length === 0) {
         return res.status(400).json({ error: 'لم يتم العثور على صفحات أو نصوص مستخرجة في هذا الملف.' });
       }
@@ -377,15 +381,20 @@ router.post(
         totalNumPages = pdfData.numpages || 1;
         const rawText = pdfData.text || '';
 
-        const splitPages = rawText.split(/\f|\n\s*\n\s*---\s*Page\s*\d+\s*---\s*\n/).map((s: string) => s.trim()).filter((s: string) => s.length > 15);
+        const splitPages = rawText
+          .split(/\f|\n\s*\n\s*---\s*Page\s*\d+\s*---\s*\n/)
+          .map((s: string) => cleanArabicText(s.trim()))
+          .filter((s: string) => s.length > 15);
+
         if (splitPages.length > 1) {
           pages = splitPages.map((txt: string, idx: number) => ({ pageNumber: idx + 1, text: txt }));
         } else {
-          const pageSize = Math.max(800, Math.ceil(rawText.length / totalNumPages));
+          const cleanedText = cleanArabicText(rawText);
+          const pageSize = Math.max(800, Math.ceil(cleanedText.length / totalNumPages));
           let cur = 0;
           let pNum = 1;
-          while (cur < rawText.length) {
-            const chunk = rawText.slice(cur, cur + pageSize).trim();
+          while (cur < cleanedText.length) {
+            const chunk = cleanedText.slice(cur, cur + pageSize).trim();
             if (chunk.length > 0) pages.push({ pageNumber: pNum++, text: chunk });
             cur += pageSize;
           }
@@ -393,7 +402,7 @@ router.post(
       } catch (pdfErr) {
         console.warn('pdf-parse warning:', pdfErr);
         const rawContent = fullBuffer.toString('utf8');
-        pages = [{ pageNumber: 1, text: rawContent.slice(0, 5000) }];
+        pages = [{ pageNumber: 1, text: cleanArabicText(rawContent.slice(0, 5000)) }];
       }
 
       if (pages.length === 0) {

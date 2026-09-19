@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
+import { cleanArabicText } from '../utils/arabicTextNormalizer';
 import { 
   BookOpen, 
   Sparkles, 
@@ -335,7 +336,7 @@ export const StudentDashboard: React.FC = () => {
           book_id: selectedAiBook.id,
           chapter_id: selectedAiChapterId,
           subject_id: selectedAiBook.subject_id,
-          count: 3
+          count: 5
         })
       });
 
@@ -1373,8 +1374,8 @@ export const StudentDashboard: React.FC = () => {
                                         #{chunk.chunk_index || i + 1}
                                       </span>
                                     </div>
-                                    <p style={{ margin: 0, color: 'var(--text-title)', whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
-                                      {chunk.content || chunk.chunk_text || ''}
+                                    <p style={{ margin: 0, color: 'var(--text-title)', whiteSpace: 'pre-line', wordBreak: 'break-word', fontSize: '0.95rem', lineHeight: 1.9 }}>
+                                      {cleanArabicText(chunk.content || chunk.chunk_text || '')}
                                     </p>
                                   </div>
                                 ))}

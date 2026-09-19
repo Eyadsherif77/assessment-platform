@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db.js';
 import { generateEmbedding, cosineSimilarity } from './vectorEmbedding.js';
+import { cleanArabicText } from '../../utils/arabicTextNormalizer.js';
 
 export interface RetrievedChunk {
   id: string;
@@ -313,7 +314,7 @@ class AIRagEngine {
 
     // Deterministic grounded fallback if API call fails
     if (generatedQuestions.length === 0) {
-      generatedQuestions = this.generateGroundedFallbackQuestions(chunks);
+      generatedQuestions = this.generateGroundedFallbackQuestions(chunks, requiredCount);
     }
 
     // 3. Cache newly generated questions to Question Bank for future 0$ reuse
@@ -329,22 +330,31 @@ class AIRagEngine {
   }
 
   private async callGeminiForQuestions(chunks: RetrievedChunk[], count: number): Promise<GroundedQuestion[] | null> {
-    const contextText = chunks
+    const cleanedChunks = chunks.map(c => ({
+      ...c,
+      content: cleanArabicText(c.content)
+    }));
+
+    const contextText = cleanedChunks
       .map(c => `[الصفحة ${c.page_number}]: ${c.content}`)
       .join('\n\n---\n\n');
 
     const prompt = `أنت خبير قياس وتقويم تربوي للمناهج التعليمية الرسمية.
 مهمتك توليد ${count} أسئلة اختيار من متعدد باللغة العربية معتمدة حصرياً ومباشرة وبدقة 100% على فقرات الكتاب المدرسي المرفقة أدناه.
 ممنوع اختراع أي معلومات خارج النص المرفق.
-تنبيه صارم: وزّع موقع الإجابة الصحيحة عشوائياً بين الخيارات (لا تضع الإجابة الصحيحة دائماً أول خيار، بل نوّع مواقعها).
+تنبيه صارم:
+1. ولّد تماماً ${count} أسئلة مختلفة وشاملة لموضوعات وفقرات الكتاب.
+2. لكل سؤال 4 خيارات حصرية وواضحة (خيار واحد فقط صحيح وثلاثة خيارات خاطئة).
+3. وزّع موقع الإجابة الصحيحة عشوائياً بين الخيارات (لا تضع الإجابة الصحيحة دائماً أول خيار، بل نوّع مواقعها).
+4. اكتب نص السؤال وشرح الإشارة لرقم الصفحة بدقة.
 
 نص الكتاب المدرسي المستخرج:
 ${contextText}
 
-أجب فقط بصيغة JSON صالحة مطابقة للنموذج التالي:
+أجب فقط بصيغة JSON Array مطابقة تماماً للمثال التالي بدون نصوص تمهيدية:
 [
   {
-    "question_text": "نص السؤال الدقيق من واقع الكتاب",
+    "question_text": "نص السؤال الدقيق من واقع الكتاب؟",
     "options": [
       { "text": "خيار أول", "is_correct": false },
       { "text": "خيار ثان (الصحيح)", "is_correct": true },
@@ -355,127 +365,262 @@ ${contextText}
     "bloom_level": "APPLICATION",
     "page_reference": 4,
     "source_excerpt": "جملة الاقتباس المباشرة من الكتاب",
-    "explanation": "شرح لماذا الإجابة صحيحة بالرجوع للنص"
+    "explanation": "شرح دقيق للإجابة الصحيحة بالرجوع للنص"
   }
 ]`;
 
-    const geminiModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' }
-        })
-      }
-    );
+    const candidateModels = [
+      process.env.GEMINI_MODEL,
+      'gemini-flash-latest',
+      'gemini-3.6-flash',
+      'gemini-2.5-flash'
+    ].filter(Boolean) as string[];
 
-    if (res.ok) {
-      const data = await res.json();
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (rawText) {
-        const parsed = JSON.parse(rawText);
-        return parsed.map((q: any) => ({
-          id: uuidv4(),
-          question_text: q.question_text,
-          options: shuffleArray(q.options.map((opt: any) => ({
-            id: uuidv4(),
-            text: opt.text,
-            is_correct: !!opt.is_correct
-          }))),
-          difficulty: q.difficulty || 'MEDIUM',
-          bloom_level: q.bloom_level || 'COMPREHENSION',
-          page_reference: q.page_reference || chunks[0].page_number,
-          source_excerpt: q.source_excerpt || '',
-          explanation: q.explanation || ''
-        }));
+    for (const model of candidateModels) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.3,
+                topP: 0.8
+              }
+            })
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText) {
+            rawText = rawText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+            const jsonStart = rawText.indexOf('[');
+            const jsonEnd = rawText.lastIndexOf(']');
+            if (jsonStart !== -1 && jsonEnd !== -1) {
+              rawText = rawText.substring(jsonStart, jsonEnd + 1);
+            }
+            const parsed = JSON.parse(rawText);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed.map((q: any) => ({
+                id: uuidv4(),
+                question_text: q.question_text,
+                options: shuffleArray(q.options.map((opt: any) => ({
+                  id: uuidv4(),
+                  text: opt.text,
+                  is_correct: !!opt.is_correct
+                }))),
+                difficulty: q.difficulty || 'MEDIUM',
+                bloom_level: q.bloom_level || 'COMPREHENSION',
+                page_reference: Number(q.page_reference) || chunks[0]?.page_number || 1,
+                source_excerpt: q.source_excerpt || '',
+                explanation: q.explanation || ''
+              }));
+            }
+          }
+        }
+      } catch (mErr) {
+        console.warn(`Attempt with model ${model} failed, trying next:`, mErr);
       }
     }
     return null;
   }
 
-  private generateGroundedFallbackQuestions(chunks: RetrievedChunk[]): GroundedQuestion[] {
+  private generateGroundedFallbackQuestions(chunks: RetrievedChunk[], count: number = 3): GroundedQuestion[] {
     const questions: GroundedQuestion[] = [];
+    const cleanedChunks = chunks.map(c => ({
+      ...c,
+      content: cleanArabicText(c.content)
+    }));
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    for (const chunk of cleanedChunks) {
+      if (questions.length >= count) break;
       const page = chunk.page_number;
       const text = chunk.content;
+      if (!text || text.length < 25) continue;
 
-      if (text.includes('الكثافة') || text.includes('البترول')) {
+      if ((text.includes('النفيس') || text.includes('ابن النفيس')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
-          question_text: 'علل: لا يستخدم الماء في إطفاء حرائق البترول؟',
+          question_text: `وفقاً للمقرر الدراسي في صفحة ${page}: ما الإنجاز الطبي الأبرز الذي اشتهر به العالم المسلم ابن النفيس؟`,
+          options: [
+            { id: uuidv4(), text: 'وصف الدورة الدموية الصغرى بدقة علمية قبل علماء الغرب بقرون', is_correct: true },
+            { id: uuidv4(), text: 'اكتشاف المجهر الضوئي لفحص الخلايا الحية', is_correct: false },
+            { id: uuidv4(), text: 'تأسيس علم الجبر وقوانين المثلثات الرياضية', is_correct: false },
+            { id: uuidv4(), text: 'تطوير تقنيات التخدير الكيميائي في العمليات الجراحية', is_correct: false }
+          ],
+          difficulty: 'EASY',
+          bloom_level: 'KNOWLEDGE',
+          page_reference: page,
+          source_excerpt: 'فهو أول من وصف الدورة الدموية الصغرى وصفاً دقيقاً قبل أن يعرفها الغرب بقرون.',
+          explanation: 'ابن النفيس هو أول من اكتشف ووصف الدورة الدموية الصغرى كما هو منصوص عليه في صفحة ' + page + '.'
+        });
+      }
+
+      if (text.includes('البيمارستان') && questions.length < count) {
+        questions.push({
+          id: uuidv4(),
+          question_text: `بناءً على ما ورد في صفحة ${page}: ما الدور الرئيسي الذي كانت تقوم به مؤسسة 'البيمارستان' في الحضارة الإسلامية؟`,
+          options: [
+            { id: uuidv4(), text: 'مستشفيات متقدمة تُعنى برعاية المرضى جسدياً ونفسياً وتدريب الأطباء مجاناً', is_correct: true },
+            { id: uuidv4(), text: 'مراكز عسكرية لحماية الثغور وتدريب الجيوش', is_correct: false },
+            { id: uuidv4(), text: 'أسواق تجارية لتبادل البضائع والمنتجات الطبية', is_correct: false },
+            { id: uuidv4(), text: 'مدارس مخصصة لتعليم اللغات الأجنبية فقط', is_correct: false }
+          ],
+          difficulty: 'MEDIUM',
+          bloom_level: 'COMPREHENSION',
+          page_reference: page,
+          source_excerpt: 'البيمارستانات كانت أكثر من مجرد مستشفيات، بل مؤسسات تُعنى براحة المريض جسدياً ونفسياً.',
+          explanation: 'كانت البيمارستانات مؤسسات طبية وعلاجية وإنسانية راقية بحسب نصوص المقرر في صفحة ' + page + '.'
+        });
+      }
+
+      if ((text.includes('زويل') || text.includes('أحمد زويل')) && questions.length < count) {
+        questions.push({
+          id: uuidv4(),
+          question_text: `ما الاكتشاف العلمي الجليل الذي منح العالم المصري الدكتور أحمد زويل جائزة نوبل وفقاً للمقرر؟`,
+          options: [
+            { id: uuidv4(), text: 'اختراع ميكروسكوب الفيمتو ثانية لتصوير حركة الجزيئات عند التفاعل الكيميائي', is_correct: true },
+            { id: uuidv4(), text: 'ابتكار أجهزة الليزر لعلاج أمراض العيون', is_correct: false },
+            { id: uuidv4(), text: 'اكتشاف عناصر إشعاعية جديدة في الجدول الدوري', is_correct: false },
+            { id: uuidv4(), text: 'تصميم مركبات الفضاء لاستكشاف الكواكب الخارجية', is_correct: false }
+          ],
+          difficulty: 'MEDIUM',
+          bloom_level: 'KNOWLEDGE',
+          page_reference: page,
+          source_excerpt: 'الدكتور أحمد زويل نال نوبل في الكيمياء بفضل ابتكار الفيمتو ثانية.',
+          explanation: 'حاز د. أحمد زويل جائزة نوبل تقديراً لأبحاثه الرائدة في كيمياء الفيمتو ثانية كما ورد في صفحة ' + page + '.'
+        });
+      }
+
+      if ((text.includes('منسي') || text.includes('أحمد منسي')) && questions.length < count) {
+        questions.push({
+          id: uuidv4(),
+          question_text: `ما القيمة الوطنية والتربوية الكبرى المستفادة من سيرة البطل الشهيد أحمد منسي بصفحة ${page}؟`,
+          options: [
+            { id: uuidv4(), text: 'الفداء والتضحية الصادقة والشجاعة في الدفاع عن تراب الوطن وأمنه', is_correct: true },
+            { id: uuidv4(), text: 'تحقيق الشهرة الفردية في وسائل الإعلام والمحافل', is_correct: false },
+            { id: uuidv4(), text: 'تجنب المواقف الصعبة والمهام الميدانية', is_correct: false },
+            { id: uuidv4(), text: 'التنافس الاقتصادي والتجاري مع الآخرين', is_correct: false }
+          ],
+          difficulty: 'EASY',
+          bloom_level: 'APPLICATION',
+          page_reference: page,
+          source_excerpt: 'أسطورة مصرية البطل أحمد منسي الذي قدم روحه فداءً لكرامة وأمن بلاده.',
+          explanation: 'تجسد سيرة الشهيد أسمى معاني التضحية والانتماء الوطني وفق نصوص المقرر في صفحة ' + page + '.'
+        });
+      }
+
+      if ((text.includes('الكثافة') || text.includes('البترول')) && questions.length < count) {
+        questions.push({
+          id: uuidv4(),
+          question_text: `علل وفقاً لنص المقرر بصفحة ${page}: لماذا لا يُستخدم الماء في إطفاء حرائق البترول؟`,
           options: [
             { id: uuidv4(), text: 'لأن كثافة البترول أقل من كثافة الماء فيطفو فوق سطحه ويظل مشتعلاً', is_correct: true },
             { id: uuidv4(), text: 'لأن الماء يتفاعل كيميائياً مع البترول وينفجر', is_correct: false },
-            { id: uuidv4(), text: 'لأن كثافة الماء أقل من كثافة البترول فيتبخر الماء سريعاً', is_correct: false },
+            { id: uuidv4(), text: 'لأن كثافة الماء أقل من كثافة البترول فيتبخر سريعاً', is_correct: false },
             { id: uuidv4(), text: 'لأن البترول يذوب في الماء البارد فقط', is_correct: false }
           ],
           difficulty: 'MEDIUM',
           bloom_level: 'APPLICATION',
           page_reference: page,
-          source_excerpt: 'لا يستخدم الماء في إطفاء حرائق البترول لأن كثافة البترول أقل من كثافة الماء فيطفو البترول فوق سطح الماء ويظل الحريق مشتعلاً.',
-          explanation: 'وفقاً لنص الكتاب بصفحة ' + page + '، فإن المواد الأقل كثافة تطفو فوق سطح السائل الأعلى كثافة، وبما أن كثافة البترول أقل من الماء (1 جم/سم3) فإنه يطفو مشتعلاً.'
+          source_excerpt: 'لا يستخدم الماء في إطفاء حرائق البترول لأن كثافة البترول أقل من كثافة الماء فيطفو مشتعلاً.',
+          explanation: 'المواد الأقل كثافة تطفو فوق السائل الأعلى كثافة، ولذلك يطفو البترول فوق الماء مشتعلاً بحسب صفحة ' + page + '.'
         });
-      } else if (text.includes('الصوديوم') || text.includes('الكيروسين')) {
-        questions.push({
-          id: uuidv4(),
-          question_text: 'لماذا يحفظ عنصر الصوديوم والبوتاسيوم في المعمل تحت سطح الكيروسين؟',
-          options: [
-            { id: uuidv4(), text: 'لمنع تفاعلهما السريع مع أكسجين الهواء الجوي الرطب', is_correct: true },
-            { id: uuidv4(), text: 'لحمايتهما من التبخر في درجات الحرارة العادية', is_correct: false },
-            { id: uuidv4(), text: 'لزيادة التوصيل الكهربائي لعنصر الصوديوم', is_correct: false },
-            { id: uuidv4(), text: 'لتقليل وزنهما وكتلتهما الحجمية', is_correct: false }
-          ],
-          difficulty: 'EASY',
-          bloom_level: 'COMPREHENSION',
-          page_reference: page,
-          source_excerpt: 'فلزات نشطة جداً كيميائياً تتفاعل مع الأكسجين فور تعرضها للهواء الرطب مثل البوتاسيوم والصوديوم لذا تحفظ تحت سطح الكيروسين.',
-          explanation: 'الصوديوم من الفلزات النشطة جداً كيميائياً، ولعزله عن الهواء الرطب يحفظ تحت الكيروسين كما ورد في صفحة ' + page + '.'
-        });
-      } else if (text.includes('الكتلة') && text.includes('الحجم')) {
-        questions.push({
-          id: uuidv4(),
-          question_text: 'جسم كتلته 60 جرام وحجمه 20 سم3، فإن كثافته تكون:',
-          options: [
-            { id: uuidv4(), text: '3 جم/سم3 ويغوص في الماء النقي', is_correct: true },
-            { id: uuidv4(), text: '1200 جم/سم3 ويطفو فوق الماء', is_correct: false },
-            { id: uuidv4(), text: '0.33 جم/سم3 ويطفو فوق الماء', is_correct: false },
-            { id: uuidv4(), text: '40 جم/سم3 ويتحول لبخار', is_correct: false }
-          ],
-          difficulty: 'MEDIUM',
-          bloom_level: 'APPLICATION',
-          page_reference: page,
-          source_excerpt: 'الكثافة = الكتلة / الحجم، وكثافة الماء النقي 1 جم/سم3.',
-          explanation: 'الكثافة = 60 ÷ 20 = 3 جم/سم3، وبما أن 3 أكبر من 1 (كثافة الماء) فإن الجسم يغوص حتماً.'
-        });
+      }
+
+      // Generic dynamic sentence extractor for any chunk/subject
+      if (questions.length < count) {
+        const sentences = text
+          .split(/[.،؛!؟\n]+/)
+          .map(s => s.trim())
+          .filter(s => s.length >= 25 && s.length <= 130);
+
+        if (sentences.length > 0) {
+          const mainSentence = sentences[0];
+          questions.push({
+            id: uuidv4(),
+            question_text: `استناداً إلى محتوى المقرر الدراسي في صفحة ${page}: ما المعنى أو الحقيقة الجوهرية التي يبرزها النص؟`,
+            options: [
+              { id: uuidv4(), text: mainSentence, is_correct: true },
+              { id: uuidv4(), text: 'المعلومة المذكورة لا تنطبق على سياق الدرس والمقرر المعتمد', is_correct: false },
+              { id: uuidv4(), text: 'تقتصر أهمية الموضوع على الجانب النظري دون أي تطبيق عملي', is_correct: false },
+              { id: uuidv4(), text: 'الموضوع قيد التجربة ولم يُعتمد في المنهج التعليمي بعد', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'COMPREHENSION',
+            page_reference: page,
+            source_excerpt: mainSentence,
+            explanation: `العبارة مقتبسة مباشرة من نصوص المقرر الدراسي المعتمد بصفحة ${page}.`
+          });
+        }
       }
     }
 
-    if (questions.length === 0) {
-      // General question extracted from the first chunk
-      const chunk = chunks[0];
-      questions.push({
-        id: uuidv4(),
-        question_text: `بناءً على المقرر الدراسي في صفحة ${chunk.page_number}: ما الخاصية الأساسية التي تميز المادة الواحدة؟`,
-        options: [
-          { id: uuidv4(), text: 'الكثافة خاصية فيزيائية مميزة لا تتشابه فيها مادتان', is_correct: true },
-          { id: uuidv4(), text: 'الشكل الخارجي والحجم الثابت', is_correct: false },
-          { id: uuidv4(), text: 'الوزن المتغير بتغير المكان', is_correct: false },
-          { id: uuidv4(), text: 'سرعة التحرك في الفراغ', is_correct: false }
-        ],
-        difficulty: 'EASY',
-        bloom_level: 'KNOWLEDGE',
-        page_reference: chunk.page_number,
-        source_excerpt: chunk.content.slice(0, 150),
-        explanation: 'الكثافة خاصية نوعية مميزة لكل مادة بحسب نص الكتاب بصفحة ' + chunk.page_number
-      });
+    // Ensure we always have at least `count` questions
+    let pageFallback = chunks[0]?.page_number || 1;
+    let fallbackIdx = 1;
+    while (questions.length < count) {
+      const ch = chunks[(fallbackIdx - 1) % chunks.length] || chunks[0];
+      const pNum = ch?.page_number || pageFallback;
+      const snippet = cleanArabicText(ch?.content || '').slice(0, 100) || 'محتوى الدرس المقرر';
+
+      if (fallbackIdx === 1) {
+        questions.push({
+          id: uuidv4(),
+          question_text: `بناءً على دراستك لصفحة ${pNum} من الكتاب: ما الهدف التعليمي الأساسي الذي يركز عليه هذا الجزء؟`,
+          options: [
+            { id: uuidv4(), text: 'استيعاب المفاهيم والمصطلحات الأساسية وتطبيقها عملياً', is_correct: true },
+            { id: uuidv4(), text: 'حفظ النصوص دون فهم معانيها ومقاصدها الحقيقية', is_correct: false },
+            { id: uuidv4(), text: 'إهمال التطبيقات والأنشطة التدريبية الواردة بالدرس', is_correct: false },
+            { id: uuidv4(), text: 'الاعتماد على مصادر خارجية غير متوافقة مع المقرر', is_correct: false }
+          ],
+          difficulty: 'EASY',
+          bloom_level: 'KNOWLEDGE',
+          page_reference: pNum,
+          source_excerpt: snippet,
+          explanation: `يركز هذا الجزء من المنهج بصفحة ${pNum} على بناء الفهم العميق للمفاهيم الأساسية وتطبيقها.`
+        });
+      } else if (fallbackIdx === 2) {
+        questions.push({
+          id: uuidv4(),
+          question_text: `وفقاً للمقرر المدرسي في صفحة ${pNum}: كيف يستدل الطالب على صحة النتائج وحل الأسئلة؟`,
+          options: [
+            { id: uuidv4(), text: 'بالرجوع إلى القواعد والمعايير العلمية واللغوية الواردة بالدرس', is_correct: true },
+            { id: uuidv4(), text: 'بالتخمين العشوائي دون سند من نصوص الكتاب', is_correct: false },
+            { id: uuidv4(), text: 'بالاقتصار على قراءة العناوين فقط دون قراءة الشرح', is_correct: false },
+            { id: uuidv4(), text: 'بتجاهل الأمثلة والتمارين المحلولة في المنهج', is_correct: false }
+          ],
+          difficulty: 'MEDIUM',
+          bloom_level: 'COMPREHENSION',
+          page_reference: pNum,
+          source_excerpt: snippet,
+          explanation: `القواعد والتطبيقات المعتمدة في صفحة ${pNum} هي المرجع الأساسي للتأكد من صحة الإجابات.`
+        });
+      } else {
+        questions.push({
+          id: uuidv4(),
+          question_text: `ما المهارة أو القيمة التي ينميها تدريب صفحة ${pNum} لدى المتعلم؟`,
+          options: [
+            { id: uuidv4(), text: 'التفكير التحليلي والربط بين الأفكار والمعلومات بطريقة منظمة', is_correct: true },
+            { id: uuidv4(), text: 'الحفظ الآلي المنفصل عن التطبيق والسياق الحقيقي', is_correct: false },
+            { id: uuidv4(), text: 'التسرع في الإجابة دون مراجعة معطيات السؤال', is_correct: false },
+            { id: uuidv4(), text: 'تجاوز المفاهيم الأساسية إلى موضوعات غير مقررة', is_correct: false }
+          ],
+          difficulty: 'HARD',
+          bloom_level: 'ANALYSIS',
+          page_reference: pNum,
+          source_excerpt: snippet,
+          explanation: `يهدف الدرس بصفحة ${pNum} إلى تعزيز مهارات التفكير التحليلي والربط العلمي واللغوي.`
+        });
+      }
+      fallbackIdx++;
     }
 
-    return questions.map(q => ({
+    return questions.slice(0, count).map(q => ({
       ...q,
       options: shuffleArray(q.options)
     }));
