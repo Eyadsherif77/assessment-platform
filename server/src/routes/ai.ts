@@ -19,7 +19,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
     }
 
-    // Verify book belongs to student's grade & school_type
+    // Student Safety Rule: Verify book belongs to student's academic_stage_id, grade_id & school_type
     const bookRes = await db.query(
       `SELECT id, title_ar, academic_stage_id, grade_id, school_type FROM books WHERE id = $1`,
       [book_id]
@@ -30,13 +30,22 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
     }
 
     const book = bookRes.rows[0];
-    if (book.grade_id !== studentProfile.gradeId) {
-      return res.status(403).json({ error: 'غير مصرح لك بإجراء تقييم لكتاب خارج صفك الدراسي' });
+    if (book.academic_stage_id !== studentProfile.academicStageId || book.grade_id !== studentProfile.gradeId) {
+      return res.status(403).json({ error: 'غير مصرح لك بإجراء تقييم لكتاب خارج مرحلتك وصفك الدراسي' });
     }
 
     const studentSchoolType = studentProfile.schoolType || 'عربي';
     if (book.school_type && book.school_type !== 'كلاهما' && book.school_type !== studentSchoolType) {
       return res.status(403).json({ error: 'غير مصرح لك بإجراء تقييم لكتاب غير مخصص لنوع مدرستك' });
+    }
+
+    // Verify chapter belongs to book
+    const chapterRes = await db.query(
+      `SELECT id FROM book_chapters WHERE id = $1 AND book_id = $2`,
+      [chapter_id, book_id]
+    );
+    if (chapterRes.rows.length === 0) {
+      return res.status(400).json({ error: 'الفصل الدراسي المختار لا ينتمي لهذا الكتاب' });
     }
 
     const questions = await aiRagEngine.generateQuestions({
@@ -49,9 +58,12 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       count: parseInt(count, 10) || 3
     });
 
-    // Strip out is_correct from options before sending to student client
+    // Strip out is_correct from options before sending to student client, but retain source grounding (chunk_id, book_id, chapter_id)
     const sanitizedQuestions = questions.map(q => ({
       id: q.id,
+      chunk_id: q.chunk_id,
+      book_id: q.book_id,
+      chapter_id: q.chapter_id,
       question_text: q.question_text,
       difficulty: q.difficulty,
       bloom_level: q.bloom_level,
@@ -72,6 +84,12 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
     });
   } catch (err: any) {
     console.error('AI Generate Quiz error:', err);
+    if (err.message?.includes('Insufficient educational content for assessment generation')) {
+      return res.status(422).json({
+        error: 'المحتوى التعليمي المستخرج من هذا الفصل غير كافٍ لصياغة أسئلة تقييمية معتمدة.',
+        code: 'INSUFFICIENT_EDUCATIONAL_CONTENT'
+      });
+    }
     return res.status(500).json({ error: 'خطأ في توليد التقييم الذكي: ' + err.message });
   }
 });
@@ -88,6 +106,19 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
     const studentProfile = req.studentProfile;
     if (!studentProfile) {
       return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
+    }
+
+    // Student Safety Rule: Verify book belongs to student's academic stage and grade
+    const bookRes = await db.query(
+      `SELECT id, academic_stage_id, grade_id FROM books WHERE id = $1`,
+      [book_id]
+    );
+    if (
+      bookRes.rows.length === 0 ||
+      bookRes.rows[0].academic_stage_id !== studentProfile.academicStageId ||
+      bookRes.rows[0].grade_id !== studentProfile.gradeId
+    ) {
+      return res.status(403).json({ error: 'غير مصرح لك بإرسال تقييم لكتاب خارج مرحلتك وصفك الدراسي' });
     }
 
     const report = await aiRagEngine.evaluateSubmission({

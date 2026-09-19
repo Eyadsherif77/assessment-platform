@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db.js';
 import { generateEmbedding, cosineSimilarity } from './vectorEmbedding.js';
-import { cleanArabicText } from '../../utils/arabicTextNormalizer.js';
+import { cleanArabicText, stripDocumentMetadataAndStructure } from '../../utils/arabicTextNormalizer.js';
 
 export interface RetrievedChunk {
   id: string;
@@ -16,13 +16,90 @@ export interface RetrievedChunk {
 
 export interface GroundedQuestion {
   id: string;
+  chunk_id: string;
+  book_id: string;
+  chapter_id: string;
   question_text: string;
   options: { id: string; text: string; is_correct: boolean }[];
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
-  bloom_level: string;
+  bloom_level: 'KNOWLEDGE' | 'UNDERSTANDING' | 'APPLICATION' | 'ANALYSIS' | string;
   page_reference: number;
   source_excerpt: string;
   explanation: string;
+}
+
+/**
+ * Quality Validation Layer:
+ * Automatically rejects any question or option containing structural/metadata terms
+ * such as "page", "chapter", "lesson", "unit", "section", "title", "heading",
+ * or Arabic equivalents like "صفحة", "فصل", "درس", "وحدة", "عنوان", "فهرس".
+ */
+export function validateEducationalQuestion(q: GroundedQuestion): { isValid: boolean; reason?: string } {
+  if (!q.question_text || q.question_text.trim().length < 10) {
+    return { isValid: false, reason: 'Question text is missing or too short' };
+  }
+
+  const textsToCheck = [
+    q.question_text,
+    ...(q.options || []).map(o => o.text),
+    q.explanation || ''
+  ];
+
+  const forbiddenPatterns: RegExp[] = [
+    /\bpage\b/i,
+    /\bpages\b/i,
+    /\bchapter\b/i,
+    /\bchapters\b/i,
+    /\blesson\b/i,
+    /\blessons\b/i,
+    /\bunit\b/i,
+    /\bunits\b/i,
+    /\bsection\b/i,
+    /\bsections\b/i,
+    /\btitle\b/i,
+    /\bheading\b/i,
+    /\bheadings\b/i,
+    /\bmetadata\b/i,
+    /\btable\s+of\s+contents\b/i,
+    /\bdocument\s+structure\b/i,
+    /\bfile\s+name\b/i,
+    // Arabic structural & metadata tokens
+    /صفحة/,
+    /صفحات/,
+    /رقم\s+الصفحة/,
+    /الفصل\s+(?:الأول|الثاني|الثالث|الرابع|الخامس|\d+)/,
+    /فصل\s+\d+/,
+    /الدرس\s+(?:الأول|الثاني|الثالث|الرابع|الخامس|\d+)/,
+    /درس\s+\d+/,
+    /الوحدة\s+(?:الأولى|الثانية|الثالثة|الرابعة|\d+)/,
+    /وحدة\s+\d+/,
+    /المبحث\s+(?:الأول|الثاني|\d+)/,
+    /عنوان\s+(?:الدرس|الفصل|الوحدة|الكتاب)/,
+    /في\s+أي\s+صفحة/,
+    /ما\s+رقم\s+صفحة/,
+    /فهرس/,
+    /المحتويات/
+  ];
+
+  for (const text of textsToCheck) {
+    if (!text) continue;
+    for (const rx of forbiddenPatterns) {
+      if (rx.test(text)) {
+        return { isValid: false, reason: `Contains forbidden structural term matching ${rx}` };
+      }
+    }
+  }
+
+  if (!q.options || q.options.length < 2) {
+    return { isValid: false, reason: 'Question must have at least 2 options' };
+  }
+
+  const correctCount = q.options.filter(o => o.is_correct).length;
+  if (correctCount !== 1) {
+    return { isValid: false, reason: `Must have exactly 1 correct option, got ${correctCount}` };
+  }
+
+  return { isValid: true };
 }
 
 export interface EvaluationItemResult {
@@ -79,7 +156,7 @@ class AIRagEngine {
     queryText?: string;
     limit?: number;
   }): Promise<RetrievedChunk[]> {
-    const { academicStageId, gradeId, subjectId, bookId, chapterId, queryText, limit = 5 } = params;
+    const { academicStageId, gradeId, subjectId, bookId, chapterId, queryText, limit = 6 } = params;
 
     const res = await db.query(
       `SELECT id, book_id, chapter_id, page_number, chunk_index, content, metadata, embedding
@@ -97,6 +174,18 @@ class AIRagEngine {
       return [];
     }
 
+    // 1. Sanitize all chunks (stripping page numbers, headers, footers, labels, TOC, publisher boilerplate)
+    const sanitizedRows: RetrievedChunk[] = res.rows.map((row: any) => ({
+      id: row.id,
+      book_id: row.book_id,
+      chapter_id: row.chapter_id,
+      page_number: row.page_number,
+      chunk_index: row.chunk_index,
+      content: stripDocumentMetadataAndStructure(row.content),
+      metadata: row.metadata,
+      embedding: row.embedding
+    }));
+
     // Filter out boilerplate chunks (indexes, table of contents, copyright, committee info)
     const isBoilerplateChunk = (text: string): boolean => {
       if (!text || text.trim().length < 25) return true;
@@ -108,15 +197,30 @@ class AIRagEngine {
         'طبعة 202', 'وزارة التربية والتعليم والتعليم الفني', 'مقدمة الناشر',
         'دليل المعلم وولي الأمر', 'أهداف الوحدة العامة'
       ];
-      // Check if text is mostly table of contents dots / page numbers
       const dotCount = (text.match(/\.{3,}/g) || []).length;
       if (dotCount >= 3) return true;
-
       return boilerplateKeywords.some(kw => lower.includes(kw));
     };
 
-    const validChunks = res.rows.filter((row: any) => !isBoilerplateChunk(row.content));
-    const candidateChunks = validChunks.length > 0 ? validChunks : res.rows;
+    // Filter to educational content chunks (definitions, concepts, explanations, examples, experiments, procedures, formulas, learning objectives)
+    const isEducationalChunk = (text: string): boolean => {
+      if (!text || text.trim().length < 35) return false;
+      if (isBoilerplateChunk(text)) return false;
+
+      const hasDefinition = /تعريف|يقصد بـ|هو عبارة عن|هي عبارة عن|هو كل ما|هي كل ما|يُعرف بـ|يُقصد به|المصطلح العلمي|definition|defined as|means/i.test(text);
+      const hasConcept = /مفهوم|خاصية|خصائص|ظاهرة|علاقة|الكثافة|الكتلة|الحجم|المادة|الذرة|العنصر|المركب|الطاقة|السرعة|الحركة|القوة|الحرارة|التفاعل|concept|property|matter|mass|volume|density/i.test(text);
+      const hasExplanation = /علل|تفسير|السبب|يرجع ذلك إلى|نستنتج أن|نستدل على|بسبب|لأن|يؤدي إلى|يترتب على|explanation|because|causes|results in|therefore/i.test(text);
+      const hasExample = /مثال|أمثلة|على سبيل المثال|مثل:|كمثال|example|for instance/i.test(text);
+      const hasExperimentOrProcedure = /تجربة|نشاط|ملاحظة|استنتاج|أدوات|خطوات|طريقة العمل|نلاحظ أن|experiment|activity|observation|procedure|steps/i.test(text);
+      const hasFormulaOrCalc = /قانون|معادلة|العلاقة الرياضية|تُحسب من العلاقة|جرام\/سم|كجم\/م|كيلوجرام|نيوتن|متر\/ثانية|formula|equation|\/|×|\+|\-|=/i.test(text);
+      const hasObjectives = /أهداف التعلم|نواتج التعلم|يتوقع في نهاية|أن يتعرف الطالب|أن يستنتج الطالب|learning objectives/i.test(text);
+
+      const words = text.trim().split(/\s+/).length;
+      return hasDefinition || hasConcept || hasExplanation || hasExample || hasExperimentOrProcedure || hasFormulaOrCalc || hasObjectives || words >= 25;
+    };
+
+    const educationalChunks = sanitizedRows.filter((row: RetrievedChunk) => isEducationalChunk(row.content));
+    const candidateChunks = educationalChunks.length > 0 ? educationalChunks : sanitizedRows.filter((r: RetrievedChunk) => !isBoilerplateChunk(r.content));
 
     if (!queryText) {
       return candidateChunks.slice(0, limit);
@@ -149,10 +253,16 @@ class AIRagEngine {
    * If studentId is provided, filters out questions the student has already seen,
    * guaranteeing the student never gets the same question twice!
    */
-  private async getQuestionsFromBank(chapterId: string, count: number, studentId?: string): Promise<GroundedQuestion[] | null> {
+  private async getQuestionsFromBank(params: {
+    bookId: string;
+    chapterId: string;
+    count: number;
+    studentId?: string;
+  }): Promise<GroundedQuestion[] | null> {
+    const { bookId, chapterId, count, studentId } = params;
     try {
       const itemsRes = await db.query(
-        `SELECT id, question_text, difficulty, bloom_level, explanation, page_reference
+        `SELECT id, question_text, difficulty, bloom_level, explanation, page_reference, source_chunk_id
          FROM question_bank_items
          WHERE chapter_id = $1`,
         [chapterId]
@@ -160,7 +270,7 @@ class AIRagEngine {
 
       if (itemsRes.rows.length === 0) return null;
 
-      // Filter out any older cached questions that contain meta references like "صفحة" or "فهرس"
+      // Filter questions through Quality Validation Layer (strip any historical meta wording)
       const candidateRows = itemsRes.rows.filter((r: any) => {
         const qText = r.question_text || '';
         return !qText.includes('في صفحة') && !qText.includes('بصفحة') && !qText.includes('رقم الصفحة') && !qText.includes('الفهرس');
@@ -191,12 +301,9 @@ class AIRagEngine {
           if (unseen.length >= count) {
             filteredRows = unseen;
           } else if (unseen.length > 0) {
-            // Student saw most questions, mix unseen questions first
             const seen = candidateRows.filter((r: any) => seenIds.has(r.id));
             filteredRows = [...unseen, ...shuffleArray(seen)];
           } else {
-            // Student has seen ALL existing questions in bank!
-            // Return null so AI generates fresh questions to expand the bank!
             console.log(`🔄 Student ${studentId} mastered all questions in bank for chapter ${chapterId}. Generating fresh questions.`);
             return null;
           }
@@ -214,8 +321,11 @@ class AIRagEngine {
           );
 
           if (optRes.rows.length >= 2) {
-            questions.push({
+            const groundedQ: GroundedQuestion = {
               id: item.id,
+              chunk_id: item.source_chunk_id || '',
+              book_id: bookId,
+              chapter_id: chapterId,
               question_text: item.question_text,
               options: shuffleArray(optRes.rows.map((o: any) => ({
                 id: o.id,
@@ -223,16 +333,21 @@ class AIRagEngine {
                 is_correct: o.is_correct === 1 || o.is_correct === true || o.is_correct === '1'
               }))),
               difficulty: item.difficulty || 'MEDIUM',
-              bloom_level: item.bloom_level || 'COMPREHENSION',
+              bloom_level: item.bloom_level || 'UNDERSTANDING',
               page_reference: item.page_reference || 1,
               source_excerpt: '',
               explanation: item.explanation || ''
-            });
+            };
+
+            // Run through quality validation layer
+            if (validateEducationalQuestion(groundedQ).isValid) {
+              questions.push(groundedQ);
+            }
           }
         }
 
         if (questions.length >= count) {
-          console.log(`⚡ [Smart Question Bank] Served ${questions.length} unique unseen questions from TiDB for chapter ${chapterId} (Cost: $0.00)`);
+          console.log(`⚡ [Smart Question Bank] Served ${questions.length} validated educational questions from TiDB for chapter ${chapterId} ($0.00)`);
           return questions;
         }
       }
@@ -243,7 +358,7 @@ class AIRagEngine {
   }
 
   /**
-   * Save AI-generated questions to the Question Bank so future student tests are served for $0.00.
+   * Save validated AI-generated questions to the Question Bank with source chunk traceability.
    */
   private async saveQuestionsToBank(params: {
     academicStageId: string;
@@ -270,8 +385,10 @@ class AIRagEngine {
       }
 
       for (const q of questions) {
-        // Skip questions with meta phrasing
-        if (q.question_text.includes('في صفحة') || q.question_text.includes('بصفحة') || q.question_text.includes('الفهرس')) {
+        // Quality Validation Layer
+        const validation = validateEducationalQuestion(q);
+        if (!validation.isValid) {
+          console.log(`⚠️ Skipping question caching (failed quality check): ${validation.reason}`);
           continue;
         }
 
@@ -281,9 +398,21 @@ class AIRagEngine {
         );
         if (dupCheck.rows.length === 0) {
           await db.query(
-            `INSERT INTO question_bank_items (id, bank_id, chapter_id, question_text, question_type, difficulty, bloom_level, explanation, page_reference)
-             VALUES ($1, $2, $3, $4, 'MULTIPLE_CHOICE', $5, $6, $7, $8)`,
-            [q.id, bankId, params.chapterId, q.question_text, q.difficulty, q.bloom_level, q.explanation, q.page_reference]
+            `INSERT INTO question_bank_items (
+               id, bank_id, chapter_id, question_text, question_type, difficulty, 
+               bloom_level, explanation, source_chunk_id, page_reference
+             ) VALUES ($1, $2, $3, $4, 'MULTIPLE_CHOICE', $5, $6, $7, $8, $9)`,
+            [
+              q.id,
+              bankId,
+              params.chapterId,
+              q.question_text,
+              q.difficulty,
+              q.bloom_level,
+              q.explanation,
+              q.chunk_id || null,
+              q.page_reference
+            ]
           );
 
           for (const opt of q.options) {
@@ -295,14 +424,20 @@ class AIRagEngine {
           }
         }
       }
-      console.log(`💾 [Smart Question Bank] Cached ${questions.length} questions in TiDB for chapter ${params.chapterId}`);
+      console.log(`💾 [Smart Question Bank] Cached ${questions.length} validated grounded questions in TiDB for chapter ${params.chapterId}`);
     } catch (err) {
       console.warn('⚠️ Error saving questions to bank cache:', err);
     }
   }
 
   /**
-   * Generate questions: checks Smart Question Bank first ($0.00), falls back to AI, and caches results.
+   * Generate questions:
+   * 1. Validates Student Safety Rule (academic stage & grade).
+   * 2. Checks Smart Question Bank ($0.00).
+   * 3. Retrieves textbook educational chunks.
+   * 4. Calls Gemini API with strict prompt and Bloom's taxonomy distribution.
+   * 5. Runs Quality Validation Layer (rejects structural references).
+   * 6. Caches results with source chunk grounding.
    */
   public async generateQuestions(params: {
     studentId?: string;
@@ -315,93 +450,163 @@ class AIRagEngine {
   }): Promise<GroundedQuestion[]> {
     const requiredCount = params.count || 3;
 
+    // Student Safety Rule: Server-side validation
+    const bookCheck = await db.query(
+      `SELECT id, academic_stage_id, grade_id FROM books WHERE id = $1`,
+      [params.bookId]
+    );
+    if (bookCheck.rows.length === 0) {
+      throw new Error('الكتاب المدرسي غير موجود بالمنصة.');
+    }
+    const book = bookCheck.rows[0];
+    if (book.academic_stage_id !== params.academicStageId || book.grade_id !== params.gradeId) {
+      throw new Error('غير مصرح: لا يمكن توليد أسئلة لكتاب خارج مرحلتك وصفك الدراسي المعتمد.');
+    }
+
     // 1. Try Smart Question Bank in TiDB ($0.00 AI Cost, instant response, student deduplication)
-    const cachedQuestions = await this.getQuestionsFromBank(params.chapterId, requiredCount, params.studentId);
+    const cachedQuestions = await this.getQuestionsFromBank({
+      bookId: params.bookId,
+      chapterId: params.chapterId,
+      count: requiredCount,
+      studentId: params.studentId
+    });
     if (cachedQuestions && cachedQuestions.length >= requiredCount) {
       return cachedQuestions;
     }
 
-    // 2. Otherwise retrieve textbook chunks
+    // 2. Retrieve grounded educational textbook chunks
     const chunks = await this.retrieveGroundedChunks({
       ...params,
       limit: 8
     });
 
     if (chunks.length === 0) {
-      throw new Error('لا توجد فقرات كتاب مستخرجة لهذا الفصل الدراسي حتى الآن.');
+      throw new Error('Insufficient educational content for assessment generation.');
     }
 
-    let generatedQuestions: GroundedQuestion[] = [];
+    let validQuestions: GroundedQuestion[] = [];
 
     // Try Gemini API if key is present
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey) {
       try {
-        const questions = await this.callGeminiForQuestions(chunks, requiredCount);
-        if (questions && questions.length > 0) {
-          generatedQuestions = questions;
+        const rawAiQuestions = await this.callGeminiForQuestions(chunks, requiredCount, params.bookId, params.chapterId);
+        if (rawAiQuestions && rawAiQuestions.length > 0) {
+          // Quality Validation Layer: Filter out any questions mentioning structural tokens
+          for (const q of rawAiQuestions) {
+            const val = validateEducationalQuestion(q);
+            if (val.isValid) {
+              validQuestions.push(q);
+            } else {
+              console.warn(`⚠️ Rejected AI question due to quality violation: ${val.reason} (Text: "${q.question_text}")`);
+            }
+          }
         }
-      } catch (err) {
-        console.warn('⚠️ Gemini question generation error, using grounded textbook parser:', err);
+      } catch (err: any) {
+        if (err.message === 'Insufficient educational content for assessment generation.') {
+          throw err;
+        }
+        console.warn('⚠️ Gemini question generation error, proceeding to grounded fallback:', err);
       }
     }
 
-    // Deterministic grounded fallback if API call fails
-    if (generatedQuestions.length === 0) {
-      generatedQuestions = this.generateGroundedFallbackQuestions(chunks, requiredCount);
-    }
-
-    // 3. Cache newly generated questions to Question Bank for future 0$ reuse
-    if (generatedQuestions.length > 0) {
-      try {
-        await this.saveQuestionsToBank(params, generatedQuestions);
-      } catch (e) {
-        console.warn('Cache save note:', e);
+    // If we need more questions to meet the count, generate deterministic grounded fallback questions
+    if (validQuestions.length < requiredCount) {
+      const needed = requiredCount - validQuestions.length;
+      const fallbackList = this.generateGroundedFallbackQuestions(chunks, needed, params.bookId, params.chapterId);
+      for (const fbQ of fallbackList) {
+        if (validateEducationalQuestion(fbQ).isValid) {
+          validQuestions.push(fbQ);
+        }
       }
     }
 
-    return generatedQuestions;
+    const finalQuestions = validQuestions.slice(0, requiredCount);
+
+    if (finalQuestions.length === 0) {
+      throw new Error('Insufficient educational content for assessment generation.');
+    }
+
+    // 3. Cache validated questions to Question Bank for future 0$ reuse
+    try {
+      await this.saveQuestionsToBank(params, finalQuestions);
+    } catch (e) {
+      console.warn('Cache save note:', e);
+    }
+
+    return finalQuestions;
   }
 
-  private async callGeminiForQuestions(chunks: RetrievedChunk[], count: number): Promise<GroundedQuestion[] | null> {
-    const cleanedChunks = chunks.map(c => ({
-      ...c,
-      content: cleanArabicText(c.content)
-    }));
+  private async callGeminiForQuestions(
+    chunks: RetrievedChunk[],
+    count: number,
+    bookId: string,
+    chapterId: string
+  ): Promise<GroundedQuestion[] | null> {
+    // Exact Bloom's Taxonomy Distribution:
+    // 40% Knowledge, 30% Understanding, 20% Application, 10% Analysis
+    const knowledgeCount = Math.max(1, Math.round(count * 0.4));
+    const understandingCount = Math.max(1, Math.round(count * 0.3));
+    const applicationCount = Math.max(1, Math.round(count * 0.2));
+    const analysisCount = Math.max(1, count - knowledgeCount - understandingCount - applicationCount);
 
-    const contextText = cleanedChunks
-      .map(c => `[فقرة دراسية من صفحة ${c.page_number}]:\n${c.content}`)
+    const contextText = chunks
+      .map(c => `[CHUNK ID: ${c.id} | Page Ref: ${c.page_number}]:\n${c.content}`)
       .join('\n\n---\n\n');
 
-    const prompt = `أنت أستاذ ومستشار خبير في القياس والتقويم التربوي والامتحانات المدرسية المعتمدة.
-مهمتك صياغة ${count} أسئلة اختيار من متعدد باللغة العربية معتمدة بنسبة 100% وبدقة كاملة على المحتوى العلمي والمعلومات والدروس الواردة في نصوص الكتاب المدرسي المرفقة أدناه.
+    const prompt = `You are an educational assessment generator.
 
-قواعد تربوية صارمة جداً (يجب الالتزام بها بدقة متناهية):
-1. صلب المادة العلمية والتعليمية فقط: يجب أن تختبر الأسئلة المفاهيم، المصطلحات، القوانين العلمية، القواعد النحوية واللغوية، التواريخ والأحداث، التعليلات، والتطبيقات المنهجية الواردة بالدرس.
-2. ممنوع منعاً باتاً صياغة أي سؤال عن أرقام الصفحات (مثل: "في أي صفحة ورد كذا؟"، أو "ما رقم الصفحة؟"، أو "وفقاً لما ورد في صفحة 4 ما عنوان..."). لا تذكر كلمة "صفحة" في نص السؤال مطلقاً!
-3. ممنوع منعاً باتاً الأسئلة عن الفهرس، أو عناوين الوحدات بالفهرس، أو الغلاف، أو أسماء مؤلفي الكتاب، أو تاريخ الطبعة، أو حقوق النشر، أو القرارات الوزارية.
-4. لكل سؤال 4 خيارات حصرية وواقعية (خيار واحد صحيح بدقة، و3 مموهات منطقية وخاطئة تناسب مستوى فهم الطلاب).
-5. وزّع موقع الإجابة الصحيحة عشوائياً بين الخيارات (لا تضع الخيار الصحيح دائماً في نفس الموقع).
-6. اذكر في حقل "page_reference" رقم الصفحة الحقيقي الذي استندت إليه المعلومة فقط كمرجع توثيقي للنظام دون ذكره إطلاقاً داخل نص السؤال للطالب.
+Generate questions ONLY from the educational concepts contained in the provided textbook content.
 
-نصوص فقرات المنهج المدرسي المعتمد:
+Do NOT generate questions about:
+- Page numbers
+- Chapter numbers
+- Lesson names
+- Unit names
+- Section titles
+- Document structure
+- Metadata
+- File information
+
+Questions must strictly assess:
+- Knowledge
+- Understanding
+- Application
+- Analysis
+
+If the provided content does not contain enough educational material, return:
+"Insufficient educational content for assessment generation."
+
+CRITICAL GENERATION RULES:
+1. Generate exactly ${count} multiple-choice questions in Arabic grounded 100% in the educational content.
+2. Required Bloom's Taxonomy Distribution:
+   - ${knowledgeCount} Knowledge question(s) (Definitions, scientific facts, direct recall) -> bloom_level: "KNOWLEDGE"
+   - ${understandingCount} Understanding question(s) (Explanations, cause-and-effect, concept relationships) -> bloom_level: "UNDERSTANDING"
+   - ${applicationCount} Application question(s) (Calculations, practical procedures, real-world examples, predictions) -> bloom_level: "APPLICATION"
+   - ${analysisCount} Analysis question(s) (Comparative deductions, analyzing experiments or relationships) -> bloom_level: "ANALYSIS"
+3. ZERO TOLERANCE for document structure: NEVER use the words "صفحة", "page", "فصل", "chapter", "درس", "lesson", "وحدة", "unit", "عنوان", "title" in question_text or options.
+4. Each question must have 4 plausible options with exactly 1 correct answer and 3 realistic distractors.
+5. Every question MUST be grounded in a specific chunk, referencing its exact "chunk_id" from the provided content.
+
+Provided Textbook Content:
 ${contextText}
 
-أجب فقط بمصفوفة JSON صالحة مطابقة تماماً للمثال التالي بدون أي نصوص تمهيدية أو تنسيقات إضافية:
+Respond ONLY with a valid JSON array of objects (no markdown code fences, no introductory or concluding text):
 [
   {
-    "question_text": "ما المصطلح العلمي الذي يُطلق على ...؟",
+    "chunk_id": "the exact chunk ID provided above",
+    "question_text": "نص السؤال التعليمي المركز تماماً على المفهوم أو المسألة دون أي إشارة لهيكل الكتاب",
     "options": [
       { "text": "خيار أول", "is_correct": false },
-      { "text": "خيار ثان (الصحيح)", "is_correct": true },
+      { "text": "خيار ثان", "is_correct": true },
       { "text": "خيار ثالث", "is_correct": false },
       { "text": "خيار رابع", "is_correct": false }
     ],
-    "difficulty": "MEDIUM",
-    "bloom_level": "APPLICATION",
+    "difficulty": "EASY" | "MEDIUM" | "HARD",
+    "bloom_level": "KNOWLEDGE" | "UNDERSTANDING" | "APPLICATION" | "ANALYSIS",
     "page_reference": 4,
     "source_excerpt": "الاقتباس العلمي الدقيق من النص",
-    "explanation": "شرح علمي مفصل لسبب صحة الإجابة وكيفية استنتاجها من الدرس"
+    "explanation": "شرح علمي مفصل لسبب صحة الإجابة"
   }
 ]`;
 
@@ -433,6 +638,10 @@ ${contextText}
           const data = await res.json();
           let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (rawText) {
+            if (rawText.includes('Insufficient educational content for assessment generation.')) {
+              throw new Error('Insufficient educational content for assessment generation.');
+            }
+
             rawText = rawText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
             const jsonStart = rawText.indexOf('[');
             const jsonEnd = rawText.lastIndexOf(']');
@@ -441,38 +650,49 @@ ${contextText}
             }
             const parsed = JSON.parse(rawText);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              return parsed.map((q: any) => ({
-                id: uuidv4(),
-                question_text: q.question_text.replace(/صفحة\s*\d+/g, '').trim(),
-                options: shuffleArray(q.options.map((opt: any) => ({
+              return parsed.map((q: any) => {
+                // Ensure chunk_id matches one of the retrieved chunks
+                const matchedChunk = chunks.find(c => c.id === q.chunk_id) || chunks[0];
+                return {
                   id: uuidv4(),
-                  text: opt.text,
-                  is_correct: !!opt.is_correct
-                }))),
-                difficulty: q.difficulty || 'MEDIUM',
-                bloom_level: q.bloom_level || 'COMPREHENSION',
-                page_reference: Number(q.page_reference) || chunks[0]?.page_number || 1,
-                source_excerpt: q.source_excerpt || '',
-                explanation: q.explanation || ''
-              }));
+                  chunk_id: matchedChunk?.id || chunks[0]?.id || '',
+                  book_id: bookId,
+                  chapter_id: chapterId,
+                  question_text: q.question_text.replace(/صفحة\s*\d+/g, '').trim(),
+                  options: shuffleArray(q.options.map((opt: any) => ({
+                    id: uuidv4(),
+                    text: opt.text,
+                    is_correct: !!opt.is_correct
+                  }))),
+                  difficulty: q.difficulty || 'MEDIUM',
+                  bloom_level: (q.bloom_level || 'UNDERSTANDING').toUpperCase(),
+                  page_reference: Number(q.page_reference) || matchedChunk?.page_number || 1,
+                  source_excerpt: q.source_excerpt || '',
+                  explanation: q.explanation || ''
+                };
+              });
             }
           }
         }
-      } catch (mErr) {
+      } catch (mErr: any) {
+        if (mErr.message === 'Insufficient educational content for assessment generation.') {
+          throw mErr;
+        }
         console.warn(`Attempt with model ${model} failed, trying next:`, mErr);
       }
     }
     return null;
   }
 
-  private generateGroundedFallbackQuestions(chunks: RetrievedChunk[], count: number = 3): GroundedQuestion[] {
+  private generateGroundedFallbackQuestions(
+    chunks: RetrievedChunk[],
+    count: number = 3,
+    bookId: string = '',
+    chapterId: string = ''
+  ): GroundedQuestion[] {
     const questions: GroundedQuestion[] = [];
-    const cleanedChunks = chunks.map(c => ({
-      ...c,
-      content: cleanArabicText(c.content)
-    }));
 
-    for (const chunk of cleanedChunks) {
+    for (const chunk of chunks) {
       if (questions.length >= count) break;
       const page = chunk.page_number;
       const text = chunk.content;
@@ -481,6 +701,9 @@ ${contextText}
       if ((text.includes('النفيس') || text.includes('ابن النفيس')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
+          chunk_id: chunk.id,
+          book_id: bookId,
+          chapter_id: chapterId,
           question_text: `ما الإنجاز الطبي الأبرز الذي اشتهر به العالم المسلم ابن النفيس في تاريخ الطب؟`,
           options: [
             { id: uuidv4(), text: 'وصف الدورة الدموية الصغرى بدقة علمية قبل علماء الغرب بقرون', is_correct: true },
@@ -499,6 +722,9 @@ ${contextText}
       if (text.includes('البيمارستان') && questions.length < count) {
         questions.push({
           id: uuidv4(),
+          chunk_id: chunk.id,
+          book_id: bookId,
+          chapter_id: chapterId,
           question_text: `ما الدور الرئيسي الذي كانت تقوم به مؤسسة 'البيمارستان' في الحضارة الإسلامية؟`,
           options: [
             { id: uuidv4(), text: 'مستشفيات متقدمة تُعنى برعاية المرضى جسدياً ونفسياً وتدريب الأطباء مجاناً', is_correct: true },
@@ -507,7 +733,7 @@ ${contextText}
             { id: uuidv4(), text: 'مدارس مخصصة لتعليم اللغات الأجنبية فقط', is_correct: false }
           ],
           difficulty: 'MEDIUM',
-          bloom_level: 'COMPREHENSION',
+          bloom_level: 'UNDERSTANDING',
           page_reference: page,
           source_excerpt: 'البيمارستانات كانت أكثر من مجرد مستشفيات، بل مؤسسات تُعنى براحة المريض جسدياً ونفسياً.',
           explanation: 'كانت البيمارستانات مؤسسات طبية وعلاجية وإنسانية راقية.'
@@ -517,6 +743,9 @@ ${contextText}
       if ((text.includes('زويل') || text.includes('أحمد زويل')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
+          chunk_id: chunk.id,
+          book_id: bookId,
+          chapter_id: chapterId,
           question_text: `ما الاكتشاف العلمي الجليل الذي منح العالم المصري الدكتور أحمد زويل جائزة نوبل؟`,
           options: [
             { id: uuidv4(), text: 'ابتكار ميكروسكوب الفيمتو ثانية لتصوير حركة الجزيئات عند التفاعل الكيميائي', is_correct: true },
@@ -532,27 +761,12 @@ ${contextText}
         });
       }
 
-      if ((text.includes('منسي') || text.includes('أحمد منسي')) && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          question_text: `ما القيمة الوطنية والتربوية الكبرى المستفادة من سيرة البطل الشهيد أحمد منسي؟`,
-          options: [
-            { id: uuidv4(), text: 'الفداء والتضحية الصادقة والشجاعة في الدفاع عن تراب الوطن وأمنه', is_correct: true },
-            { id: uuidv4(), text: 'تحقيق الشهرة الفردية في وسائل الإعلام والمحافل', is_correct: false },
-            { id: uuidv4(), text: 'تجنب المواقف الصعبة والمهام الميدانية', is_correct: false },
-            { id: uuidv4(), text: 'التنافس الاقتصادي والتجاري مع الآخرين', is_correct: false }
-          ],
-          difficulty: 'EASY',
-          bloom_level: 'APPLICATION',
-          page_reference: page,
-          source_excerpt: 'أسطورة مصرية البطل أحمد منسي الذي قدم روحه فداءً لكرامة وأمن بلاده.',
-          explanation: 'تجسد سيرة الشهيد أسمى معاني التضحية والانتماء الوطني.'
-        });
-      }
-
       if ((text.includes('الكثافة') || text.includes('البترول')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
+          chunk_id: chunk.id,
+          book_id: bookId,
+          chapter_id: chapterId,
           question_text: `علل علمياً: لماذا لا يُستخدم الماء في إطفاء حرائق البترول؟`,
           options: [
             { id: uuidv4(), text: 'لأن كثافة البترول أقل من كثافة الماء فيطفو فوق سطحه ويظل مشتعلاً', is_correct: true },
@@ -568,18 +782,21 @@ ${contextText}
         });
       }
 
-      // Dynamic sentence-level fact extractor without any page mention
+      // Sentence-level educational fact extractor
       if (questions.length < count) {
         const sentences = text
           .split(/[.،؛!؟\n]+/)
           .map(s => s.trim())
-          .filter(s => s.length >= 25 && s.length <= 130 && !s.includes('الفهرس') && !s.includes('المحتويات'));
+          .filter(s => s.length >= 25 && s.length <= 130 && !s.includes('الفهرس') && !s.includes('المحتويات') && !s.includes('صفحة'));
 
         if (sentences.length > 0) {
           const mainSentence = sentences[0];
           questions.push({
             id: uuidv4(),
-            question_text: `أي من العبارات التالية تمثل حقيقة ومفهوماً علمياً صحيحاً ورد في نصوص الدرس؟`,
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `أي من العبارات التالية تمثل حقيقة ومفهوماً علمياً دقيقاً ورد في المحتوى التعليمي؟`,
             options: [
               { id: uuidv4(), text: mainSentence, is_correct: true },
               { id: uuidv4(), text: 'تتناقض المفاهيم الأساسية مع التطبيقات العملية في هذا المجال', is_correct: false },
@@ -587,27 +804,29 @@ ${contextText}
               { id: uuidv4(), text: 'المعلومات المذكورة قيد التجربة ولم تثبت صحتها علمياً بعد', is_correct: false }
             ],
             difficulty: 'MEDIUM',
-            bloom_level: 'COMPREHENSION',
+            bloom_level: 'UNDERSTANDING',
             page_reference: page,
             source_excerpt: mainSentence,
-            explanation: `الحقيقة الصحيحة هي: "${mainSentence}".`
+            explanation: `الحقيقة العلمية المقررة هي: "${mainSentence}".`
           });
         }
       }
     }
 
-    // Ensure we always have at least `count` questions with pure domain facts
-    let pageFallback = chunks[0]?.page_number || 1;
+    // Fallback items based on Bloom's levels if needed
     let fallbackIdx = 1;
     while (questions.length < count) {
       const ch = chunks[(fallbackIdx - 1) % chunks.length] || chunks[0];
-      const pNum = ch?.page_number || pageFallback;
-      const snippet = cleanArabicText(ch?.content || '').slice(0, 100) || 'محتوى الدرس المقرر';
+      const pNum = ch?.page_number || 1;
+      const snippet = ch?.content?.slice(0, 100) || 'المحتوى العلمي المقرر';
 
       if (fallbackIdx === 1) {
         questions.push({
           id: uuidv4(),
-          question_text: `ما الركيزة الأساسية لفهم واستيعاب موضوعات هذا الدرس وتطبيقها علمياً؟`,
+          chunk_id: ch?.id || '',
+          book_id: bookId,
+          chapter_id: chapterId,
+          question_text: `ما الركيزة الأساسية لفهم واستيعاب هذا الموضوع العلمي وتطبيقه بصورة صحيحة؟`,
           options: [
             { id: uuidv4(), text: 'استيعاب المفاهيم والمصطلحات الأساسية والربط المنطقي بينها', is_correct: true },
             { id: uuidv4(), text: 'الحفظ السطحي للألفاظ دون فهم المعنى العلمي والدلالة', is_correct: false },
@@ -623,15 +842,18 @@ ${contextText}
       } else if (fallbackIdx === 2) {
         questions.push({
           id: uuidv4(),
+          chunk_id: ch?.id || '',
+          book_id: bookId,
+          chapter_id: chapterId,
           question_text: `كيف يستدل المتعلم على صحة النتائج العلمية والحلول في هذا المجال؟`,
           options: [
             { id: uuidv4(), text: 'بالرجوع إلى القواعد والمعايير العلمية والتطبيقية المعتمدة', is_correct: true },
-            { id: uuidv4(), text: 'بالتخمين العشوائي دون سند من نصوص وقواعد الدرس', is_correct: false },
+            { id: uuidv4(), text: 'بالتخمين العشوائي دون سند من نصوص وقواعد المنهج', is_correct: false },
             { id: uuidv4(), text: 'بالاقتصار على قراءة العناوين فقط دون دراسة الشرح والتفاصيل', is_correct: false },
             { id: uuidv4(), text: 'بتجاهل الأمثلة والتمارين المحلولة في المنهج', is_correct: false }
           ],
           difficulty: 'MEDIUM',
-          bloom_level: 'COMPREHENSION',
+          bloom_level: 'UNDERSTANDING',
           page_reference: pNum,
           source_excerpt: snippet,
           explanation: `القواعد والمعايير العلمية والتطبيقية المعتمدة هي المرجع الأساسي لصحة النتائج.`
@@ -639,6 +861,9 @@ ${contextText}
       } else {
         questions.push({
           id: uuidv4(),
+          chunk_id: ch?.id || '',
+          book_id: bookId,
+          chapter_id: chapterId,
           question_text: `ما المهارة الأساسية التي يكتسبها الطالب من خلال التدريب والتطبيق العملي على هذا الموضوع؟`,
           options: [
             { id: uuidv4(), text: 'التفكير التحليلي والربط بين المعارف بطريقة منهجية منظمة', is_correct: true },

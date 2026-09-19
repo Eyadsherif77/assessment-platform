@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 import { db } from '../../db/db.js';
 import { generateEmbedding, createSemanticVector } from '../ai/vectorEmbedding.js';
+import { stripDocumentMetadataAndStructure } from '../../utils/arabicTextNormalizer.js';
 
 export interface BookIngestionJob {
   bookId: string;
@@ -130,9 +131,15 @@ class JobQueueService {
       const maxChunks = 80; // Safeguard against excessive runtime on serverless
       for (let pIdx = 0; pIdx < pages.length && chunkIdx <= maxChunks; pIdx++) {
         const page = pages[pIdx];
+        // Strip document metadata, page numbers, and structural labels before chunking & embedding
+        const sanitizedPageText = stripDocumentMetadataAndStructure(page.text, {
+          chapterTitle: job.chapterTitleAr
+        });
+        if (!sanitizedPageText || sanitizedPageText.length < 20) continue;
+
         // Split page into semantic segments of 300-500 chars with 100 char overlap
-        const paragraphs = page.text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 20);
-        const segments: string[] = paragraphs.length > 0 ? paragraphs : [page.text];
+        const paragraphs = sanitizedPageText.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 20);
+        const segments: string[] = paragraphs.length > 0 ? paragraphs : [sanitizedPageText];
 
         for (const segment of segments) {
           if (chunkIdx > maxChunks) break;
