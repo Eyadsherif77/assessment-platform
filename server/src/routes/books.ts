@@ -369,9 +369,6 @@ router.post(
       });
       const fullBuffer = Buffer.concat(buffers);
 
-      // Clean up temporary chunks from database in background
-      db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
-
       // 3. Extract text from PDF buffer
       let pages: { pageNumber: number; text: string }[] = [];
       let totalNumPages = 1;
@@ -434,6 +431,20 @@ router.post(
           effectiveSchoolType
         ]
       );
+
+      // Save PDF chunks for student/teacher PDF reading
+      try {
+        for (const r of chunkRows.rows) {
+          await db.query(
+            `INSERT INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)
+             ON DUPLICATE KEY UPDATE chunk_data = VALUES(chunk_data)`,
+            [bookId, r.chunk_index, r.chunk_data]
+          );
+        }
+        db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
+      } catch (pdfStoreErr) {
+        console.warn('Could not store PDF chunks in book_pdf_chunks:', pdfStoreErr);
+      }
 
       // 5. Insert primary chapter
       const chapterId = uuidv4();
@@ -707,6 +718,79 @@ router.get('/:id/chapters/:chapterId/chunks', authenticateToken, enforceStudentG
     return res.json(chunksRes.rows);
   } catch (err: any) {
     return res.status(500).json({ error: 'خطأ في جلب فقرات الفصل' });
+  }
+});
+
+// Stream original textbook PDF directly for student and teacher reading
+router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify book exists
+    const bookCheck = await db.query(
+      `SELECT id, title_ar, grade_id, school_type, file_url FROM books WHERE id = $1`,
+      [id]
+    );
+
+    if (bookCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'الكتاب غير موجود' });
+    }
+
+    const book = bookCheck.rows[0];
+
+    // Enforce student permissions
+    if (req.user?.role === 'STUDENT' && req.studentProfile) {
+      if (book.grade_id !== req.studentProfile.gradeId) {
+        return res.status(403).json({ error: 'غير مصرح بعرض كتاب لصف دراسي آخر' });
+      }
+      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      if (book.school_type && book.school_type !== 'كلاهما' && book.school_type !== studentSchoolType) {
+        return res.status(403).json({ error: 'غير مصرح بالوصول لمحتوى غير مخصص لنوع مدرستك' });
+      }
+    }
+
+    // Check TiDB book_pdf_chunks (stream chunk by chunk to bypass HTTP body limits & Vercel 4.5MB limit)
+    const countRes = await db.query(
+      `SELECT COUNT(*) as cnt FROM book_pdf_chunks WHERE book_id = $1`,
+      [id]
+    );
+    const totalChunks = parseInt(countRes.rows[0]?.cnt || '0', 10);
+
+    if (totalChunks > 0) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="book_${id}.pdf"`);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+
+      for (let c = 0; c < totalChunks; c++) {
+        const row = await db.query(
+          `SELECT chunk_data FROM book_pdf_chunks WHERE book_id = $1 AND chunk_index = $2`,
+          [id, c]
+        );
+        if (row.rows.length > 0) {
+          const raw = row.rows[0].chunk_data;
+          const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+          res.write(buf);
+        }
+      }
+      return res.end();
+    }
+
+    // Fallback: Check local uploads disk
+    if (book.file_url) {
+      const diskPath = path.resolve(uploadDir, path.basename(book.file_url));
+      if (fs.existsSync(diskPath)) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="book_${id}.pdf"`);
+        const stream = fs.createReadStream(diskPath);
+        return stream.pipe(res);
+      }
+    }
+
+    return res.status(404).json({ error: 'ملف الـ PDF الأصلي غير متوفر لهذا الكتاب حالياً' });
+  } catch (err: any) {
+    console.error('Stream PDF error:', err);
+    return res.status(500).json({ error: 'حدث خطأ أثناء تحميل ملف الـ PDF: ' + err.message });
   }
 });
 

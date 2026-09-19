@@ -31,7 +31,7 @@ export function generateToken(user: AuthUser): string {
 
 export async function authenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = (authHeader && authHeader.split(' ')[1]) || (req.query.token as string);
 
   if (!token) {
     return res.status(401).json({ error: 'لم يتم توفير رمز المصادقة (Missing Token)' });

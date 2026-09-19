@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
-import { cleanArabicText } from '../utils/arabicTextNormalizer';
 import { 
   BookOpen, 
   Sparkles, 
@@ -18,7 +17,9 @@ import {
   Target,
   LayoutDashboard,
   ShieldCheck,
-  Edit3
+  Edit3,
+  ExternalLink,
+  X
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
@@ -51,10 +52,7 @@ export const StudentDashboard: React.FC = () => {
 
   // Books Data
   const [books, setBooks] = useState<any[]>([]);
-  const [selectedBook, setSelectedBook] = useState<any | null>(null);
-  const [selectedChapterChunks, setSelectedChapterChunks] = useState<any[]>([]);
-  const [readingChapter, setReadingChapter] = useState<any | null>(null);
-  const [loadingChapterId, setLoadingChapterId] = useState<string | null>(null);
+  const [selectedPdfBook, setSelectedPdfBook] = useState<any | null>(null);
 
   // Exams Data
   const [exams, setExams] = useState<any[]>([]);
@@ -220,41 +218,6 @@ export const StudentDashboard: React.FC = () => {
 
     return () => clearInterval(timerInterval);
   }, [activeExam, examTimeLeft, examResult]);
-
-  const handleOpenBookDetails = async (bookId: string) => {
-    try {
-      const res = await fetch(apiUrl(`/api/books/${bookId}`), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setSelectedBook(data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleReadChapter = async (bookId: string, chapter: any) => {
-    if (readingChapter?.id === chapter.id) {
-      setReadingChapter(null);
-      setSelectedChapterChunks([]);
-      return;
-    }
-    setReadingChapter(chapter);
-    setLoadingChapterId(chapter.id);
-    setSelectedChapterChunks([]);
-    try {
-      const res = await fetch(apiUrl(`/api/books/${bookId}/chapters/${chapter.id}/chunks`), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setSelectedChapterChunks(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setSelectedChapterChunks([]);
-    } finally {
-      setLoadingChapterId(null);
-    }
-  };
 
   // Start taking an exam
   const handleStartExam = async (examId: string) => {
@@ -1275,117 +1238,147 @@ export const StudentDashboard: React.FC = () => {
                   </div>
 
                   <button
-                    className="btn btn-outline btn-sm"
-                    onClick={() => handleOpenBookDetails(book.id)}
-                    style={{ fontWeight: 700, width: '100%', marginTop: '1rem' }}
+                    className="btn btn-primary"
+                    onClick={() => setSelectedPdfBook(book)}
+                    style={{ fontWeight: 800, width: '100%', marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
                   >
-                    {isAr ? 'تصفح فصول وفقرات الكتاب 📖' : 'Browse Chapters & Paragraphs 📖'}
+                    <BookOpen size={18} />
+                    {isAr ? 'فتح وتصفح الكتاب (PDF) 📖' : 'Open & Read Book (PDF) 📖'}
                   </button>
                 </div>
               ))}
             </div>
 
-            {/* Book Details Modal / Drawer */}
-            {selectedBook && (
-              <div className="card" style={{ padding: '1.75rem', border: '1.5px solid var(--primary-300)', borderRadius: 'var(--radius-xl)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-light)' }}>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0 }}>
-                    {isAr ? `فصول: ${selectedBook.title_ar}` : `Chapters: ${selectedBook.title_en || selectedBook.title_ar}`}
-                  </h3>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setSelectedBook(null); setReadingChapter(null); setSelectedChapterChunks([]); }}>
-                    {isAr ? 'إغلاق ✕' : 'Close ✕'}
-                  </button>
+            {/* Dedicated PDF Reader Modal with Exit and Fullscreen Controls */}
+            {selectedPdfBook && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                backdropFilter: 'blur(6px)',
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column',
+                padding: '0.75rem',
+                overflow: 'hidden'
+              }}>
+                {/* Header with Exit button and Controls */}
+                <div style={{
+                  background: '#FFFFFF',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '0.85rem 1.25rem',
+                  marginBottom: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.12)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => setSelectedPdfBook(null)}
+                      style={{
+                        background: '#DC2626',
+                        color: '#FFFFFF',
+                        fontWeight: 800,
+                        padding: '0.6rem 1.2rem',
+                        borderRadius: 'var(--radius-md)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.95rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.35)'
+                      }}
+                    >
+                      <X size={18} />
+                      {isAr ? 'إغلاق الكتاب والعودة' : 'Close Book & Return'}
+                    </button>
+
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <strong style={{ fontSize: '1.05rem', color: 'var(--text-title)' }}>
+                        📖 {isAr ? selectedPdfBook.title_ar : (selectedPdfBook.title_en || selectedPdfBook.title_ar)}
+                      </strong>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {isAr ? selectedPdfBook.grade_name_ar : (selectedPdfBook.grade_name_en || selectedPdfBook.grade_name_ar)} • {isAr ? selectedPdfBook.subject_name_ar : (selectedPdfBook.subject_name_en || selectedPdfBook.subject_name_ar)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <a
+                      href={apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        background: 'var(--primary-600)',
+                        color: '#FFFFFF',
+                        fontWeight: 700,
+                        padding: '0.6rem 1rem',
+                        borderRadius: 'var(--radius-md)',
+                        textDecoration: 'none',
+                        fontSize: '0.85rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 2px 6px rgba(13, 148, 136, 0.3)'
+                      }}
+                    >
+                      <ExternalLink size={16} />
+                      {isAr ? 'فتح في نافذة كاملة ↗' : 'Open Fullscreen ↗'}
+                    </a>
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                  {selectedBook.chapters?.map((ch: any) => {
-                    const isReadingThis = readingChapter?.id === ch.id;
-                    const isLoadingThis = loadingChapterId === ch.id;
+                {/* Helpful notice for mobile phone users */}
+                <div style={{
+                  padding: '0.45rem 1rem',
+                  marginBottom: '0.5rem',
+                  background: '#F0FDF4',
+                  border: '1px solid #BBF7D0',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.82rem',
+                  color: '#15803D',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem'
+                }}>
+                  <span>💡 {isAr ? 'يمكنك تصفح وقراءة وتكبير صفحات الكتاب كملف PDF رسمي هنا، أو النقر على "فتح في نافذة كاملة" لاستعراضه بمشغل هاتفك الأصلي.' : 'You can read and pinch-to-zoom the textbook here, or tap "Open Fullscreen" for mobile native reader.'}</span>
+                  <a
+                    href={apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontWeight: 800, textDecoration: 'underline', color: '#15803D' }}
+                  >
+                    {isAr ? 'عرض ملء الشاشة ↗' : 'Fullscreen ↗'}
+                  </a>
+                </div>
 
-                    return (
-                      <div
-                        key={ch.id}
-                        style={{
-                          padding: '1.1rem',
-                          background: isReadingThis ? '#F8FAFC' : 'var(--bg-subtle)',
-                          borderRadius: 'var(--radius-lg)',
-                          border: isReadingThis ? '2px solid var(--primary-500)' : '1px solid var(--border-light)',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                          <div style={{ minWidth: '180px', flex: 1 }}>
-                            <strong style={{ fontSize: '1rem', color: 'var(--text-title)', display: 'block' }}>
-                              {isAr ? `الفصل ${ch.chapter_number}: ${ch.title_ar}` : `Chapter ${ch.chapter_number}: ${ch.title_en || ch.title_ar}`}
-                            </strong>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                              {isAr ? `${ch.chunks_count || 3} فقرات دراسية مرقمة` : `${ch.chunks_count || 3} Page-Numbered Paragraphs`}
-                            </div>
-                          </div>
-                          <button
-                            className={`btn ${isReadingThis ? 'btn-secondary' : 'btn-primary'} btn-sm`}
-                            onClick={() => handleReadChapter(selectedBook.id, ch)}
-                            disabled={isLoadingThis}
-                            style={{ flexShrink: 0, fontWeight: 700 }}
-                          >
-                            {isLoadingThis 
-                              ? (isAr ? 'جاري التحميل...' : 'Loading...')
-                              : (isReadingThis 
-                                  ? (isAr ? 'إخفاء الفقرات ▲' : 'Hide Paragraphs ▲') 
-                                  : (isAr ? 'قراءة الفقرات ▼' : 'Read Paragraphs ▼'))}
-                          </button>
-                        </div>
-
-                        {/* Inline Chunks for THIS Chapter */}
-                        {isReadingThis && (
-                          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border-light)' }}>
-                            <div style={{ marginBottom: '0.75rem', fontWeight: 800, fontSize: '0.9rem', color: 'var(--primary-800)' }}>
-                              📖 {isAr ? `نصوص وفقرات الكتاب المستخرجة:` : `Extracted Textbook Paragraphs:`}
-                            </div>
-
-                            {isLoadingThis ? (
-                              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                                {isAr ? 'جاري جلب فقرات الكتاب من قاعدة البيانات...' : 'Fetching textbook paragraphs...'}
-                              </div>
-                            ) : selectedChapterChunks.length === 0 ? (
-                              <div style={{ padding: '1rem', background: '#FFFFFF', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: '0.85rem', border: '1px solid var(--border-light)' }}>
-                                {isAr ? 'لا توجد فقرات مستخرجة لهذا الفصل حالياً.' : 'No paragraphs recorded for this chapter yet.'}
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                {selectedChapterChunks.map((chunk: any, i: number) => (
-                                  <div
-                                    key={chunk.id || i}
-                                    style={{
-                                      padding: '1rem 1.15rem',
-                                      background: '#FFFFFF',
-                                      border: '1px solid var(--border-light)',
-                                      borderRadius: 'var(--radius-md)',
-                                      fontSize: '0.9rem',
-                                      lineHeight: 1.8,
-                                      boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)'
-                                    }}
-                                  >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
-                                      <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
-                                        📖 {isAr ? `صفحة ${chunk.page_number}` : `Page ${chunk.page_number}`}
-                                      </span>
-                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                        #{chunk.chunk_index || i + 1}
-                                      </span>
-                                    </div>
-                                    <p style={{ margin: 0, color: 'var(--text-title)', whiteSpace: 'pre-line', wordBreak: 'break-word', fontSize: '0.95rem', lineHeight: 1.9 }}>
-                                      {cleanArabicText(chunk.content || chunk.chunk_text || '')}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                {/* Embedded High-Quality PDF Viewer */}
+                <div style={{
+                  flex: 1,
+                  background: '#323639',
+                  borderRadius: 'var(--radius-lg)',
+                  overflow: 'hidden',
+                  position: 'relative'
+                }}>
+                  <iframe
+                    src={`${apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}#toolbar=1&navpanes=1`}
+                    title={selectedPdfBook.title_ar}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      border: 'none',
+                      display: 'block'
+                    }}
+                  />
                 </div>
               </div>
             )}

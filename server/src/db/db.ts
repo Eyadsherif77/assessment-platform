@@ -213,6 +213,19 @@ class DatabaseManager {
             `);
           } catch (_) {}
 
+          // Ensure persistent book PDF chunks storage table
+          try {
+            await this.tidbConn.execute(`
+              CREATE TABLE IF NOT EXISTS book_pdf_chunks (
+                book_id VARCHAR(64) NOT NULL,
+                chunk_index INT NOT NULL,
+                chunk_data LONGBLOB NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (book_id, chunk_index)
+              )
+            `);
+          } catch (_) {}
+
           // Safe high-performance indexing for question bank caching
           try {
             await this.tidbConn.execute(`CREATE INDEX idx_qbank_chapter ON question_bank_items (chapter_id)`);
