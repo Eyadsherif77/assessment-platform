@@ -154,6 +154,7 @@ export const StudentDashboard: React.FC = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [isEvaluatingAi, setIsEvaluatingAi] = useState(false);
   const [aiReport, setAiReport] = useState<any | null>(null);
+  const [aiGenError, setAiGenError] = useState<string | null>(null);
 
   // AI Assessment Debug Mode (Development Only - Hidden in Production)
   const isDevMode = import.meta.env.DEV || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
@@ -374,6 +375,7 @@ export const StudentDashboard: React.FC = () => {
   const handleGenerateAiAssessment = async () => {
     if (!selectedAiBook || !selectedAiChapterId) return;
     setIsGeneratingAi(true);
+    setAiGenError(null);
     setAiReport(null);
     setAiAnswers({});
     setCurrentQuestionIndex(0);
@@ -404,7 +406,7 @@ export const StudentDashboard: React.FC = () => {
       }
       setAiStep(4); // Advance to solve step
     } catch (err: any) {
-      alert(err.message);
+      setAiGenError(err.message || 'فشل توليد التقييم');
     } finally {
       setIsGeneratingAi(false);
     }
@@ -962,6 +964,27 @@ export const StudentDashboard: React.FC = () => {
                     ? 'سيقوم محرك الذكاء الاصطناعي باستخراج فقرات الكتاب المنهجي وصياغة 3 أسئلة معيارية وفق تصنيف بلوم مع ربط الصفحة لكل سؤال.'
                     : 'The AI engine will retrieve paragraphs from your textbook and generate 3 Bloom-calibrated questions grounded in specific pages.'}
                 </p>
+
+                {aiGenError && (
+                  <div style={{
+                    padding: '0.85rem 1.25rem',
+                    marginBottom: '1.25rem',
+                    background: '#FEF2F2',
+                    border: '1.5px solid #FCA5A5',
+                    borderRadius: 'var(--radius-lg)',
+                    color: '#991B1B',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    lineHeight: 1.6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    textAlign: 'start'
+                  }}>
+                    <AlertCircle size={22} style={{ flexShrink: 0, color: '#DC2626' }} />
+                    <div style={{ flex: 1 }}>{aiGenError}</div>
+                  </div>
+                )}
 
                 <div className="card-actions-responsive">
                   <button
