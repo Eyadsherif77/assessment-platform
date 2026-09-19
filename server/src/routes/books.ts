@@ -751,15 +751,19 @@ router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res)
 
     // Check TiDB book_pdf_chunks (stream chunk by chunk to bypass HTTP body limits & Vercel 4.5MB limit)
     const countRes = await db.query(
-      `SELECT COUNT(*) as cnt FROM book_pdf_chunks WHERE book_id = $1`,
+      `SELECT COUNT(*) as cnt, SUM(LENGTH(chunk_data)) as total_len FROM book_pdf_chunks WHERE book_id = $1`,
       [id]
     );
     const totalChunks = parseInt(countRes.rows[0]?.cnt || '0', 10);
+    const totalLen = countRes.rows[0]?.total_len;
 
     if (totalChunks > 0) {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="book_${id}.pdf"`);
       res.setHeader('Accept-Ranges', 'bytes');
+      if (totalLen) {
+        res.setHeader('Content-Length', String(totalLen));
+      }
       res.setHeader('Cache-Control', 'public, max-age=86400');
 
       for (let c = 0; c < totalChunks; c++) {

@@ -1257,60 +1257,61 @@ export const StudentDashboard: React.FC = () => {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                backdropFilter: 'blur(6px)',
+                backgroundColor: 'rgba(15, 23, 42, 0.92)',
+                backdropFilter: 'blur(8px)',
                 zIndex: 9999,
                 display: 'flex',
                 flexDirection: 'column',
-                padding: '0.75rem',
+                padding: '0.5rem',
                 overflow: 'hidden'
               }}>
-                {/* Header with Exit button and Controls */}
+                {/* Header with Exit button and Controls - sleek compact bar */}
                 <div style={{
                   background: '#FFFFFF',
                   borderRadius: 'var(--radius-lg)',
-                  padding: '0.85rem 1.25rem',
+                  padding: '0.6rem 1rem',
                   marginBottom: '0.5rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '0.75rem',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.12)'
+                  gap: '0.5rem',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+                  flexShrink: 0
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
                     <button
                       onClick={() => setSelectedPdfBook(null)}
                       style={{
                         background: '#DC2626',
                         color: '#FFFFFF',
                         fontWeight: 800,
-                        padding: '0.6rem 1.2rem',
+                        padding: '0.5rem 0.9rem',
                         borderRadius: 'var(--radius-md)',
                         border: 'none',
                         cursor: 'pointer',
-                        fontSize: '0.95rem',
+                        fontSize: '0.88rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.4rem',
-                        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.35)'
+                        gap: '0.35rem',
+                        flexShrink: 0,
+                        boxShadow: '0 2px 6px rgba(220, 38, 38, 0.35)'
                       }}
                     >
-                      <X size={18} />
-                      {isAr ? 'إغلاق الكتاب والعودة' : 'Close Book & Return'}
+                      <X size={16} />
+                      {isAr ? 'إغلاق الكتاب والعودة' : 'Close Book'}
                     </button>
 
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <strong style={{ fontSize: '1.05rem', color: 'var(--text-title)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                      <strong style={{ fontSize: '0.95rem', color: 'var(--text-title)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
                         📖 {isAr ? selectedPdfBook.title_ar : (selectedPdfBook.title_en || selectedPdfBook.title_ar)}
                       </strong>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                         {isAr ? selectedPdfBook.grade_name_ar : (selectedPdfBook.grade_name_en || selectedPdfBook.grade_name_ar)} • {isAr ? selectedPdfBook.subject_name_ar : (selectedPdfBook.subject_name_en || selectedPdfBook.subject_name_ar)}
                       </span>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
                     <a
                       href={apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}
                       target="_blank"
@@ -1319,63 +1320,42 @@ export const StudentDashboard: React.FC = () => {
                         background: 'var(--primary-600)',
                         color: '#FFFFFF',
                         fontWeight: 700,
-                        padding: '0.6rem 1rem',
+                        padding: '0.5rem 0.85rem',
                         borderRadius: 'var(--radius-md)',
                         textDecoration: 'none',
-                        fontSize: '0.85rem',
+                        fontSize: '0.82rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.4rem',
-                        boxShadow: '0 2px 6px rgba(13, 148, 136, 0.3)'
+                        gap: '0.35rem'
                       }}
+                      title={isAr ? 'فتح في نافذة كاملة' : 'Fullscreen'}
                     >
-                      <ExternalLink size={16} />
-                      {isAr ? 'فتح في نافذة كاملة ↗' : 'Open Fullscreen ↗'}
+                      <ExternalLink size={15} />
+                      <span>{isAr ? 'ملء الشاشة ↗' : 'Fullscreen ↗'}</span>
                     </a>
                   </div>
-                </div>
-
-                {/* Helpful notice for mobile phone users */}
-                <div style={{
-                  padding: '0.45rem 1rem',
-                  marginBottom: '0.5rem',
-                  background: '#F0FDF4',
-                  border: '1px solid #BBF7D0',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.82rem',
-                  color: '#15803D',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '0.5rem'
-                }}>
-                  <span>💡 {isAr ? 'يمكنك تصفح وقراءة وتكبير صفحات الكتاب كملف PDF رسمي هنا، أو النقر على "فتح في نافذة كاملة" لاستعراضه بمشغل هاتفك الأصلي.' : 'You can read and pinch-to-zoom the textbook here, or tap "Open Fullscreen" for mobile native reader.'}</span>
-                  <a
-                    href={apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontWeight: 800, textDecoration: 'underline', color: '#15803D' }}
-                  >
-                    {isAr ? 'عرض ملء الشاشة ↗' : 'Fullscreen ↗'}
-                  </a>
                 </div>
 
                 {/* Embedded High-Quality PDF Viewer */}
                 <div style={{
                   flex: 1,
-                  background: '#323639',
+                  background: '#2b2e33',
                   borderRadius: 'var(--radius-lg)',
-                  overflow: 'hidden',
-                  position: 'relative'
+                  overflow: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column'
                 }}>
                   <iframe
-                    src={`${apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}#toolbar=1&navpanes=1`}
+                    src={`${apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}`}
                     title={selectedPdfBook.title_ar}
                     style={{
                       width: '100%',
                       height: '100%',
+                      minHeight: '75vh',
                       border: 'none',
+                      flex: 1,
                       display: 'block'
                     }}
                   />
