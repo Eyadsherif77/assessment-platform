@@ -199,6 +199,20 @@ class DatabaseManager {
             }
           }
 
+          // Ensure chunked uploads storage table
+          try {
+            await this.tidbConn.execute(`
+              CREATE TABLE IF NOT EXISTS file_upload_chunks (
+                upload_id VARCHAR(64) NOT NULL,
+                chunk_index INT NOT NULL,
+                total_chunks INT NOT NULL,
+                chunk_data LONGBLOB NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (upload_id, chunk_index)
+              )
+            `);
+          } catch (_) {}
+
           // Safe high-performance indexing for question bank caching
           try {
             await this.tidbConn.execute(`CREATE INDEX idx_qbank_chapter ON question_bank_items (chapter_id)`);

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
-import { extractTextFromPdf, extractTextFromTxt } from '../utils/pdfExtractor';
 import { 
   Upload, 
   FileText, 
@@ -170,7 +169,7 @@ export const TeacherDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [activeJobId]);
 
-  // Upload book handler (Client-side extraction for zero payload limits + safe response parsing)
+  // Upload book handler using 2MB chunked streaming (completely bypasses Vercel 4.5MB payload limits on all mobile & desktop browsers)
   const handleUploadBook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bookTitleAr || !selectedStageId || !selectedGradeId || !selectedSubjectId || !pdfFile) {
@@ -180,95 +179,108 @@ export const TeacherDashboard: React.FC = () => {
 
     setIsUploading(true);
     setUploadMessage(null);
-    setJobProgress(10);
-    setJobStatusText('EXTRACTING');
+    setJobProgress(5);
+    setJobStatusText('UPLOADING');
 
     try {
-      const isPdf = pdfFile.name.toLowerCase().endsWith('.pdf') || pdfFile.type === 'application/pdf';
-      const isTxt = pdfFile.name.toLowerCase().endsWith('.txt') || pdfFile.type === 'text/plain';
+      const CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB per chunk (well below Vercel's 4.5 MB limit)
+      const totalChunks = Math.ceil(pdfFile.size / CHUNK_SIZE);
+      const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
 
-      let pages: { pageNumber: number; text: string }[] = [];
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkStart = i * CHUNK_SIZE;
+        const chunkEnd = Math.min(pdfFile.size, (i + 1) * CHUNK_SIZE);
+        const chunkBlob = pdfFile.slice(chunkStart, chunkEnd);
 
-      if (isPdf) {
-        setUploadMessage(isAr ? 'جاري استخراج وفهرسة نصوص الكتاب بدون قيود الحجم...' : 'Extracting textbook text without file size limits...');
-        pages = await extractTextFromPdf(pdfFile, (current, total) => {
-          const pct = Math.min(85, Math.round((current / total) * 75) + 10);
-          setJobProgress(pct);
-          setUploadMessage(isAr ? `جاري قراءة صفحات الكتاب: صفحة ${current} من ${total}...` : `Reading textbook: page ${current} of ${total}...`);
-        });
-      } else if (isTxt) {
-        setUploadMessage(isAr ? 'جاري معالجة نصوص المقرر...' : 'Processing course text...');
-        pages = await extractTextFromTxt(pdfFile);
-      }
+        const chunkFormData = new FormData();
+        chunkFormData.append('uploadId', uploadId);
+        chunkFormData.append('chunkIndex', String(i));
+        chunkFormData.append('totalChunks', String(totalChunks));
+        chunkFormData.append('chunk', chunkBlob, `${pdfFile.name}.part_${i}`);
 
-      let res: Response;
-      if (pages.length > 0) {
-        setUploadMessage(isAr ? 'جاري حفظ الكتاب وفهرسة المقاطع دلالياً...' : 'Saving textbook and indexing semantic vectors...');
-        setJobProgress(90);
-        res = await fetch(apiUrl('/api/books/upload-parsed'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            title_ar: bookTitleAr,
-            academic_stage_id: selectedStageId,
-            grade_id: selectedGradeId,
-            subject_id: selectedSubjectId,
-            chapter_number: chapterNumber,
-            chapter_title_ar: chapterTitleAr || 'الفصل الأول',
-            school_type: schoolTypeTarget,
-            file_size: pdfFile.size,
-            file_name: pdfFile.name,
-            pages
-          })
-        });
-      } else {
-        // Fallback to standard multipart upload
-        const formData = new FormData();
-        formData.append('title_ar', bookTitleAr);
-        formData.append('academic_stage_id', selectedStageId);
-        formData.append('grade_id', selectedGradeId);
-        formData.append('subject_id', selectedSubjectId);
-        formData.append('chapter_number', chapterNumber);
-        formData.append('chapter_title_ar', chapterTitleAr || 'الفصل الأول');
-        formData.append('school_type', schoolTypeTarget);
-        formData.append('file', pdfFile);
+        const pct = Math.min(85, Math.round(((i + 1) / totalChunks) * 80) + 5);
+        setJobProgress(pct);
+        setUploadMessage(
+          isAr
+            ? `جاري رفع الكتاب بدون قيود: جزء ${i + 1} من ${totalChunks} (${pct}%)...`
+            : `Uploading textbook: chunk ${i + 1} of ${totalChunks} (${pct}%)...`
+        );
 
-        res = await fetch(apiUrl('/api/books/upload'), {
+        const chunkRes = await fetch(apiUrl('/api/books/upload-chunk'), {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
-          body: formData
+          body: chunkFormData
         });
+
+        if (!chunkRes.ok) {
+          const errText = await chunkRes.text();
+          let parsedErr = errText;
+          try {
+            parsedErr = JSON.parse(errText).error || errText;
+          } catch {}
+          throw new Error((isAr ? `فشل رفع الجزء ${i + 1} من الكتاب: ` : `Failed to upload chunk ${i + 1}: `) + parsedErr);
+        }
       }
 
-      // Safe JSON parsing to prevent Safari "The string did not match the expected pattern" error
+      // Finalize and trigger server-side text extraction & semantic vector indexing
+      setJobProgress(88);
+      setJobStatusText('PROCESSING');
+      setUploadMessage(
+        isAr
+          ? 'تم اكتمال رفع جميع الأجزاء! جاري استخراج النصوص وتوليد الفهرسة الدلالية بالذكاء الاصطناعي...'
+          : 'All chunks uploaded! Extracting text and indexing semantic vectors with AI...'
+      );
+
+      const finalRes = await fetch(apiUrl('/api/books/finalize-chunked'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          uploadId,
+          title_ar: bookTitleAr,
+          title_en: bookTitleAr,
+          academic_stage_id: selectedStageId,
+          grade_id: selectedGradeId,
+          subject_id: selectedSubjectId,
+          chapter_number: chapterNumber,
+          chapter_title_ar: chapterTitleAr || 'الفصل الأول',
+          school_type: schoolTypeTarget,
+          fileName: pdfFile.name,
+          fileSize: pdfFile.size,
+          totalChunks
+        })
+      });
+
       let data: any = {};
-      const responseText = await res.text();
+      const responseText = await finalRes.text();
       try {
         data = JSON.parse(responseText);
       } catch {
-        if (!res.ok) {
+        if (!finalRes.ok) {
           throw new Error(responseText.slice(0, 250) || (isAr ? 'فشل معالجة الكتاب على الخادم.' : 'Server processing failed.'));
         }
       }
 
-      if (!res.ok) {
-        throw new Error(data.error || (isAr ? 'فشل رفع ومعالجة الكتاب.' : 'Failed to upload textbook.'));
+      if (!finalRes.ok) {
+        throw new Error(data.error || (isAr ? 'فشل معالجة أجزاء الكتاب.' : 'Failed to finalize textbook.'));
       }
 
-      setUploadMessage(data.message || (isAr ? 'تم رفع ومعالجة الكتاب وفهرسته دلالياً بنجاح!' : 'Textbook uploaded & indexed successfully!'));
+      setUploadMessage(data.message || (isAr ? 'تم رفع ومعالجة الكتاب وفهرسته دلالياً بنجاح!' : 'Textbook uploaded and indexed successfully!'));
       setJobProgress(100);
       setJobStatusText('COMPLETED');
       setActiveJobId(null);
       loadTeacherData();
       setBookTitleAr('');
       setPdfFile(null);
+      const fileInput = document.getElementById('book-pdf-input') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
     } catch (err: any) {
       console.error('Upload book error:', err);
-      const msg = err.message || (isAr ? 'حدث خطأ أثناء معالجة الكتاب' : 'An error occurred while processing textbook');
+      const msg = err.message || (isAr ? 'حدث خطأ أثناء رفع ومعالجة الكتاب' : 'An error occurred while uploading textbook');
       setUploadMessage(msg);
+      setJobStatusText('FAILED');
       alert(msg);
     } finally {
       setIsUploading(false);
@@ -647,15 +659,21 @@ export const TeacherDashboard: React.FC = () => {
                 </div>
               )}
 
-              {/* Background Upload Progress */}
-              {activeJobId && (
+              {/* Upload & Indexing Progress Bar */}
+              {(isUploading || activeJobId) && (
                 <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '1.25rem', borderRadius: 'var(--radius-lg)', marginBottom: '1.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-                    <span>{isAr ? `حالة المعالجة: ${jobStatusText}` : `Processing Status: ${jobStatusText}`}</span>
-                    <span>{jobProgress}%</span>
+                    <span>
+                      {jobStatusText === 'UPLOADING'
+                        ? (isAr ? 'جاري رفع أجزاء الكتاب...' : 'Uploading textbook chunks...')
+                        : jobStatusText === 'PROCESSING'
+                        ? (isAr ? 'جاري استخراج النصوص والفهرسة بالذكاء الاصطناعي...' : 'Extracting & AI Vector Indexing...')
+                        : (isAr ? `حالة المعالجة: ${jobStatusText}` : `Processing Status: ${jobStatusText}`)}
+                    </span>
+                    <span style={{ color: 'var(--primary-600)' }}>{jobProgress}%</span>
                   </div>
-                  <div style={{ width: '100%', height: '8px', background: '#DBEAFE', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ width: `${jobProgress}%`, height: '100%', background: 'var(--primary-600)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
+                  <div style={{ width: '100%', height: '10px', background: '#DBEAFE', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{ width: `${jobProgress}%`, height: '100%', background: 'linear-gradient(90deg, #2563EB, #3B82F6)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
                   </div>
                 </div>
               )}
@@ -740,6 +758,7 @@ export const TeacherDashboard: React.FC = () => {
                 <div className="form-group">
                   <label className="form-label">{isAr ? 'ملف الكتاب أو المقرر (PDF أو نصي)' : 'Textbook or Course File (PDF or TXT)'}</label>
                   <input
+                    id="book-pdf-input"
                     type="file"
                     required
                     accept=".pdf,.txt,application/pdf,text/plain"
