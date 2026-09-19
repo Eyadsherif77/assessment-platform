@@ -1,6 +1,6 @@
 {
   "name": "assessment-for-education-platform",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "منصة التقييم من أجل التعليم - Production-Ready Mobile-First AI Assessment Platform",
   "scripts": {
