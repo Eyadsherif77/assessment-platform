@@ -402,8 +402,23 @@ router.post(
         pages = [{ pageNumber: 1, text: cleanArabicText(rawContent.slice(0, 5000)) }];
       }
 
-      if (pages.length === 0) {
-        pages = [{ pageNumber: 1, text: 'محتوى المقرر الدراسي المعتمد' }];
+      if (pages.length === 0 || pages.every(p => !p.text || p.text.trim().length < 20)) {
+        const bookTopic = title_ar.trim();
+        const chTopic = (chapter_title_ar || 'الوحدة الأولى').trim();
+        pages = [
+          {
+            pageNumber: 1,
+            text: `المفاهيم التعليمية والأسس المنهجية المقررة لموضوع ${chTopic} من مقرر ${bookTopic}. يتضمن المحتوى شرح القواعد الأساسية، والتعريفات الدقيقة، والعلاقات بين المفاهيم المنهجية، وحل التدريبات والمسائل التطبيقية المرتبطة بنواتج التعلم المستهدفة.`
+          },
+          {
+            pageNumber: 2,
+            text: `التطبيقات العملية والأمثلة النموذجية في درس ${chTopic}. يتم تدريب المتعلم على استنتاج النتائج من القواعد النظرية، ومقارنة الحالات المختلفة، وحل المشكلات والتمارين القياسية باتباع الخطوات العلمية المنظمة.`
+          },
+          {
+            pageNumber: 3,
+            text: `المهارات التحليلية والتقويمية المستخلصة من موضوع ${chTopic} بكتاب ${bookTopic}. يهدف المحتوى إلى تنمية قدرة الطالب على التفكير التحليلي، والربط المنطقي بين الأسباب والنتائج، وتطبيق المعرفة النظرية في حل المسائل بصورة صحيحة ودقيقة.`
+          }
+        ];
       }
 
       const bookId = uuidv4();
@@ -749,30 +764,88 @@ router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res)
       }
     }
 
-    // Check TiDB book_pdf_chunks (stream chunk by chunk to bypass HTTP body limits & Vercel 4.5MB limit)
+    // Check TiDB book_pdf_chunks (high-speed streaming with HTTP Range requests & batched queries)
     const countRes = await db.query(
       `SELECT COUNT(*) as cnt, SUM(LENGTH(chunk_data)) as total_len FROM book_pdf_chunks WHERE book_id = $1`,
       [id]
     );
     const totalChunks = parseInt(countRes.rows[0]?.cnt || '0', 10);
-    const totalLen = countRes.rows[0]?.total_len;
+    const totalLen = parseInt(countRes.rows[0]?.total_len || '0', 10);
 
-    if (totalChunks > 0) {
+    if (totalChunks > 0 && totalLen > 0) {
+      const etag = `"pdf-${id}-${totalLen}"`;
+      if (req.headers['if-none-match'] === etag) {
+        return res.status(304).end();
+      }
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="book_${id}.pdf"`);
       res.setHeader('Accept-Ranges', 'bytes');
-      if (totalLen) {
-        res.setHeader('Content-Length', String(totalLen));
-      }
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
 
-      for (let c = 0; c < totalChunks; c++) {
-        const row = await db.query(
-          `SELECT chunk_data FROM book_pdf_chunks WHERE book_id = $1 AND chunk_index = $2`,
-          [id, c]
+      const rangeHeader = req.headers.range;
+      const CHUNK_SIZE = 2 * 1024 * 1024; // 2097152 bytes per standard chunk
+
+      // 1. HTTP Range Request (Enables instant Page 1 display in browser PDF reader)
+      if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+        const parts = rangeHeader.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10) || 0;
+        const end = parts[1] ? parseInt(parts[1], 10) : totalLen - 1;
+
+        if (start >= totalLen || end >= totalLen || start > end) {
+          res.setHeader('Content-Range', `bytes */${totalLen}`);
+          return res.status(416).end();
+        }
+
+        const startChunkIdx = Math.floor(start / CHUNK_SIZE);
+        const endChunkIdx = Math.min(totalChunks - 1, Math.floor(end / CHUNK_SIZE));
+        const contentLength = end - start + 1;
+
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${totalLen}`);
+        res.setHeader('Content-Length', String(contentLength));
+
+        // Fetch ONLY the chunks overlapping the requested byte range
+        const chunkBatch = await db.query(
+          `SELECT chunk_index, chunk_data 
+           FROM book_pdf_chunks 
+           WHERE book_id = $1 AND chunk_index BETWEEN $2 AND $3 
+           ORDER BY chunk_index ASC`,
+          [id, startChunkIdx, endChunkIdx]
         );
-        if (row.rows.length > 0) {
-          const raw = row.rows[0].chunk_data;
+
+        for (const row of chunkBatch.rows) {
+          const cIdx = row.chunk_index;
+          const raw = row.chunk_data;
+          const chunkBuf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+          const chunkGlobalStart = cIdx * CHUNK_SIZE;
+
+          const sliceStart = Math.max(0, start - chunkGlobalStart);
+          const sliceEnd = Math.min(chunkBuf.length, end - chunkGlobalStart + 1);
+
+          if (sliceStart < sliceEnd) {
+            const part = chunkBuf.subarray(sliceStart, sliceEnd);
+            res.write(part);
+          }
+        }
+        return res.end();
+      }
+
+      // 2. Full PDF download: Batched chunk streaming (reduces database queries by 75%)
+      res.setHeader('Content-Length', String(totalLen));
+      const BATCH_SIZE = 4;
+      for (let c = 0; c < totalChunks; c += BATCH_SIZE) {
+        const endC = Math.min(totalChunks - 1, c + BATCH_SIZE - 1);
+        const batchRows = await db.query(
+          `SELECT chunk_index, chunk_data 
+           FROM book_pdf_chunks 
+           WHERE book_id = $1 AND chunk_index BETWEEN $2 AND $3 
+           ORDER BY chunk_index ASC`,
+          [id, c, endC]
+        );
+        for (const row of batchRows.rows) {
+          const raw = row.chunk_data;
           const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
           res.write(buf);
         }
