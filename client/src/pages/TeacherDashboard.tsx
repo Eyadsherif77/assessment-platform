@@ -100,8 +100,8 @@ export const TeacherDashboard: React.FC = () => {
   const loadTeacherData = () => {
     if (!token) return;
 
-    // Load Books
-    fetch(apiUrl('/api/books'), { headers: { Authorization: `Bearer ${token}` } })
+    // Load Books (only books uploaded by this teacher)
+    fetch(apiUrl('/api/books?my_only=true'), { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setBooks(data); })
       .catch(console.error);

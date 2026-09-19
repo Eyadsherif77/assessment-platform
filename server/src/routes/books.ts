@@ -184,7 +184,15 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       params.push(studentSchoolType);
       conditions.push(`(b.school_type = $${params.length} OR b.school_type = 'كلاهما' OR b.school_type IS NULL)`);
     } else {
-      // Optional query filters for teachers
+      // For teachers: strictly isolate books so each teacher only manages their own uploaded books
+      if (req.user?.role === 'TEACHER' || req.query.my_only === 'true') {
+        if (req.query.all !== 'true' && req.user?.id) {
+          params.push(req.user.id);
+          conditions.push(`b.teacher_id = $${params.length}`);
+        }
+      }
+
+      // Optional query filters
       if (req.query.stage_id) {
         params.push(req.query.stage_id);
         conditions.push(`b.academic_stage_id = $${params.length}`);
