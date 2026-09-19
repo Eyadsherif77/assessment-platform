@@ -97,13 +97,34 @@ class AIRagEngine {
       return [];
     }
 
+    // Filter out boilerplate chunks (indexes, table of contents, copyright, committee info)
+    const isBoilerplateChunk = (text: string): boolean => {
+      if (!text || text.trim().length < 25) return true;
+      const lower = text.toLowerCase();
+      const boilerplateKeywords = [
+        'الفهرس', 'المحتويات', 'قائمة المحتويات', 'فهرس الكتاب',
+        'لجنة الإعداد', 'لجنة التأليف', 'المراجعة والتطوير', 'مستشار المادة',
+        'حقوق الطبع', 'حقوق النشر', 'رقم الإيداع', 'دار الكتب', 'isbn',
+        'طبعة 202', 'وزارة التربية والتعليم والتعليم الفني', 'مقدمة الناشر',
+        'دليل المعلم وولي الأمر', 'أهداف الوحدة العامة'
+      ];
+      // Check if text is mostly table of contents dots / page numbers
+      const dotCount = (text.match(/\.{3,}/g) || []).length;
+      if (dotCount >= 3) return true;
+
+      return boilerplateKeywords.some(kw => lower.includes(kw));
+    };
+
+    const validChunks = res.rows.filter((row: any) => !isBoilerplateChunk(row.content));
+    const candidateChunks = validChunks.length > 0 ? validChunks : res.rows;
+
     if (!queryText) {
-      return res.rows.slice(0, limit);
+      return candidateChunks.slice(0, limit);
     }
 
     // Perform vector ranking using query embedding
     const queryVec = await generateEmbedding(queryText);
-    const scoredChunks = res.rows.map((row: any) => {
+    const scoredChunks = candidateChunks.map((row: any) => {
       let sim = 0;
       if (row.embedding) {
         try {
@@ -139,7 +160,15 @@ class AIRagEngine {
 
       if (itemsRes.rows.length === 0) return null;
 
-      let candidateRows = itemsRes.rows;
+      // Filter out any older cached questions that contain meta references like "صفحة" or "فهرس"
+      const candidateRows = itemsRes.rows.filter((r: any) => {
+        const qText = r.question_text || '';
+        return !qText.includes('في صفحة') && !qText.includes('بصفحة') && !qText.includes('رقم الصفحة') && !qText.includes('الفهرس');
+      });
+
+      if (candidateRows.length === 0) return null;
+
+      let filteredRows = candidateRows;
 
       // Deduplication: prevent the same student from seeing questions they already solved
       if (studentId) {
@@ -160,22 +189,22 @@ class AIRagEngine {
 
           const unseen = candidateRows.filter((r: any) => !seenIds.has(r.id));
           if (unseen.length >= count) {
-            candidateRows = unseen;
+            filteredRows = unseen;
           } else if (unseen.length > 0) {
             // Student saw most questions, mix unseen questions first
             const seen = candidateRows.filter((r: any) => seenIds.has(r.id));
-            candidateRows = [...unseen, ...shuffleArray(seen)];
+            filteredRows = [...unseen, ...shuffleArray(seen)];
           } else {
             // Student has seen ALL existing questions in bank!
             // Return null so AI generates fresh questions to expand the bank!
-            console.log(`🔄 Student ${studentId} mastered all ${itemsRes.rows.length} questions in bank for chapter ${chapterId}. Generating fresh questions.`);
+            console.log(`🔄 Student ${studentId} mastered all questions in bank for chapter ${chapterId}. Generating fresh questions.`);
             return null;
           }
         } catch (_) {}
       }
 
-      if (candidateRows.length >= count) {
-        const selectedItems = shuffleArray(candidateRows).slice(0, count);
+      if (filteredRows.length >= count) {
+        const selectedItems = shuffleArray(filteredRows).slice(0, count);
         const questions: GroundedQuestion[] = [];
 
         for (const item of selectedItems) {
@@ -241,6 +270,11 @@ class AIRagEngine {
       }
 
       for (const q of questions) {
+        // Skip questions with meta phrasing
+        if (q.question_text.includes('في صفحة') || q.question_text.includes('بصفحة') || q.question_text.includes('الفهرس')) {
+          continue;
+        }
+
         const dupCheck = await db.query(
           `SELECT id FROM question_bank_items WHERE chapter_id = $1 AND question_text = $2`,
           [params.chapterId, q.question_text]
@@ -290,7 +324,7 @@ class AIRagEngine {
     // 2. Otherwise retrieve textbook chunks
     const chunks = await this.retrieveGroundedChunks({
       ...params,
-      limit: 6
+      limit: 8
     });
 
     if (chunks.length === 0) {
@@ -336,25 +370,27 @@ class AIRagEngine {
     }));
 
     const contextText = cleanedChunks
-      .map(c => `[الصفحة ${c.page_number}]: ${c.content}`)
+      .map(c => `[فقرة دراسية من صفحة ${c.page_number}]:\n${c.content}`)
       .join('\n\n---\n\n');
 
-    const prompt = `أنت خبير قياس وتقويم تربوي للمناهج التعليمية الرسمية.
-مهمتك توليد ${count} أسئلة اختيار من متعدد باللغة العربية معتمدة حصرياً ومباشرة وبدقة 100% على فقرات الكتاب المدرسي المرفقة أدناه.
-ممنوع اختراع أي معلومات خارج النص المرفق.
-تنبيه صارم:
-1. ولّد تماماً ${count} أسئلة مختلفة وشاملة لموضوعات وفقرات الكتاب.
-2. لكل سؤال 4 خيارات حصرية وواضحة (خيار واحد فقط صحيح وثلاثة خيارات خاطئة).
-3. وزّع موقع الإجابة الصحيحة عشوائياً بين الخيارات (لا تضع الإجابة الصحيحة دائماً أول خيار، بل نوّع مواقعها).
-4. اكتب نص السؤال وشرح الإشارة لرقم الصفحة بدقة.
+    const prompt = `أنت أستاذ ومستشار خبير في القياس والتقويم التربوي والامتحانات المدرسية المعتمدة.
+مهمتك صياغة ${count} أسئلة اختيار من متعدد باللغة العربية معتمدة بنسبة 100% وبدقة كاملة على المحتوى العلمي والمعلومات والدروس الواردة في نصوص الكتاب المدرسي المرفقة أدناه.
 
-نص الكتاب المدرسي المستخرج:
+قواعد تربوية صارمة جداً (يجب الالتزام بها بدقة متناهية):
+1. صلب المادة العلمية والتعليمية فقط: يجب أن تختبر الأسئلة المفاهيم، المصطلحات، القوانين العلمية، القواعد النحوية واللغوية، التواريخ والأحداث، التعليلات، والتطبيقات المنهجية الواردة بالدرس.
+2. ممنوع منعاً باتاً صياغة أي سؤال عن أرقام الصفحات (مثل: "في أي صفحة ورد كذا؟"، أو "ما رقم الصفحة؟"، أو "وفقاً لما ورد في صفحة 4 ما عنوان..."). لا تذكر كلمة "صفحة" في نص السؤال مطلقاً!
+3. ممنوع منعاً باتاً الأسئلة عن الفهرس، أو عناوين الوحدات بالفهرس، أو الغلاف، أو أسماء مؤلفي الكتاب، أو تاريخ الطبعة، أو حقوق النشر، أو القرارات الوزارية.
+4. لكل سؤال 4 خيارات حصرية وواقعية (خيار واحد صحيح بدقة، و3 مموهات منطقية وخاطئة تناسب مستوى فهم الطلاب).
+5. وزّع موقع الإجابة الصحيحة عشوائياً بين الخيارات (لا تضع الخيار الصحيح دائماً في نفس الموقع).
+6. اذكر في حقل "page_reference" رقم الصفحة الحقيقي الذي استندت إليه المعلومة فقط كمرجع توثيقي للنظام دون ذكره إطلاقاً داخل نص السؤال للطالب.
+
+نصوص فقرات المنهج المدرسي المعتمد:
 ${contextText}
 
-أجب فقط بصيغة JSON Array مطابقة تماماً للمثال التالي بدون نصوص تمهيدية:
+أجب فقط بمصفوفة JSON صالحة مطابقة تماماً للمثال التالي بدون أي نصوص تمهيدية أو تنسيقات إضافية:
 [
   {
-    "question_text": "نص السؤال الدقيق من واقع الكتاب؟",
+    "question_text": "ما المصطلح العلمي الذي يُطلق على ...؟",
     "options": [
       { "text": "خيار أول", "is_correct": false },
       { "text": "خيار ثان (الصحيح)", "is_correct": true },
@@ -364,8 +400,8 @@ ${contextText}
     "difficulty": "MEDIUM",
     "bloom_level": "APPLICATION",
     "page_reference": 4,
-    "source_excerpt": "جملة الاقتباس المباشرة من الكتاب",
-    "explanation": "شرح دقيق للإجابة الصحيحة بالرجوع للنص"
+    "source_excerpt": "الاقتباس العلمي الدقيق من النص",
+    "explanation": "شرح علمي مفصل لسبب صحة الإجابة وكيفية استنتاجها من الدرس"
   }
 ]`;
 
@@ -386,7 +422,7 @@ ${contextText}
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: {
-                temperature: 0.3,
+                temperature: 0.25,
                 topP: 0.8
               }
             })
@@ -407,7 +443,7 @@ ${contextText}
             if (Array.isArray(parsed) && parsed.length > 0) {
               return parsed.map((q: any) => ({
                 id: uuidv4(),
-                question_text: q.question_text,
+                question_text: q.question_text.replace(/صفحة\s*\d+/g, '').trim(),
                 options: shuffleArray(q.options.map((opt: any) => ({
                   id: uuidv4(),
                   text: opt.text,
@@ -445,7 +481,7 @@ ${contextText}
       if ((text.includes('النفيس') || text.includes('ابن النفيس')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
-          question_text: `وفقاً للمقرر الدراسي في صفحة ${page}: ما الإنجاز الطبي الأبرز الذي اشتهر به العالم المسلم ابن النفيس؟`,
+          question_text: `ما الإنجاز الطبي الأبرز الذي اشتهر به العالم المسلم ابن النفيس في تاريخ الطب؟`,
           options: [
             { id: uuidv4(), text: 'وصف الدورة الدموية الصغرى بدقة علمية قبل علماء الغرب بقرون', is_correct: true },
             { id: uuidv4(), text: 'اكتشاف المجهر الضوئي لفحص الخلايا الحية', is_correct: false },
@@ -456,14 +492,14 @@ ${contextText}
           bloom_level: 'KNOWLEDGE',
           page_reference: page,
           source_excerpt: 'فهو أول من وصف الدورة الدموية الصغرى وصفاً دقيقاً قبل أن يعرفها الغرب بقرون.',
-          explanation: 'ابن النفيس هو أول من اكتشف ووصف الدورة الدموية الصغرى كما هو منصوص عليه في صفحة ' + page + '.'
+          explanation: 'ابن النفيس هو أول من اكتشف ووصف الدورة الدموية الصغرى.'
         });
       }
 
       if (text.includes('البيمارستان') && questions.length < count) {
         questions.push({
           id: uuidv4(),
-          question_text: `بناءً على ما ورد في صفحة ${page}: ما الدور الرئيسي الذي كانت تقوم به مؤسسة 'البيمارستان' في الحضارة الإسلامية؟`,
+          question_text: `ما الدور الرئيسي الذي كانت تقوم به مؤسسة 'البيمارستان' في الحضارة الإسلامية؟`,
           options: [
             { id: uuidv4(), text: 'مستشفيات متقدمة تُعنى برعاية المرضى جسدياً ونفسياً وتدريب الأطباء مجاناً', is_correct: true },
             { id: uuidv4(), text: 'مراكز عسكرية لحماية الثغور وتدريب الجيوش', is_correct: false },
@@ -474,16 +510,16 @@ ${contextText}
           bloom_level: 'COMPREHENSION',
           page_reference: page,
           source_excerpt: 'البيمارستانات كانت أكثر من مجرد مستشفيات، بل مؤسسات تُعنى براحة المريض جسدياً ونفسياً.',
-          explanation: 'كانت البيمارستانات مؤسسات طبية وعلاجية وإنسانية راقية بحسب نصوص المقرر في صفحة ' + page + '.'
+          explanation: 'كانت البيمارستانات مؤسسات طبية وعلاجية وإنسانية راقية.'
         });
       }
 
       if ((text.includes('زويل') || text.includes('أحمد زويل')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
-          question_text: `ما الاكتشاف العلمي الجليل الذي منح العالم المصري الدكتور أحمد زويل جائزة نوبل وفقاً للمقرر؟`,
+          question_text: `ما الاكتشاف العلمي الجليل الذي منح العالم المصري الدكتور أحمد زويل جائزة نوبل؟`,
           options: [
-            { id: uuidv4(), text: 'اختراع ميكروسكوب الفيمتو ثانية لتصوير حركة الجزيئات عند التفاعل الكيميائي', is_correct: true },
+            { id: uuidv4(), text: 'ابتكار ميكروسكوب الفيمتو ثانية لتصوير حركة الجزيئات عند التفاعل الكيميائي', is_correct: true },
             { id: uuidv4(), text: 'ابتكار أجهزة الليزر لعلاج أمراض العيون', is_correct: false },
             { id: uuidv4(), text: 'اكتشاف عناصر إشعاعية جديدة في الجدول الدوري', is_correct: false },
             { id: uuidv4(), text: 'تصميم مركبات الفضاء لاستكشاف الكواكب الخارجية', is_correct: false }
@@ -492,14 +528,14 @@ ${contextText}
           bloom_level: 'KNOWLEDGE',
           page_reference: page,
           source_excerpt: 'الدكتور أحمد زويل نال نوبل في الكيمياء بفضل ابتكار الفيمتو ثانية.',
-          explanation: 'حاز د. أحمد زويل جائزة نوبل تقديراً لأبحاثه الرائدة في كيمياء الفيمتو ثانية كما ورد في صفحة ' + page + '.'
+          explanation: 'حاز د. أحمد زويل جائزة نوبل تقديراً لأبحاثه الرائدة في كيمياء الفيمتو ثانية.'
         });
       }
 
       if ((text.includes('منسي') || text.includes('أحمد منسي')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
-          question_text: `ما القيمة الوطنية والتربوية الكبرى المستفادة من سيرة البطل الشهيد أحمد منسي بصفحة ${page}؟`,
+          question_text: `ما القيمة الوطنية والتربوية الكبرى المستفادة من سيرة البطل الشهيد أحمد منسي؟`,
           options: [
             { id: uuidv4(), text: 'الفداء والتضحية الصادقة والشجاعة في الدفاع عن تراب الوطن وأمنه', is_correct: true },
             { id: uuidv4(), text: 'تحقيق الشهرة الفردية في وسائل الإعلام والمحافل', is_correct: false },
@@ -510,14 +546,14 @@ ${contextText}
           bloom_level: 'APPLICATION',
           page_reference: page,
           source_excerpt: 'أسطورة مصرية البطل أحمد منسي الذي قدم روحه فداءً لكرامة وأمن بلاده.',
-          explanation: 'تجسد سيرة الشهيد أسمى معاني التضحية والانتماء الوطني وفق نصوص المقرر في صفحة ' + page + '.'
+          explanation: 'تجسد سيرة الشهيد أسمى معاني التضحية والانتماء الوطني.'
         });
       }
 
       if ((text.includes('الكثافة') || text.includes('البترول')) && questions.length < count) {
         questions.push({
           id: uuidv4(),
-          question_text: `علل وفقاً لنص المقرر بصفحة ${page}: لماذا لا يُستخدم الماء في إطفاء حرائق البترول؟`,
+          question_text: `علل علمياً: لماذا لا يُستخدم الماء في إطفاء حرائق البترول؟`,
           options: [
             { id: uuidv4(), text: 'لأن كثافة البترول أقل من كثافة الماء فيطفو فوق سطحه ويظل مشتعلاً', is_correct: true },
             { id: uuidv4(), text: 'لأن الماء يتفاعل كيميائياً مع البترول وينفجر', is_correct: false },
@@ -528,39 +564,39 @@ ${contextText}
           bloom_level: 'APPLICATION',
           page_reference: page,
           source_excerpt: 'لا يستخدم الماء في إطفاء حرائق البترول لأن كثافة البترول أقل من كثافة الماء فيطفو مشتعلاً.',
-          explanation: 'المواد الأقل كثافة تطفو فوق السائل الأعلى كثافة، ولذلك يطفو البترول فوق الماء مشتعلاً بحسب صفحة ' + page + '.'
+          explanation: 'المواد الأقل كثافة تطفو فوق السائل الأعلى كثافة، ولذلك يطفو البترول فوق الماء مشتعلاً.'
         });
       }
 
-      // Generic dynamic sentence extractor for any chunk/subject
+      // Dynamic sentence-level fact extractor without any page mention
       if (questions.length < count) {
         const sentences = text
           .split(/[.،؛!؟\n]+/)
           .map(s => s.trim())
-          .filter(s => s.length >= 25 && s.length <= 130);
+          .filter(s => s.length >= 25 && s.length <= 130 && !s.includes('الفهرس') && !s.includes('المحتويات'));
 
         if (sentences.length > 0) {
           const mainSentence = sentences[0];
           questions.push({
             id: uuidv4(),
-            question_text: `استناداً إلى محتوى المقرر الدراسي في صفحة ${page}: ما المعنى أو الحقيقة الجوهرية التي يبرزها النص؟`,
+            question_text: `أي من العبارات التالية تمثل حقيقة ومفهوماً علمياً صحيحاً ورد في نصوص الدرس؟`,
             options: [
               { id: uuidv4(), text: mainSentence, is_correct: true },
-              { id: uuidv4(), text: 'المعلومة المذكورة لا تنطبق على سياق الدرس والمقرر المعتمد', is_correct: false },
-              { id: uuidv4(), text: 'تقتصر أهمية الموضوع على الجانب النظري دون أي تطبيق عملي', is_correct: false },
-              { id: uuidv4(), text: 'الموضوع قيد التجربة ولم يُعتمد في المنهج التعليمي بعد', is_correct: false }
+              { id: uuidv4(), text: 'تتناقض المفاهيم الأساسية مع التطبيقات العملية في هذا المجال', is_correct: false },
+              { id: uuidv4(), text: 'تقتصر أهمية دراسة الموضوع على الجانب النظري دون أي تطبيق عملي', is_correct: false },
+              { id: uuidv4(), text: 'المعلومات المذكورة قيد التجربة ولم تثبت صحتها علمياً بعد', is_correct: false }
             ],
             difficulty: 'MEDIUM',
             bloom_level: 'COMPREHENSION',
             page_reference: page,
             source_excerpt: mainSentence,
-            explanation: `العبارة مقتبسة مباشرة من نصوص المقرر الدراسي المعتمد بصفحة ${page}.`
+            explanation: `الحقيقة الصحيحة هي: "${mainSentence}".`
           });
         }
       }
     }
 
-    // Ensure we always have at least `count` questions
+    // Ensure we always have at least `count` questions with pure domain facts
     let pageFallback = chunks[0]?.page_number || 1;
     let fallbackIdx = 1;
     while (questions.length < count) {
@@ -571,50 +607,50 @@ ${contextText}
       if (fallbackIdx === 1) {
         questions.push({
           id: uuidv4(),
-          question_text: `بناءً على دراستك لصفحة ${pNum} من الكتاب: ما الهدف التعليمي الأساسي الذي يركز عليه هذا الجزء؟`,
+          question_text: `ما الركيزة الأساسية لفهم واستيعاب موضوعات هذا الدرس وتطبيقها علمياً؟`,
           options: [
-            { id: uuidv4(), text: 'استيعاب المفاهيم والمصطلحات الأساسية وتطبيقها عملياً', is_correct: true },
-            { id: uuidv4(), text: 'حفظ النصوص دون فهم معانيها ومقاصدها الحقيقية', is_correct: false },
-            { id: uuidv4(), text: 'إهمال التطبيقات والأنشطة التدريبية الواردة بالدرس', is_correct: false },
-            { id: uuidv4(), text: 'الاعتماد على مصادر خارجية غير متوافقة مع المقرر', is_correct: false }
+            { id: uuidv4(), text: 'استيعاب المفاهيم والمصطلحات الأساسية والربط المنطقي بينها', is_correct: true },
+            { id: uuidv4(), text: 'الحفظ السطحي للألفاظ دون فهم المعنى العلمي والدلالة', is_correct: false },
+            { id: uuidv4(), text: 'إهمال الأنشطة والتدريبات العملية الواردة بالمنهج', is_correct: false },
+            { id: uuidv4(), text: 'الاعتماد على التخمين غير المستند لقواعد المنهج', is_correct: false }
           ],
           difficulty: 'EASY',
           bloom_level: 'KNOWLEDGE',
           page_reference: pNum,
           source_excerpt: snippet,
-          explanation: `يركز هذا الجزء من المنهج بصفحة ${pNum} على بناء الفهم العميق للمفاهيم الأساسية وتطبيقها.`
+          explanation: `الفهم العميق للمفاهيم الأساسية هو الركيزة الأساسية للتعلم الفعال.`
         });
       } else if (fallbackIdx === 2) {
         questions.push({
           id: uuidv4(),
-          question_text: `وفقاً للمقرر المدرسي في صفحة ${pNum}: كيف يستدل الطالب على صحة النتائج وحل الأسئلة؟`,
+          question_text: `كيف يستدل المتعلم على صحة النتائج العلمية والحلول في هذا المجال؟`,
           options: [
-            { id: uuidv4(), text: 'بالرجوع إلى القواعد والمعايير العلمية واللغوية الواردة بالدرس', is_correct: true },
-            { id: uuidv4(), text: 'بالتخمين العشوائي دون سند من نصوص الكتاب', is_correct: false },
-            { id: uuidv4(), text: 'بالاقتصار على قراءة العناوين فقط دون قراءة الشرح', is_correct: false },
+            { id: uuidv4(), text: 'بالرجوع إلى القواعد والمعايير العلمية والتطبيقية المعتمدة', is_correct: true },
+            { id: uuidv4(), text: 'بالتخمين العشوائي دون سند من نصوص وقواعد الدرس', is_correct: false },
+            { id: uuidv4(), text: 'بالاقتصار على قراءة العناوين فقط دون دراسة الشرح والتفاصيل', is_correct: false },
             { id: uuidv4(), text: 'بتجاهل الأمثلة والتمارين المحلولة في المنهج', is_correct: false }
           ],
           difficulty: 'MEDIUM',
           bloom_level: 'COMPREHENSION',
           page_reference: pNum,
           source_excerpt: snippet,
-          explanation: `القواعد والتطبيقات المعتمدة في صفحة ${pNum} هي المرجع الأساسي للتأكد من صحة الإجابات.`
+          explanation: `القواعد والمعايير العلمية والتطبيقية المعتمدة هي المرجع الأساسي لصحة النتائج.`
         });
       } else {
         questions.push({
           id: uuidv4(),
-          question_text: `ما المهارة أو القيمة التي ينميها تدريب صفحة ${pNum} لدى المتعلم؟`,
+          question_text: `ما المهارة الأساسية التي يكتسبها الطالب من خلال التدريب والتطبيق العملي على هذا الموضوع؟`,
           options: [
-            { id: uuidv4(), text: 'التفكير التحليلي والربط بين الأفكار والمعلومات بطريقة منظمة', is_correct: true },
+            { id: uuidv4(), text: 'التفكير التحليلي والربط بين المعارف بطريقة منهجية منظمة', is_correct: true },
             { id: uuidv4(), text: 'الحفظ الآلي المنفصل عن التطبيق والسياق الحقيقي', is_correct: false },
-            { id: uuidv4(), text: 'التسرع في الإجابة دون مراجعة معطيات السؤال', is_correct: false },
-            { id: uuidv4(), text: 'تجاوز المفاهيم الأساسية إلى موضوعات غير مقررة', is_correct: false }
+            { id: uuidv4(), text: 'التسرع في الاستنتاج دون مراجعة معطيات المسألة', is_correct: false },
+            { id: uuidv4(), text: 'إغفال الربط بين السبب والنتيجة في الظواهر المنهجية', is_correct: false }
           ],
           difficulty: 'HARD',
           bloom_level: 'ANALYSIS',
           page_reference: pNum,
           source_excerpt: snippet,
-          explanation: `يهدف الدرس بصفحة ${pNum} إلى تعزيز مهارات التفكير التحليلي والربط العلمي واللغوي.`
+          explanation: `التدريب والتطبيق ينمي التفكير التحليلي والربط المنهجي بين المعارف.`
         });
       }
       fallbackIdx++;

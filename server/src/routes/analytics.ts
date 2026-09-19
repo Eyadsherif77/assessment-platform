@@ -35,22 +35,80 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
       [studentId]
     );
 
-    // 3. Aggregate stats
-    const totalAiEvalRes = await db.query(
-      `SELECT COUNT(*) as count, AVG(score) as avg_score FROM ai_evaluations WHERE student_id = $1`,
+    // 3. Detailed AI Evaluations and Exam Attempts for real calculations
+    const aiEvalsRes = await db.query(
+      `SELECT score, total_questions, created_at FROM ai_evaluations WHERE student_id = $1 ORDER BY created_at DESC`,
       [studentId]
     );
 
-    const totalExamsRes = await db.query(
-      `SELECT COUNT(*) as count, AVG(score) as avg_score FROM exam_attempts WHERE student_id = $1`,
+    const examsRes = await db.query(
+      `SELECT score, total_points, completed_at FROM exam_attempts WHERE student_id = $1 ORDER BY completed_at DESC`,
       [studentId]
     );
+
+    const totalAiCount = aiEvalsRes.rows.length;
+    const totalExamsCount = examsRes.rows.length;
+    const totalAttempts = totalAiCount + totalExamsCount;
+
+    // Compute real overall mastery percentage across all real student activities
+    let scoreSumPercentages = 0;
+    let totalScoredCount = 0;
+
+    for (const aiRow of aiEvalsRes.rows) {
+      const qCount = Number(aiRow.total_questions) || 1;
+      const score = Number(aiRow.score) || 0;
+      scoreSumPercentages += (score / qCount) * 100;
+      totalScoredCount++;
+    }
+
+    for (const exRow of examsRes.rows) {
+      const totalPts = Number(exRow.total_points) || 1;
+      const score = Number(exRow.score) || 0;
+      scoreSumPercentages += (score / totalPts) * 100;
+      totalScoredCount++;
+    }
+
+    const overallMasteryPercentage = totalScoredCount > 0
+      ? Math.round(scoreSumPercentages / totalScoredCount)
+      : 0;
+
+    // Mastered chapters count (>= 80% mastery)
+    const masteredTopicsCount = masteryRes.rows.filter(
+      (m: any) => Number(m.mastery_percentage) >= 80 || m.status === 'MASTERED'
+    ).length;
+
+    // Calculate real consecutive days streak
+    const activityDates = new Set<string>();
+    aiEvalsRes.rows.forEach((r: any) => {
+      if (r.created_at) activityDates.add(new Date(r.created_at).toISOString().split('T')[0]);
+    });
+    examsRes.rows.forEach((r: any) => {
+      if (r.completed_at) activityDates.add(new Date(r.completed_at).toISOString().split('T')[0]);
+    });
+
+    let streakDays = 0;
+    if (activityDates.size > 0) {
+      const today = new Date();
+      for (let d = 0; d < 30; d++) {
+        const checkDate = new Date(today);
+        checkDate.setDate(today.getDate() - d);
+        const dateStr = checkDate.toISOString().split('T')[0];
+        if (activityDates.has(dateStr)) {
+          streakDays++;
+        } else if (d === 0) {
+          // If not active today, check if active yesterday
+          continue;
+        } else {
+          break;
+        }
+      }
+    }
 
     // Collect weak vs strong topics
     const weakTopics: string[] = [];
     const strongTopics: string[] = [];
 
-    masteryRes.rows.forEach(item => {
+    masteryRes.rows.forEach((item: any) => {
       if (item.status === 'NEEDS_WORK' || item.status === 'DEVELOPING') {
         const weaks = typeof item.weak_subtopics === 'string' ? JSON.parse(item.weak_subtopics) : item.weak_subtopics;
         if (Array.isArray(weaks)) weakTopics.push(...weaks);
@@ -64,8 +122,12 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
       topics: masteryRes.rows,
       history: historyRes.rows,
       summary: {
-        total_ai_assessments: parseInt(totalAiEvalRes.rows[0]?.count || '0', 10),
-        total_exams_taken: parseInt(totalExamsRes.rows[0]?.count || '0', 10),
+        total_ai_assessments: totalAiCount,
+        total_exams_taken: totalExamsCount,
+        total_attempts: totalAttempts,
+        overall_mastery_percentage: overallMasteryPercentage,
+        mastered_topics_count: masteredTopicsCount,
+        study_streak_days: streakDays,
         weak_topics: [...new Set(weakTopics)],
         strong_topics: [...new Set(strongTopics)]
       }

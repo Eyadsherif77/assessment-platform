@@ -127,35 +127,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleQuickDemoLogin = async (demoEmail: string) => {
-    setError(null);
-    setIsLoading(true);
-    setMode('login');
-    setEmail(demoEmail);
-    setPassword('123456');
-
-    try {
-      const res = await fetch(apiUrl('/api/auth/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoEmail, password: '123456' })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || (isAr ? 'فشل تسجيل الدخول التجريبي' : 'Demo login failed'));
-      }
-
-      login(data.token, data.user);
-      onSuccess();
-      onClose();
-    } catch (err: any) {
-      setError(err.message || (isAr ? 'حدث خطأ في الدخول التجريبي' : 'Demo login error'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div style={{
       position: 'fixed',
@@ -199,7 +170,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </button>
 
         {/* =========================================================
-            LEFT PANEL: EDUCATIONAL STORYTELLING & DEMO ACCESS
+            LEFT PANEL: EDUCATIONAL STORYTELLING
             ========================================================= */}
         <div className="auth-visual-panel">
           <div>
@@ -242,48 +213,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <CheckCircle2 size={16} color="#34D399" />
                 <span>{isAr ? 'امتحانات بمؤقت زمني وتصحيح آلي فوري' : 'Timed practice exams with instant automated scoring'}</span>
               </div>
-            </div>
-          </div>
-
-          {/* Quick Demo Accounts Area */}
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.1)',
-            padding: '1rem',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            marginTop: '1.5rem'
-          }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#FDE68A', marginBottom: '0.65rem' }}>
-              {isAr ? '⚡ دخول تجريبي فوري مباشر:' : '⚡ 1-Click Instant Demo Login:'}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem' }}>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => handleQuickDemoLogin('prep1@edu.eg')}
-                style={{ background: '#FFFFFF', color: 'var(--primary-800)', fontSize: '0.75rem', fontWeight: 800, padding: '0.55rem 0.25rem' }}
-                disabled={isLoading}
-              >
-                {isAr ? '👩‍🎓 أولى إعدادي' : '👩‍🎓 Prep 1'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => handleQuickDemoLogin('prep2@edu.eg')}
-                style={{ background: '#FFFFFF', color: 'var(--primary-800)', fontSize: '0.75rem', fontWeight: 800, padding: '0.55rem 0.25rem' }}
-                disabled={isLoading}
-              >
-                {isAr ? '👨‍🎓 ثانية إعدادي' : '👨‍🎓 Prep 2'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => handleQuickDemoLogin('prep3@edu.eg')}
-                style={{ background: '#FFFFFF', color: 'var(--primary-800)', fontSize: '0.75rem', fontWeight: 800, padding: '0.55rem 0.25rem' }}
-                disabled={isLoading}
-              >
-                {isAr ? '🎓 ثالثة إعدادي' : '🎓 Prep 3'}
-              </button>
             </div>
           </div>
         </div>

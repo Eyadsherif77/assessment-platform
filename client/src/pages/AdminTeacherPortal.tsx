@@ -7,7 +7,6 @@ import {
   Mail, 
   ArrowRight, 
   ArrowLeft, 
-  Sparkles, 
   Shield, 
   UserPlus, 
   LogIn, 
@@ -141,42 +140,6 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
 
     } catch (err: any) {
       setError(err.message || (isAr ? 'حدث خطأ أثناء إنشاء حساب المعلم' : 'Registration failed'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle Quick Demo Login
-  const handleQuickDemoLogin = async (demoEmail: string) => {
-    setError(null);
-    setSuccessMsg(null);
-    setIsLoading(true);
-    setEmail(demoEmail);
-    setPassword('123456');
-
-    try {
-      const res = await fetch(apiUrl('/api/auth/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoEmail, password: '123456' })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || (isAr ? 'فشل تسجيل الدخول' : 'Sign-in failed'));
-      }
-
-      if (data.user.role !== 'ADMIN' && data.user.role !== 'TEACHER') {
-        throw new Error(
-          isAr
-            ? 'هذه البوابة مخصصة حصرياً للمالك والإدارة والمعلمين.'
-            : 'This portal is strictly reserved for Admin and Teachers.'
-        );
-      }
-
-      login(data.token, data.user);
-    } catch (err: any) {
-      setError(err.message || (isAr ? 'حدث خطأ غير متوقع' : 'Unexpected error'));
     } finally {
       setIsLoading(false);
     }
@@ -329,77 +292,6 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
             <span>{isAr ? 'إنشاء حساب معلم جديد' : 'Create Teacher Account'}</span>
           </button>
         </div>
-
-        {/* Demo Mode Notice & Buttons (Only visible in Login tab) */}
-        {activeTab === 'login' && (
-          <div style={{
-            background: 'linear-gradient(145deg, #F8FAFC, #F1F5F9)',
-            border: '1px solid #E2E8F0',
-            borderRadius: 'var(--radius-lg)',
-            padding: '1.25rem 1rem',
-            marginBottom: '1.75rem'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 800, fontSize: '0.85rem', color: '#1E293B', marginBottom: '0.4rem' }}>
-              <Sparkles size={16} color="#0284C7" />
-              <span>{isAr ? 'فترة الاختبار والتجربة السريعة' : 'Demo & Testing Quick Access'}</span>
-            </div>
-            <p style={{ fontSize: '0.78rem', color: '#64748B', marginBottom: '0.85rem', lineHeight: 1.5 }}>
-              {isAr 
-                ? 'يمكنك تجربة حسابات المعلم أو الإدارة بنقرة واحدة، أو استخدام نموذج الدخول/التسجيل أدناه.'
-                : '1-click quick demo credentials for testing, or use the form below.'}
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-              <button
-                type="button"
-                className="btn"
-                style={{
-                  width: '100%',
-                  background: '#FFFFFF',
-                  border: '1.5px solid #BAE6FD',
-                  color: '#0369A1',
-                  padding: '0.75rem 1rem',
-                  fontSize: '0.875rem',
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: '0 2px 5px rgba(2, 132, 199, 0.08)'
-                }}
-                onClick={() => handleQuickDemoLogin('teacher@edu.eg')}
-                disabled={isLoading}
-              >
-                👩‍🏫 {isAr ? 'دخول تجريبي كمعلم (Teacher Demo)' : 'Quick Demo: Teacher'}
-              </button>
-
-              <button
-                type="button"
-                className="btn"
-                style={{
-                  width: '100%',
-                  background: '#FEF3C7',
-                  border: '1.5px solid #FCD34D',
-                  color: '#92400E',
-                  padding: '0.75rem 1rem',
-                  fontSize: '0.875rem',
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: '0 2px 5px rgba(180, 83, 9, 0.08)'
-                }}
-                onClick={() => handleQuickDemoLogin('admin@edu.eg')}
-                disabled={isLoading}
-              >
-                👑 {isAr ? 'دخول تجريبي كمالك / إدارة (Admin Demo)' : 'Quick Demo: Admin'}
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Success Alert */}
         {successMsg && (

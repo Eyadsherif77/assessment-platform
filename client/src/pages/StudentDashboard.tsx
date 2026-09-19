@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
 import { 
@@ -50,9 +51,100 @@ export const StudentDashboard: React.FC = () => {
     } catch (_) {}
   };
 
-  // Books Data
+  // Books Data & PDF Reader
   const [books, setBooks] = useState<any[]>([]);
   const [selectedPdfBook, setSelectedPdfBook] = useState<any | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<boolean>(false);
+  const [pdfProgress, setPdfProgress] = useState<number>(0);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+
+  const handleOpenPdfBook = async (book: any) => {
+    setSelectedPdfBook(book);
+    setPdfLoading(true);
+    setPdfProgress(10);
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
+
+    const pdfEndpoint = apiUrl(`/api/books/${book.id}/pdf?token=${token}`);
+
+    try {
+      const response = await fetch(pdfEndpoint);
+      if (!response.ok) throw new Error('فشل تحميل ملف الكتاب');
+
+      const contentLength = response.headers.get('content-length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+
+      if (!response.body) {
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(objectUrl);
+        setPdfProgress(100);
+        setPdfLoading(false);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      let receivedLength = 0;
+      const chunks: BlobPart[] = [];
+
+      let fakeProgress = 15;
+      const progressInterval = setInterval(() => {
+        if (!total) {
+          fakeProgress = Math.min(92, fakeProgress + Math.floor(Math.random() * 12 + 6));
+          setPdfProgress(fakeProgress);
+        }
+      }, 200);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value.buffer as ArrayBuffer);
+          receivedLength += value.length;
+          if (total > 0) {
+            const pct = Math.min(99, Math.round((receivedLength / total) * 100));
+            setPdfProgress(pct);
+          }
+        }
+      }
+
+      clearInterval(progressInterval);
+      const blob = new Blob(chunks, { type: 'application/pdf' });
+      const objectUrl = URL.createObjectURL(blob);
+      setPdfBlobUrl(objectUrl);
+      setPdfProgress(100);
+    } catch (err) {
+      console.error('PDF fetch error:', err);
+      // Direct stream fallback
+      setPdfBlobUrl(pdfEndpoint);
+    } finally {
+      setTimeout(() => {
+        setPdfLoading(false);
+      }, 250);
+    }
+  };
+
+  const handleClosePdf = () => {
+    setSelectedPdfBook(null);
+    setPdfLoading(false);
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
+  };
+
+  // Keyboard shortcut (Escape) to close PDF
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedPdfBook) {
+        handleClosePdf();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedPdfBook, pdfBlobUrl]);
 
   // Exams Data
   const [exams, setExams] = useState<any[]>([]);
@@ -411,7 +503,7 @@ export const StudentDashboard: React.FC = () => {
         <div style={{ textAlign: 'center' }}>
           <span className="streak-chip" style={{ width: '100%', justifyContent: 'center' }}>
             <Flame size={16} color="#D97706" />
-            <span>{isAr ? '5 أيام دراسية متتالية 🔥' : '5-Day Study Streak 🔥'}</span>
+            <span>{isAr ? `${analytics?.summary?.study_streak_days || 0} أيام دراسية متتالية 🔥` : `${analytics?.summary?.study_streak_days || 0}-Day Study Streak 🔥`}</span>
           </span>
         </div>
 
@@ -537,7 +629,7 @@ export const StudentDashboard: React.FC = () => {
                   <Flame size={18} color="#D97706" />
                 </div>
                 <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#D97706' }}>
-                  {isAr ? '5 أيام 🔥' : '5 Days 🔥'}
+                  {analytics?.summary?.study_streak_days ? `${analytics.summary.study_streak_days} ${isAr ? 'أيام 🔥' : 'Days 🔥'}` : (isAr ? '0 أيام 🔥' : '0 Days 🔥')}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   {isAr ? 'حافظ على تقييم يومي لرفع تركيزك الدراسي!' : 'Keep up a daily quiz to boost retention!'}
@@ -553,10 +645,10 @@ export const StudentDashboard: React.FC = () => {
                   <Target size={18} color="var(--primary-600)" />
                 </div>
                 <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--primary-700)' }}>
-                  {analytics?.totalAttempts ? `${Math.min(analytics.totalAttempts, 5)} / 5` : '3 / 5'}
+                  {`${Math.min(analytics?.summary?.total_attempts || 0, 5)} / 5`}
                 </div>
                 <div style={{ width: '100%', height: '6px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>
-                  <div style={{ width: '65%', height: '100%', background: 'var(--primary-600)', borderRadius: '999px' }} />
+                  <div style={{ width: `${Math.min(100, Math.round(((analytics?.summary?.total_attempts || 0) / 5) * 100))}%`, height: '100%', background: 'var(--primary-600)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
                 </div>
               </div>
 
@@ -569,10 +661,14 @@ export const StudentDashboard: React.FC = () => {
                   <Award size={18} color="#16A34A" />
                 </div>
                 <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#16A34A' }}>
-                  {analytics?.overallMasteryPercentage ? `${analytics.overallMasteryPercentage}%` : '88%'}
+                  {`${analytics?.summary?.overall_mastery_percentage ?? 0}%`}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#16A34A', fontWeight: 700 }}>
-                  {isAr ? '✓ أداء متقدم ومطابق لمواصفات الوزارة' : '✓ Advanced performance matching specs'}
+                  {(analytics?.summary?.overall_mastery_percentage || 0) >= 80 
+                    ? (isAr ? '✓ أداء متقدم ومطابق لمواصفات الوزارة' : '✓ Advanced performance matching specs')
+                    : (analytics?.summary?.total_attempts || 0) > 0
+                    ? (isAr ? '📈 قيد التطوير والتحسين المستمر' : '📈 Developing in progress')
+                    : (isAr ? '🌟 ابدأ أول تقييم لتحديد مستواك' : '🌟 Take your first quiz to assess level')}
                 </div>
               </div>
             </div>
@@ -1239,7 +1335,7 @@ export const StudentDashboard: React.FC = () => {
 
                   <button
                     className="btn btn-primary"
-                    onClick={() => setSelectedPdfBook(book)}
+                    onClick={() => handleOpenPdfBook(book)}
                     style={{ fontWeight: 800, width: '100%', marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
                   >
                     <BookOpen size={18} />
@@ -1249,118 +1345,179 @@ export const StudentDashboard: React.FC = () => {
               ))}
             </div>
 
-            {/* Dedicated PDF Reader Modal with Exit and Fullscreen Controls */}
-            {selectedPdfBook && (
+            {/* Dedicated Fullscreen PDF Reader Modal via Portal - Guaranteed Top Level & No Navbar Overlap */}
+            {selectedPdfBook && createPortal(
               <div style={{
                 position: 'fixed',
                 top: 0,
                 left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(15, 23, 42, 0.92)',
-                backdropFilter: 'blur(8px)',
-                zIndex: 9999,
+                width: '100vw',
+                height: '100vh',
+                backgroundColor: '#0F172A',
+                zIndex: 100000,
                 display: 'flex',
                 flexDirection: 'column',
-                padding: '0.5rem',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                boxSizing: 'border-box'
               }}>
-                {/* Header with Exit button and Controls - sleek compact bar */}
+                {/* Prominent High-Visibility Header with Instant Close Button */}
                 <div style={{
-                  background: '#FFFFFF',
-                  borderRadius: 'var(--radius-lg)',
-                  padding: '0.6rem 1rem',
-                  marginBottom: '0.5rem',
+                  background: '#1E293B',
+                  color: '#FFFFFF',
+                  borderBottom: '2px solid #334155',
+                  padding: '0.65rem 1.25rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  gap: '0.5rem',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
-                  flexShrink: 0
+                  gap: '1rem',
+                  flexShrink: 0,
+                  zIndex: 100001,
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+                  {/* Exit button & Title */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
                     <button
-                      onClick={() => setSelectedPdfBook(null)}
+                      onClick={handleClosePdf}
                       style={{
-                        background: '#DC2626',
+                        background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
                         color: '#FFFFFF',
-                        fontWeight: 800,
-                        padding: '0.5rem 0.9rem',
+                        fontWeight: 900,
+                        padding: '0.6rem 1.25rem',
                         borderRadius: 'var(--radius-md)',
                         border: 'none',
                         cursor: 'pointer',
-                        fontSize: '0.88rem',
+                        fontSize: '0.95rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.35rem',
+                        gap: '0.5rem',
                         flexShrink: 0,
-                        boxShadow: '0 2px 6px rgba(220, 38, 38, 0.35)'
+                        boxShadow: '0 4px 12px rgba(220, 38, 38, 0.4)',
+                        transition: 'transform 0.15s ease'
                       }}
+                      title={isAr ? 'إغلاق الكتاب والعودة للوحة التحكم (Esc)' : 'Close Book (Esc)'}
                     >
-                      <X size={16} />
-                      {isAr ? 'إغلاق الكتاب والعودة' : 'Close Book'}
+                      <X size={18} strokeWidth={3} />
+                      <span>{isAr ? 'إغلاق الكتاب والعودة ✕' : 'Close Book ✕'}</span>
                     </button>
 
                     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                      <strong style={{ fontSize: '0.95rem', color: 'var(--text-title)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                      <strong style={{ fontSize: '1rem', color: '#F8FAFC', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
                         📖 {isAr ? selectedPdfBook.title_ar : (selectedPdfBook.title_en || selectedPdfBook.title_ar)}
                       </strong>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
                         {isAr ? selectedPdfBook.grade_name_ar : (selectedPdfBook.grade_name_en || selectedPdfBook.grade_name_ar)} • {isAr ? selectedPdfBook.subject_name_ar : (selectedPdfBook.subject_name_en || selectedPdfBook.subject_name_ar)}
                       </span>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                  {/* External fullscreen toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
                     <a
                       href={apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
-                        background: 'var(--primary-600)',
+                        background: 'rgba(255, 255, 255, 0.1)',
                         color: '#FFFFFF',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
                         fontWeight: 700,
-                        padding: '0.5rem 0.85rem',
+                        padding: '0.5rem 0.9rem',
                         borderRadius: 'var(--radius-md)',
                         textDecoration: 'none',
                         fontSize: '0.82rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.35rem'
+                        gap: '0.4rem'
                       }}
-                      title={isAr ? 'فتح في نافذة كاملة' : 'Fullscreen'}
+                      title={isAr ? 'فتح في نافذة متصفح جديدة' : 'Open in new tab'}
                     >
                       <ExternalLink size={15} />
-                      <span>{isAr ? 'ملء الشاشة ↗' : 'Fullscreen ↗'}</span>
+                      <span>{isAr ? 'نافذة خارجية ↗' : 'New Tab ↗'}</span>
                     </a>
                   </div>
                 </div>
 
-                {/* Embedded High-Quality PDF Viewer */}
-                <div style={{
-                  flex: 1,
-                  background: '#2b2e33',
-                  borderRadius: 'var(--radius-lg)',
-                  overflow: 'auto',
-                  WebkitOverflowScrolling: 'touch',
-                  position: 'relative',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}>
-                  <iframe
-                    src={`${apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}`}
-                    title={selectedPdfBook.title_ar}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      minHeight: '75vh',
-                      border: 'none',
-                      flex: 1,
-                      display: 'block'
-                    }}
-                  />
+                {/* PDF Content Area with Download Waiting Cycle */}
+                <div style={{ flex: 1, position: 'relative', width: '100%', height: 'calc(100vh - 65px)', background: '#111827' }}>
+                  {pdfLoading && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: '#0F172A',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 10,
+                      gap: '1.25rem',
+                      padding: '2rem'
+                    }}>
+                      {/* Circular Spinner */}
+                      <div style={{
+                        position: 'relative',
+                        width: '84px',
+                        height: '84px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          borderRadius: '50%',
+                          border: '4px solid #334155',
+                          borderTopColor: '#38BDF8',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                        <BookOpen size={32} color="#38BDF8" />
+                      </div>
+
+                      {/* Percentage & message */}
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#38BDF8', marginBottom: '0.35rem', fontFamily: 'monospace' }}>
+                          {pdfProgress}%
+                        </div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#94A3B8' }}>
+                          {isAr ? 'جاري تحميل وتجهيز الكتاب المدرسي...' : 'Downloading & buffering textbook...'}
+                        </div>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div style={{
+                        width: '280px',
+                        maxWidth: '85vw',
+                        height: '8px',
+                        background: '#1E293B',
+                        borderRadius: '999px',
+                        overflow: 'hidden',
+                        border: '1px solid #334155'
+                      }}>
+                        <div style={{
+                          width: `${pdfProgress}%`,
+                          height: '100%',
+                          background: 'linear-gradient(90deg, #0284C7, #38BDF8)',
+                          borderRadius: '999px',
+                          transition: 'width 0.2s ease'
+                        }} />
+                      </div>
+                    </div>
+                  )}
+
+                  {pdfBlobUrl && (
+                    <iframe
+                      src={pdfBlobUrl}
+                      title={selectedPdfBook.title_ar}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        display: 'block'
+                      }}
+                    />
+                  )}
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         )}
@@ -1555,7 +1712,7 @@ export const StudentDashboard: React.FC = () => {
                   {isAr ? 'مستوى الإتقان التراكمي' : 'Cumulative Mastery'}
                 </span>
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#16A34A' }}>
-                  {analytics?.overallMasteryPercentage || 88}%
+                  {`${analytics?.summary?.overall_mastery_percentage ?? 0}%`}
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {isAr ? 'وفق معايير التقييم التشخيصي' : 'Based on diagnostic evaluations'}
@@ -1567,7 +1724,7 @@ export const StudentDashboard: React.FC = () => {
                   {isAr ? 'الامتحانات المكتملة' : 'Completed Exams'}
                 </span>
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
-                  {analytics?.totalAttempts || 4}
+                  {analytics?.summary?.total_exams_taken ?? 0}
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {isAr ? 'بمعدل تصحيح فوري' : 'With instant diagnosis'}
@@ -1579,7 +1736,7 @@ export const StudentDashboard: React.FC = () => {
                   {isAr ? 'الفصول المتقنة' : 'Mastered Units'}
                 </span>
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#D97706' }}>
-                  {isAr ? '3 فصول' : '3 Units'}
+                  {`${analytics?.summary?.mastered_topics_count ?? 0} ${isAr ? 'فصول' : 'Units'}`}
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {isAr ? 'نسبة إتقان أعلى من 80%' : 'Above 80% mastery threshold'}
@@ -1593,25 +1750,43 @@ export const StudentDashboard: React.FC = () => {
                 {isAr ? 'مستوى استيعاب الفصول الدراسية:' : 'Chapter Mastery Breakdown:'}
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                <div style={{ padding: '1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                    <span>{isAr ? 'العلوم • الوحدة الأولى: المادة وخواصها' : 'Science • Unit 1: Matter & Properties'}</span>
-                    <span style={{ color: '#16A34A' }}>90% ({isAr ? 'متقن' : 'Mastered'})</span>
+                {analytics?.topics && analytics.topics.length > 0 ? (
+                  analytics.topics.map((t: any) => {
+                    const pct = Number(t.mastery_percentage) || 0;
+                    const isMastered = pct >= 80;
+                    const isProficient = pct >= 60 && pct < 80;
+                    const barColor = isMastered ? '#16A34A' : isProficient ? 'var(--primary-600)' : '#D97706';
+                    const statusLabel = isMastered 
+                      ? (isAr ? 'متقن' : 'Mastered') 
+                      : isProficient 
+                      ? (isAr ? 'متقدم' : 'Proficient') 
+                      : (isAr ? 'بحاجة لمراجعة' : 'Developing');
+                    return (
+                      <div key={t.id || t.chapter_id} style={{ padding: '1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                          <span>{isAr ? `${t.subject_name_ar} • ${t.chapter_title_ar}` : `${t.subject_name_en || t.subject_name_ar} • ${t.chapter_title_en || t.chapter_title_ar}`}</span>
+                          <span style={{ color: barColor }}>{pct}% ({statusLabel})</span>
+                        </div>
+                        <div style={{ width: '100%', height: '8px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '999px', transition: 'width 0.3s ease' }} />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '2.5rem 1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📊</div>
+                    <h4 style={{ fontWeight: 800, margin: '0 0 0.5rem' }}>{isAr ? 'لا توجد تقييمات مسجلة بعد' : 'No evaluation records yet'}</h4>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '440px', margin: '0 auto 1.25rem' }}>
+                      {isAr
+                        ? 'ابدأ أول تقييم تشخيصي مع المعلم الذكي أو خض امتحاناً لتظهر تحليلات نواتج التعلم وسجل الإتقان هنا.'
+                        : 'Take your first AI diagnostic quiz or timed exam to generate real mastery analytics.'}
+                    </p>
+                    <button className="btn btn-primary" onClick={() => { setActiveTab('ai'); setAiStep(1); }}>
+                      {isAr ? 'بدء تقييم تشخيصي الآن 🚀' : 'Start Diagnostic Quiz 🚀'}
+                    </button>
                   </div>
-                  <div style={{ width: '100%', height: '8px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ width: '90%', height: '100%', background: '#16A34A', borderRadius: '999px' }} />
-                  </div>
-                </div>
-
-                <div style={{ padding: '1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.4rem' }}>
-                    <span>{isAr ? 'العلوم • الوحدة الثانية: الطاقة وحرائق البترول' : 'Science • Unit 2: Energy & Applications'}</span>
-                    <span style={{ color: 'var(--primary-700)' }}>82% ({isAr ? 'متقدم' : 'Advanced'})</span>
-                  </div>
-                  <div style={{ width: '100%', height: '8px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ width: '82%', height: '100%', background: 'var(--primary-600)', borderRadius: '999px' }} />
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
