@@ -61,68 +61,41 @@ export const StudentDashboard: React.FC = () => {
   const handleOpenPdfBook = async (book: any) => {
     setSelectedPdfBook(book);
     setPdfLoading(true);
-    setPdfProgress(10);
+    setPdfProgress(12);
     if (pdfBlobUrl) {
       URL.revokeObjectURL(pdfBlobUrl);
       setPdfBlobUrl(null);
     }
 
     const pdfEndpoint = apiUrl(`/api/books/${book.id}/pdf?token=${token}`);
+    const startTime = Date.now();
+
+    // Smooth ticker to guarantee active visual progress
+    let tickerProgress = 12;
+    const progressTicker = setInterval(() => {
+      tickerProgress = Math.min(92, tickerProgress + Math.floor(Math.random() * 8 + 4));
+      setPdfProgress(tickerProgress);
+    }, 140);
 
     try {
       const response = await fetch(pdfEndpoint);
       if (!response.ok) throw new Error('فشل تحميل ملف الكتاب');
 
-      const contentLength = response.headers.get('content-length');
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-
-      if (!response.body) {
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        setPdfBlobUrl(objectUrl);
-        setPdfProgress(100);
-        setPdfLoading(false);
-        return;
-      }
-
-      const reader = response.body.getReader();
-      let receivedLength = 0;
-      const chunks: BlobPart[] = [];
-
-      let fakeProgress = 15;
-      const progressInterval = setInterval(() => {
-        if (!total) {
-          fakeProgress = Math.min(92, fakeProgress + Math.floor(Math.random() * 12 + 6));
-          setPdfProgress(fakeProgress);
-        }
-      }, 200);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value.buffer as ArrayBuffer);
-          receivedLength += value.length;
-          if (total > 0) {
-            const pct = Math.min(99, Math.round((receivedLength / total) * 100));
-            setPdfProgress(pct);
-          }
-        }
-      }
-
-      clearInterval(progressInterval);
-      const blob = new Blob(chunks, { type: 'application/pdf' });
+      const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
       setPdfBlobUrl(objectUrl);
       setPdfProgress(100);
     } catch (err) {
-      console.error('PDF fetch error:', err);
-      // Direct stream fallback
+      console.error('PDF fetch fallback to direct endpoint:', err);
       setPdfBlobUrl(pdfEndpoint);
+      setPdfProgress(100);
     } finally {
+      clearInterval(progressTicker);
+      const elapsed = Date.now() - startTime;
+      const minDisplayTime = Math.max(300, 700 - elapsed);
       setTimeout(() => {
         setPdfLoading(false);
-      }, 250);
+      }, minDisplayTime);
     }
   };
 
@@ -135,15 +108,23 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  // Keyboard shortcut (Escape) to close PDF
+  // Keyboard shortcut (Escape) & Lock body overflow when PDF is open
   useEffect(() => {
+    if (selectedPdfBook) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && selectedPdfBook) {
         handleClosePdf();
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [selectedPdfBook, pdfBlobUrl]);
 
   // Exams Data
@@ -1345,160 +1326,205 @@ export const StudentDashboard: React.FC = () => {
               ))}
             </div>
 
-            {/* Dedicated Fullscreen PDF Reader Modal via Portal - Guaranteed Top Level & No Navbar Overlap */}
+            {/* Dedicated Fullscreen PDF Reader Modal via Portal - Single Unified Navbar & Photo 2 Radial Spinner */}
             {selectedPdfBook && createPortal(
               <div style={{
                 position: 'fixed',
-                top: 0,
-                left: 0,
+                inset: 0,
                 width: '100vw',
                 height: '100vh',
                 backgroundColor: '#0F172A',
-                zIndex: 100000,
+                zIndex: 999999,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
                 boxSizing: 'border-box'
               }}>
-                {/* Prominent High-Visibility Header with Instant Close Button */}
-                <div style={{
-                  background: '#1E293B',
+                {/* SINGLE UNIFIED TOP NAVBAR */}
+                <header style={{
+                  height: '64px',
+                  background: '#0F172A',
                   color: '#FFFFFF',
-                  borderBottom: '2px solid #334155',
-                  padding: '0.65rem 1.25rem',
+                  borderBottom: '1px solid #334155',
+                  padding: '0 1.25rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: '1rem',
                   flexShrink: 0,
-                  zIndex: 100001,
-                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
+                  zIndex: 1000000,
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)'
                 }}>
-                  {/* Exit button & Title */}
+                  {/* Right side (RTL): Exit button + Textbook details */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
                     <button
                       onClick={handleClosePdf}
                       style={{
                         background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
                         color: '#FFFFFF',
-                        fontWeight: 900,
-                        padding: '0.6rem 1.25rem',
-                        borderRadius: 'var(--radius-md)',
+                        fontWeight: 800,
+                        padding: '0.55rem 1.15rem',
+                        borderRadius: 'var(--radius-lg)',
                         border: 'none',
                         cursor: 'pointer',
-                        fontSize: '0.95rem',
+                        fontSize: '0.9rem',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.5rem',
                         flexShrink: 0,
-                        boxShadow: '0 4px 12px rgba(220, 38, 38, 0.4)',
-                        transition: 'transform 0.15s ease'
+                        boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)',
+                        transition: 'all 0.15s ease'
                       }}
-                      title={isAr ? 'إغلاق الكتاب والعودة للوحة التحكم (Esc)' : 'Close Book (Esc)'}
+                      title={isAr ? 'إغلاق الكتاب والعودة للوحة التحكم (Esc)' : 'Close Book & Return (Esc)'}
                     >
                       <X size={18} strokeWidth={3} />
-                      <span>{isAr ? 'إغلاق الكتاب والعودة ✕' : 'Close Book ✕'}</span>
+                      <span>{isAr ? 'إغلاق الكتاب والعودة' : 'Close & Return'}</span>
+                      <span style={{
+                        background: 'rgba(0,0,0,0.25)',
+                        fontSize: '0.7rem',
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: '4px',
+                        fontFamily: 'monospace'
+                      }}>Esc</span>
                     </button>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                      <strong style={{ fontSize: '1rem', color: '#F8FAFC', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                        📖 {isAr ? selectedPdfBook.title_ar : (selectedPdfBook.title_en || selectedPdfBook.title_ar)}
-                      </strong>
-                      <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
-                        {isAr ? selectedPdfBook.grade_name_ar : (selectedPdfBook.grade_name_en || selectedPdfBook.grade_name_ar)} • {isAr ? selectedPdfBook.subject_name_ar : (selectedPdfBook.subject_name_en || selectedPdfBook.subject_name_ar)}
-                      </span>
+                    <div style={{ height: '24px', width: '1px', background: '#334155' }} />
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        color: '#FFFFFF'
+                      }}>
+                        <BookOpen size={18} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <strong style={{ fontSize: '0.95rem', color: '#F8FAFC', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                          {isAr ? selectedPdfBook.title_ar : (selectedPdfBook.title_en || selectedPdfBook.title_ar)}
+                        </strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.72rem', color: '#94A3B8' }}>
+                          <span>{isAr ? selectedPdfBook.grade_name_ar : (selectedPdfBook.grade_name_en || selectedPdfBook.grade_name_ar)}</span>
+                          <span>•</span>
+                          <span>{isAr ? selectedPdfBook.subject_name_ar : (selectedPdfBook.subject_name_en || selectedPdfBook.subject_name_ar)}</span>
+                          {selectedPdfBook.school_type && (
+                            <>
+                              <span>•</span>
+                              <span style={{
+                                color: selectedPdfBook.school_type === 'لغات' ? '#60A5FA' : '#4ADE80',
+                                fontWeight: 700
+                              }}>
+                                {selectedPdfBook.school_type === 'لغات' ? (isAr ? '🌐 مدارس لغات' : 'Language') : (isAr ? '🏫 عربي' : 'Arabic')}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* External fullscreen toggle */}
+                  {/* Left side (RTL): External window link */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
                     <a
                       href={apiUrl(`/api/books/${selectedPdfBook.id}/pdf?token=${token}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        color: '#FFFFFF',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        color: '#E2E8F0',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
                         fontWeight: 700,
-                        padding: '0.5rem 0.9rem',
+                        padding: '0.45rem 0.85rem',
                         borderRadius: 'var(--radius-md)',
                         textDecoration: 'none',
-                        fontSize: '0.82rem',
+                        fontSize: '0.8rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.4rem'
+                        gap: '0.4rem',
+                        transition: 'background 0.15s ease'
                       }}
-                      title={isAr ? 'فتح في نافذة متصفح جديدة' : 'Open in new tab'}
+                      title={isAr ? 'فتح الكتاب في نافذة مستقلة' : 'Open in new tab'}
                     >
-                      <ExternalLink size={15} />
+                      <ExternalLink size={14} />
                       <span>{isAr ? 'نافذة خارجية ↗' : 'New Tab ↗'}</span>
                     </a>
                   </div>
-                </div>
+                </header>
 
-                {/* PDF Content Area with Download Waiting Cycle */}
-                <div style={{ flex: 1, position: 'relative', width: '100%', height: 'calc(100vh - 65px)', background: '#111827' }}>
+                {/* PDF Content Area */}
+                <div style={{ flex: 1, position: 'relative', width: '100%', height: 'calc(100vh - 64px)', background: '#0F172A' }}>
+                  {/* Animated Radial Loading Overlay (Matches Photo 2) */}
                   {pdfLoading && (
                     <div style={{
                       position: 'absolute',
                       inset: 0,
-                      background: '#0F172A',
+                      background: '#0B0F17',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      zIndex: 10,
-                      gap: '1.25rem',
+                      zIndex: 50,
                       padding: '2rem'
                     }}>
-                      {/* Circular Spinner */}
-                      <div style={{
-                        position: 'relative',
-                        width: '84px',
-                        height: '84px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <div style={{
-                          position: 'absolute',
-                          inset: 0,
-                          borderRadius: '50%',
-                          border: '4px solid #334155',
-                          borderTopColor: '#38BDF8',
-                          animation: 'spin 1s linear infinite'
-                        }} />
-                        <BookOpen size={32} color="#38BDF8" />
-                      </div>
+                      <div className="radial-loader-wrapper">
+                        {/* 12-Segment Radial Spinner SVG from Photo 2 */}
+                        <svg
+                          className="radial-loader-svg"
+                          viewBox="0 0 64 64"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          {[
+                            { rot: 0, op: 0.12 },
+                            { rot: 30, op: 0.18 },
+                            { rot: 60, op: 0.25 },
+                            { rot: 90, op: 0.33 },
+                            { rot: 120, op: 0.42 },
+                            { rot: 150, op: 0.52 },
+                            { rot: 180, op: 0.62 },
+                            { rot: 210, op: 0.72 },
+                            { rot: 240, op: 0.82 },
+                            { rot: 270, op: 0.90 },
+                            { rot: 300, op: 0.96 },
+                            { rot: 330, op: 1.0 }
+                          ].map(({ rot, op }, i) => (
+                            <rect
+                              key={i}
+                              x="29"
+                              y="4"
+                              width="6"
+                              height="16"
+                              rx="3"
+                              fill="#FFFFFF"
+                              opacity={op}
+                              transform={`rotate(${rot} 32 32)`}
+                            />
+                          ))}
+                        </svg>
 
-                      {/* Percentage & message */}
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#38BDF8', marginBottom: '0.35rem', fontFamily: 'monospace' }}>
+                        <div className="radial-loader-title">
+                          LOADING...
+                        </div>
+
+                        <div className="radial-loader-percent">
                           {pdfProgress}%
                         </div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#94A3B8' }}>
-                          {isAr ? 'جاري تحميل وتجهيز الكتاب المدرسي...' : 'Downloading & buffering textbook...'}
-                        </div>
-                      </div>
 
-                      {/* Progress Bar */}
-                      <div style={{
-                        width: '280px',
-                        maxWidth: '85vw',
-                        height: '8px',
-                        background: '#1E293B',
-                        borderRadius: '999px',
-                        overflow: 'hidden',
-                        border: '1px solid #334155'
-                      }}>
-                        <div style={{
-                          width: `${pdfProgress}%`,
-                          height: '100%',
-                          background: 'linear-gradient(90deg, #0284C7, #38BDF8)',
-                          borderRadius: '999px',
-                          transition: 'width 0.2s ease'
-                        }} />
+                        <div className="radial-loader-text">
+                          {isAr ? 'جاري تحميل وتجهيز صفحات الكتاب المدرسي...' : 'Loading and buffering textbook pages...'}
+                        </div>
+
+                        <div className="radial-progress-track">
+                          <div
+                            className="radial-progress-fill"
+                            style={{ width: `${pdfProgress}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
