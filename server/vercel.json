@@ -1,9 +1,19 @@
 {
   "version": 2,
+  "services": {
+    "web": {
+      "root": ".",
+      "entrypoint": "dist/server.js",
+      "buildCommand": "npm run build"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/api"
+      "destination": {
+        "type": "service",
+        "service": "web"
+      }
     }
   ]
 }
