@@ -155,6 +155,12 @@ export const StudentDashboard: React.FC = () => {
   const [isEvaluatingAi, setIsEvaluatingAi] = useState(false);
   const [aiReport, setAiReport] = useState<any | null>(null);
 
+  // AI Assessment Debug Mode (Development Only - Hidden in Production)
+  const isDevMode = import.meta.env.DEV || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+  const [showAiDebugModal, setShowAiDebugModal] = useState<boolean>(false);
+  const [aiDebugData, setAiDebugData] = useState<any[] | null>(null);
+  const [selectedDebugIdx, setSelectedDebugIdx] = useState<number>(0);
+
   // Learning Analytics Data
   const [analytics, setAnalytics] = useState<any | null>(null);
 
@@ -377,7 +383,8 @@ export const StudentDashboard: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
+          ...(isDevMode ? { 'x-dev-debug': 'true' } : {})
         },
         body: JSON.stringify({
           book_id: selectedAiBook.id,
@@ -392,6 +399,9 @@ export const StudentDashboard: React.FC = () => {
 
       setAiQuestions(data.questions || []);
       setServerContextQuestions(data._server_context_questions || []);
+      if (isDevMode) {
+        setAiDebugData(data.debug_info || data.questions || null);
+      }
       setAiStep(4); // Advance to solve step
     } catch (err: any) {
       alert(err.message);
@@ -974,6 +984,69 @@ export const StudentDashboard: React.FC = () => {
             {/* STEP 4: SOLVE QUESTIONS (INTERACTIVE QUIZ RUNNER) */}
             {aiStep === 4 && aiQuestions.length > 0 && (
               <div style={{ maxWidth: '780px', margin: '0 auto', width: '100%' }}>
+                {/* AI Assessment Debug Mode Banner (Development Only - Hidden in Production) */}
+                {isDevMode && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+                    borderRadius: 'var(--radius-xl)',
+                    padding: '0.85rem 1.25rem',
+                    marginBottom: '1.25rem',
+                    border: '1.5px solid #4338CA',
+                    boxShadow: '0 4px 15px rgba(49, 46, 129, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '0.75rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '1.3rem' }}>🛠️</span>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ color: '#FFFFFF', fontWeight: 800, fontSize: '0.9rem' }}>
+                            {isAr ? 'وضع فحص التوليد الذكي (AI Debug Mode)' : 'AI Assessment Debug Mode'}
+                          </span>
+                          <span style={{
+                            background: '#F59E0B',
+                            color: '#78350F',
+                            fontSize: '0.65rem',
+                            fontWeight: 900,
+                            padding: '2px 7px',
+                            borderRadius: '999px',
+                            letterSpacing: '0.5px'
+                          }}>
+                            DEV ONLY
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#C7D2FE', marginTop: '2px' }}>
+                          {isAr ? 'فحص الفقرات المنهجية التي استلمها Gemini ونسب بلوم ودرجات التشابه' : 'Inspect raw textbook chunk text, Bloom levels & database traceability'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setShowAiDebugModal(true)}
+                      style={{
+                        background: '#4F46E5',
+                        color: '#FFFFFF',
+                        border: '1px solid #6366F1',
+                        borderRadius: 'var(--radius-lg)',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.82rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 2px 8px rgba(79, 70, 229, 0.4)'
+                      }}
+                    >
+                      <span>🔍</span>
+                      <span>{isAr ? 'فتح لوحة فحص التوليد' : 'Open Inspection Panel'}</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Progress Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
                   <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--primary-800)' }}>
@@ -1154,6 +1227,32 @@ export const StudentDashboard: React.FC = () => {
                       <button className="btn btn-outline" onClick={() => { setAiStep(1); setAiReport(null); }}>
                         {isAr ? 'تقييم فصل آخر 🔄' : 'Assess Another Chapter 🔄'}
                       </button>
+                      {isDevMode && (
+                        <button
+                          className="btn btn-outline"
+                          onClick={() => setShowAiDebugModal(true)}
+                          style={{
+                            fontWeight: 800,
+                            borderColor: '#818CF8',
+                            color: '#4F46E5',
+                            background: '#EEF2FF',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.4rem'
+                          }}
+                        >
+                          <Sparkles size={16} />
+                          <span>{isAr ? 'فحص توليد الأسئلة (Debug Panel)' : 'Inspect Questions (Debug Panel)'}</span>
+                          <span style={{
+                            background: '#F59E0B',
+                            color: '#78350F',
+                            fontSize: '0.65rem',
+                            fontWeight: 900,
+                            padding: '1px 6px',
+                            borderRadius: '999px'
+                          }}>DEV</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1991,6 +2090,286 @@ export const StudentDashboard: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* =========================================================
+          AI ASSESSMENT GENERATOR DEBUG PANEL (DEVELOPMENT ONLY)
+          Allows inspecting the exact textbook chunk sent to Gemini,
+          Bloom levels, retrieval similarity scores, and grounding IDs.
+          Never visible to students in production.
+          ========================================================= */}
+      {isDevMode && showAiDebugModal && createPortal(
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 9999999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.25rem',
+          direction: 'rtl'
+        }}>
+          <div style={{
+            backgroundColor: '#0F172A',
+            color: '#F8FAFC',
+            borderRadius: '1.25rem',
+            border: '1.5px solid #334155',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+            width: '100%',
+            maxWidth: '960px',
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Top Header */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid #1E293B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'linear-gradient(90deg, #1E1B4B 0%, #0F172A 100%)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{
+                  background: '#4F46E5',
+                  color: '#FFFFFF',
+                  padding: '7px',
+                  borderRadius: '10px',
+                  display: 'flex'
+                }}>
+                  <Sparkles size={22} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#FFFFFF' }}>
+                      {isAr ? 'لوحة فحص الذكاء الاصطناعي (AI Assessment Debug Mode)' : 'AI Assessment Generator Debug Panel'}
+                    </h3>
+                    <span style={{
+                      background: '#F59E0B',
+                      color: '#78350F',
+                      fontSize: '0.65rem',
+                      fontWeight: 900,
+                      padding: '2px 8px',
+                      borderRadius: '999px'
+                    }}>
+                      DEV ONLY
+                    </span>
+                  </div>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#94A3B8' }}>
+                    {isAr ? 'فحص الفقرات المنهجية الأصلية التي استلمها Gemini ومستويات بلوم وتطابق الجودة لكل سؤال' : 'Inspect raw textbook chunk received by Gemini, Bloom level, similarity & grounding'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAiDebugModal(false)}
+                style={{
+                  background: '#1E293B',
+                  border: '1px solid #334155',
+                  color: '#CBD5E1',
+                  borderRadius: '8px',
+                  padding: '6px 14px',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: '0.85rem'
+                }}
+              >
+                ✕ {isAr ? 'إغلاق' : 'Close'}
+              </button>
+            </div>
+
+            {/* Question Selector Tabs */}
+            <div style={{
+              padding: '0.75rem 1.5rem',
+              background: '#0B0F19',
+              borderBottom: '1px solid #1E293B',
+              display: 'flex',
+              gap: '0.5rem',
+              overflowX: 'auto'
+            }}>
+              {aiQuestions.map((q, idx) => {
+                const isSelected = selectedDebugIdx === idx;
+                const bloom = q.bloom_level || 'UNDERSTANDING';
+                return (
+                  <button
+                    key={q.id || idx}
+                    onClick={() => setSelectedDebugIdx(idx)}
+                    style={{
+                      background: isSelected ? '#4F46E5' : '#1E293B',
+                      color: isSelected ? '#FFFFFF' : '#94A3B8',
+                      border: isSelected ? '1px solid #818CF8' : '1px solid #334155',
+                      borderRadius: '8px',
+                      padding: '6px 12px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span>السؤال {idx + 1}</span>
+                    <span style={{
+                      background: isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.35)',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      fontSize: '0.7rem'
+                    }}>
+                      {bloom}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Inspection Details */}
+            {(() => {
+              const activeQ = aiQuestions[selectedDebugIdx];
+              const debugItem = (aiDebugData && aiDebugData[selectedDebugIdx]) || activeQ;
+              if (!activeQ && !debugItem) {
+                return <div style={{ padding: '2.5rem', textAlign: 'center', color: '#94A3B8' }}>لا توجد بيانات فحص متاحة حتى الآن. اضغط توليد تقييم لبدء الفحص.</div>;
+              }
+
+              const qText = debugItem?.question_text || activeQ?.question_text;
+              const bloomLevel = (debugItem?.bloom_level || activeQ?.bloom_level || 'UNDERSTANDING').toUpperCase();
+              const chunkId = debugItem?.chunk_id || activeQ?.chunk_id || 'N/A';
+              const bookId = debugItem?.book_id || activeQ?.book_id || selectedAiBook?.id || 'N/A';
+              const chapterId = debugItem?.chapter_id || activeQ?.chapter_id || selectedAiChapterId || 'N/A';
+              const chunkText = debugItem?.chunk_text || activeQ?.chunk_text || activeQ?.source_excerpt || 'المحتوى المنهجي المعتمد للفصل الدراسي المسترجع من قاعدة البيانات.';
+              const similarityScore = debugItem?.similarity_score !== undefined ? debugItem.similarity_score : 1.0;
+              const validationStatus = debugItem?.validation_status || { isValid: true };
+
+              const getBloomBadge = (level: string) => {
+                if (level.includes('KNOW')) return { color: '#38BDF8', bg: '#0284C720', border: '#38BDF860', label: '40% Knowledge (تذكر)' };
+                if (level.includes('UNDER')) return { color: '#A78BFA', bg: '#7C3AED20', border: '#A78BFA60', label: '30% Understanding (فهم)' };
+                if (level.includes('APP')) return { color: '#34D399', bg: '#05966920', border: '#34D39960', label: '20% Application (تطبيق)' };
+                return { color: '#FBBF24', bg: '#D9770620', border: '#FBBF2460', label: '10% Analysis (تحليل)' };
+              };
+              const bloomInfo = getBloomBadge(bloomLevel);
+
+              return (
+                <div style={{ padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {/* Question & Bloom Card */}
+                  <div style={{ background: '#1E293B', padding: '1.25rem', borderRadius: '12px', border: '1px solid #334155' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#94A3B8', fontWeight: 700 }}>
+                        Question Text (نص السؤال المعروض للطالب):
+                      </span>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{
+                          background: bloomInfo.bg,
+                          color: bloomInfo.color,
+                          border: `1px solid ${bloomInfo.border}`,
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '3px 9px',
+                          borderRadius: '6px'
+                        }}>
+                          🎯 {bloomInfo.label}
+                        </span>
+                        <span style={{
+                          background: validationStatus.isValid ? '#10B98120' : '#EF444420',
+                          color: validationStatus.isValid ? '#34D399' : '#F87171',
+                          border: `1px solid ${validationStatus.isValid ? '#10B98160' : '#EF444460'}`,
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '3px 9px',
+                          borderRadius: '6px'
+                        }}>
+                          {validationStatus.isValid ? '✅ Quality Validation: PASSED' : `⚠️ Flagged: ${validationStatus.reason}`}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#F8FAFC', lineHeight: 1.6 }}>
+                      {qText}
+                    </div>
+
+                    {/* Options Preview */}
+                    {activeQ?.options && (
+                      <div style={{ marginTop: '0.85rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem' }}>
+                        {activeQ.options.map((opt: any, optIdx: number) => (
+                          <div key={optIdx} style={{
+                            background: '#0F172A',
+                            border: '1px solid #334155',
+                            padding: '0.5rem 0.75rem',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            color: '#E2E8F0'
+                          }}>
+                            <span style={{ color: '#94A3B8', marginLeft: '6px' }}>{String.fromCharCode(65 + optIdx)})</span>
+                            <span>{opt.option_text || opt.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Grounding IDs & Similarity Score Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                    <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>CHUNK ID (معرف الفقرة)</div>
+                      <code style={{ fontSize: '0.8rem', color: '#38BDF8', wordBreak: 'break-all' }}>{chunkId}</code>
+                    </div>
+                    <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>BOOK ID (معرف الكتاب)</div>
+                      <code style={{ fontSize: '0.8rem', color: '#A78BFA', wordBreak: 'break-all' }}>{bookId}</code>
+                    </div>
+                    <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>CHAPTER ID (معرف الفصل)</div>
+                      <code style={{ fontSize: '0.8rem', color: '#34D399', wordBreak: 'break-all' }}>{chapterId}</code>
+                    </div>
+                    <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>SIMILARITY / RETRIEVAL SCORE</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <code style={{ fontSize: '0.85rem', color: '#FBBF24', fontWeight: 800 }}>{similarityScore}</code>
+                        <div style={{ flex: 1, height: '6px', background: '#0F172A', borderRadius: '999px', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, Math.round(similarityScore * 100))}%`, height: '100%', background: '#FBBF24' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* The EXACT Raw Textbook Chunk Provided to Gemini */}
+                  <div style={{ background: '#0B0F19', padding: '1.25rem', borderRadius: '12px', border: '1px solid #1E293B' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#38BDF8', fontWeight: 800, fontSize: '0.85rem' }}>
+                        <span>📖</span>
+                        <span>الفقرة التعليمية المسترجعة من الكتاب المدرسي التي استلمها Gemini (Retrieved Chunk):</span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                        {chunkText.length} حرف
+                      </span>
+                    </div>
+                    <div style={{
+                      background: '#030712',
+                      padding: '1rem',
+                      borderRadius: '8px',
+                      border: '1px solid #1F2937',
+                      fontSize: '0.85rem',
+                      color: '#E2E8F0',
+                      lineHeight: 1.7,
+                      whiteSpace: 'pre-wrap',
+                      fontFamily: 'monospace',
+                      maxHeight: '220px',
+                      overflowY: 'auto'
+                    }}>
+                      {chunkText}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.5rem' }}>
+                      💡 تحقق المطور: تم تجريد أرقام الصفحات والعناوين والبيانات الوصفية تماماً قبل التضمين والتوليد لضمان صياغة سؤال مفاهيمي صافٍ.
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>,
+        document.body
       )}
 
     </div>

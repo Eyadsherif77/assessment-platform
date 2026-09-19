@@ -26,6 +26,10 @@ export interface GroundedQuestion {
   page_reference: number;
   source_excerpt: string;
   explanation: string;
+  // AI Assessment Debug Inspection Fields (Development Only)
+  chunk_text?: string;
+  similarity_score?: number;
+  validation_status?: { isValid: boolean; reason?: string };
 }
 
 /**
@@ -653,23 +657,33 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
               return parsed.map((q: any) => {
                 // Ensure chunk_id matches one of the retrieved chunks
                 const matchedChunk = chunks.find(c => c.id === q.chunk_id) || chunks[0];
-                return {
+                const sanitizedQText = q.question_text.replace(/صفحة\s*\d+/g, '').trim();
+                const optionsList: { id: string; text: string; is_correct: boolean }[] = shuffleArray<{ id: string; text: string; is_correct: boolean }>(
+                  (Array.isArray(q.options) ? q.options : []).map((opt: any) => ({
+                    id: uuidv4(),
+                    text: String(opt?.text || ''),
+                    is_correct: !!opt?.is_correct
+                  }))
+                );
+
+                const resultQ: GroundedQuestion = {
                   id: uuidv4(),
                   chunk_id: matchedChunk?.id || chunks[0]?.id || '',
                   book_id: bookId,
                   chapter_id: chapterId,
-                  question_text: q.question_text.replace(/صفحة\s*\d+/g, '').trim(),
-                  options: shuffleArray(q.options.map((opt: any) => ({
-                    id: uuidv4(),
-                    text: opt.text,
-                    is_correct: !!opt.is_correct
-                  }))),
+                  question_text: sanitizedQText,
+                  options: optionsList,
                   difficulty: q.difficulty || 'MEDIUM',
                   bloom_level: (q.bloom_level || 'UNDERSTANDING').toUpperCase(),
                   page_reference: Number(q.page_reference) || matchedChunk?.page_number || 1,
                   source_excerpt: q.source_excerpt || '',
-                  explanation: q.explanation || ''
+                  explanation: q.explanation || '',
+                  // Debug inspection metadata
+                  chunk_text: matchedChunk?.content || q.source_excerpt || '',
+                  similarity_score: Number((matchedChunk?.similarity ?? 1.0).toFixed(4)),
                 };
+                resultQ.validation_status = validateEducationalQuestion(resultQ);
+                return resultQ;
               });
             }
           }
@@ -881,10 +895,16 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
       fallbackIdx++;
     }
 
-    return questions.slice(0, count).map(q => ({
-      ...q,
-      options: shuffleArray(q.options)
-    }));
+    return questions.slice(0, count).map(q => {
+      const parentChunk = chunks.find(c => c.id === q.chunk_id) || chunks[0];
+      return {
+        ...q,
+        options: shuffleArray(q.options),
+        chunk_text: q.chunk_text || parentChunk?.content || '',
+        similarity_score: q.similarity_score ?? Number((parentChunk?.similarity ?? 1.0).toFixed(4)),
+        validation_status: q.validation_status || { isValid: true }
+      };
+    });
   }
 
   /**

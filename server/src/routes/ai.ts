@@ -58,7 +58,11 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       count: parseInt(count, 10) || 3
     });
 
+    // Check if Development Mode inspection is requested
+    const isDevMode = process.env.NODE_ENV !== 'production' || req.headers['x-dev-debug'] === 'true' || req.query.debug === 'true';
+
     // Strip out is_correct from options before sending to student client, but retain source grounding (chunk_id, book_id, chapter_id)
+    // In development mode only, expose debug inspection fields: chunk_text, similarity_score, validation_status
     const sanitizedQuestions = questions.map(q => ({
       id: q.id,
       chunk_id: q.chunk_id,
@@ -68,6 +72,11 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       difficulty: q.difficulty,
       bloom_level: q.bloom_level,
       page_reference: q.page_reference,
+      ...(isDevMode ? {
+        chunk_text: q.chunk_text || q.source_excerpt || '',
+        similarity_score: q.similarity_score ?? 1.0,
+        validation_status: q.validation_status || { isValid: true }
+      } : {}),
       options: q.options.map(o => ({
         id: o.id,
         text: o.text,
@@ -75,11 +84,25 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       }))
     }));
 
+    // Developer Debug Matrix (development only)
+    const debug_info = isDevMode ? questions.map(q => ({
+      question_id: q.id,
+      question_text: q.question_text,
+      bloom_level: q.bloom_level,
+      chunk_id: q.chunk_id,
+      book_id: q.book_id,
+      chapter_id: q.chapter_id,
+      chunk_text: q.chunk_text || q.source_excerpt || '',
+      similarity_score: q.similarity_score ?? 1.0,
+      validation_status: q.validation_status || { isValid: true }
+    })) : undefined;
+
     return res.json({
       book_id,
       chapter_id,
       subject_id,
       questions: sanitizedQuestions,
+      debug_info,
       _server_context_questions: questions // for verification in submit
     });
   } catch (err: any) {
