@@ -1402,15 +1402,20 @@ export const StudentDashboard: React.FC = () => {
             {aiStep === 6 && (
               <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div className="card" style={{ padding: '2rem 1.75rem', borderRadius: 'var(--radius-xl)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-800)', fontWeight: 800, fontSize: '1.2rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', color: 'var(--primary-800)', fontWeight: 800, fontSize: '1.2rem', marginBottom: '1rem' }}>
                     <BookmarkCheck size={24} color="var(--primary-600)" />
-                    <span>{isAr ? 'خطة المراجعة والتوصيات لفهم و تعلم الوحدة' : 'Action Plan & Textbook Citations'}</span>
+                    <span>{isAr ? 'خطة المراجعة والتوصيات لفهم و تعلم الوحدة' : 'Action Plan & Recommendations'}</span>
+                    {(selectedAiBook?.subject_name_ar || selectedAiBook?.title_ar) && (
+                      <span className="badge badge-primary" style={{ fontSize: '0.85rem', padding: '0.25rem 0.75rem', borderRadius: 'var(--radius-md)', fontWeight: 700, border: '1px solid var(--primary-200)', background: 'var(--primary-50)', color: 'var(--primary-700)' }}>
+                        {isAr ? (selectedAiBook?.subject_name_ar || selectedAiBook?.title_ar) : (selectedAiBook?.subject_name_en || selectedAiBook?.title_en || selectedAiBook?.title_ar)}
+                      </span>
+                    )}
                   </div>
 
                   <p style={{ color: 'var(--text-body)', lineHeight: 1.7, fontSize: '0.925rem', marginBottom: '1.5rem' }}>
                     {isAr 
                       ? 'بناءا على اجابة الطالب سنوضح تحليل إجابة كل سؤال مع التوجييه بمراجعة صفحات محددة بالكتاب المدرسى لمزيد من الفهم و التعلم'
-                      : 'Based on your diagnosed responses, here is the question-by-question breakdown with textbook page citations:'}
+                      : 'Based on the student response, we provide an analysis for each question with guidance to review specific textbook pages for deeper understanding.'}
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '2rem' }}>
