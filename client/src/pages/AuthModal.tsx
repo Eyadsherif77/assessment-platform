@@ -190,7 +190,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
 
             <h3 style={{ fontSize: '1.6rem', fontWeight: 900, lineHeight: 1.3, marginBottom: '1rem', color: '#FFFFFF' }}>
-              {isAr ? 'التقييم من أجل التعليم والتشخيص الفوري' : 'Assessment for Learning & Instant Diagnostics'}
+              {isAr ? 'التقييم من أجل التعلم والتشخيص الفوري' : 'Assessment for Learning & Instant Diagnostics'}
             </h3>
 
             <p style={{ fontSize: '0.85rem', color: '#CBD5E1', lineHeight: 1.6, marginBottom: '1.75rem' }}>

@@ -73,7 +73,7 @@ app.use('/api/admin', adminRoutes);
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    platform: 'منصة التقييم من أجل التعليم',
+    platform: 'منصة التقييم من أجل التعلم',
     description: 'National AI Assessment Platform API Service',
     version: '1.0.0',
     endpoints: {
@@ -91,7 +91,7 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
-    platform: 'منصة التقييم من أجل التعليم',
+    platform: 'منصة التقييم من أجل التعلم',
     version: '1.0.0',
     timestamp: new Date().toISOString()
   });

@@ -3,7 +3,7 @@ export type Language = 'ar' | 'en';
 export const translations = {
   ar: {
     // Brand & Header
-    brandName: 'منصة التقييم من أجل التعليم',
+    brandName: 'منصة التقييم من أجل التعلم',
     brandTagline: 'منصة التشخيص والتقويم التربوي الذكي للمناهج المدرسية',
     home: 'الرئيسية',
     login: 'تسجيل الدخول',
@@ -16,8 +16,8 @@ export const translations = {
     gradeLockedNotice: 'المحتوى مقيد حصرياً بصفك الدراسي المسجل',
 
     // Home Page
-    heroTitle: 'التقييم التشخيصي الذكي.. من أجل تعليم أفضل',
-    heroSubtitle: 'منصة تعليمية متكاملة تعتمد على الذكاء الاصطناعي التوليدي المقيد بنصوص كتب الوزارة والمناهج الرسمية، لتحديد نقاط القوة والضعف وتقديم خطط مذاكرة علاجية دقيقة بالصفحة والفقرة.',
+    heroTitle: 'منصة تعليمية مدعومة بالذكاء الإصطناعى لتحديد مستوى فهم الطالب للمنهج و تقديم خطط مذاكرة للتعلم',
+    heroSubtitle: '',
     heroCtaStudent: 'دخول كطالب وتجربة التقييم الذكي',
     heroCtaTeacher: 'لوحة تحكم المعلم ورفع الكتب',
     featuresTitle: 'أهم مميزات المنصة',
@@ -109,7 +109,7 @@ export const translations = {
   },
   en: {
     // Brand & Header
-    brandName: 'Assessment for Education',
+    brandName: 'Assessment for Learning Platform',
     brandTagline: 'AI-Powered Diagnostic Assessment Linked to Official Curricula',
     home: 'Home',
     login: 'Login',
@@ -122,8 +122,8 @@ export const translations = {
     gradeLockedNotice: 'Content strictly restricted to your registered grade',
 
     // Home Page
-    heroTitle: 'Diagnostic AI Assessment.. For Better Learning',
-    heroSubtitle: 'An integrated educational platform powered by AI strictly linked to textbook excerpts, pinpointing strengths, weaknesses, and delivering page-by-page study prescriptions.',
+    heroTitle: 'An AI-powered educational platform to assess student curriculum comprehension and deliver personalized study plans for learning',
+    heroSubtitle: '',
     heroCtaStudent: 'Student Login & Try AI Assessment',
     heroCtaTeacher: 'Teacher Studio & Book Ingestion',
     featuresTitle: 'Key Platform Capabilities',

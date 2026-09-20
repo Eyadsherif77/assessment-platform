@@ -103,12 +103,14 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             <span>{language === 'ar' ? 'الجيل الجديد من التقويم التربوي والتشخيص الذكي 2026' : 'Next-Gen Educational AI Assessment & Diagnostics'}</span>
           </div>
 
-          <h1 className="hero-title">
+          <h1 className="hero-title" style={{ fontSize: '2.15rem', fontWeight: 800, lineHeight: 1.5, maxWidth: '860px', margin: '0 auto 2rem auto' }}>
             {t.heroTitle}
           </h1>
-          <p className="hero-subtitle">
-            {t.heroSubtitle}
-          </p>
+          {t.heroSubtitle ? (
+            <p className="hero-subtitle">
+              {t.heroSubtitle}
+            </p>
+          ) : null}
 
           <div className="hero-actions-container" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '560px', margin: '0 auto' }}>
             {user ? (
@@ -246,7 +248,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             {language === 'ar' ? 'دورة التقييم الذكي' : 'Pedagogical Workflow'}
           </span>
           <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-title)' }}>
-            {language === 'ar' ? 'كيف تعمل منصة التقييم من أجل التعليم؟' : 'How Does the Platform Work?'}
+            {language === 'ar' ? 'كيف تعمل منصة التقييم من أجل التعلم؟' : 'How Does Assessment for Learning Work?'}
           </h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem', maxWidth: '650px', margin: '0.5rem auto 0' }}>
             {language === 'ar' ? 'منظومة آلية متطورة تربط كل طالب بمنهجه وتقدم له تجربة تعليمية مخصصة' : 'An advanced pipeline connecting each student to their exact curriculum with personalized diagnostics'}
@@ -561,7 +563,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             {language === 'ar' ? 'الفارق الحقيقي' : 'Educational Advantage'}
           </span>
           <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-title)' }}>
-            {language === 'ar' ? 'التقييم التقليدي مقابل منصة التقييم من أجل التعليم' : 'Traditional Assessment vs Our Platform'}
+            {language === 'ar' ? 'التقييم التقليدي مقابل منصة التقييم من أجل التعلم' : 'Traditional Assessment vs Assessment for Learning'}
           </h2>
         </div>
 
@@ -587,10 +589,10 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             </ul>
           </div>
 
-          {/* Assessment for Education */}
+          {/* Assessment for Learning */}
           <div className="card" style={{ background: '#F0FDF4', border: '2px solid #86EFAC', padding: '1.5rem 1.25rem' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803D', marginBottom: '1rem' }}>
-              ✅ {language === 'ar' ? 'منصة التقييم من أجل التعليم' : 'Assessment for Education Platform'}
+              ✅ {language === 'ar' ? 'منصة التقييم من أجل التعلم' : 'Assessment for Learning Platform'}
             </h3>
             <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               <li style={{ fontSize: '0.9rem', color: 'var(--text-body)', fontWeight: 600 }}>
@@ -662,7 +664,7 @@ export const Home: React.FC<HomeProps> = ({ onOpenAuth, onGoToDashboard }) => {
             {language === 'ar' ? 'ميثاق التميز التربوي والتقني' : 'Pedagogical Excellence Charter'}
           </span>
           <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-title)' }}>
-            {language === 'ar' ? 'ركائز منظومة التقييم من أجل التعليم' : 'Core Pillars of the Assessment Platform'}
+            {language === 'ar' ? 'ركائز منظومة التقييم من أجل التعلم' : 'Core Pillars of Assessment for Learning'}
           </h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem', maxWidth: '680px', margin: '0.5rem auto 0', lineHeight: 1.6 }}>
             {language === 'ar'

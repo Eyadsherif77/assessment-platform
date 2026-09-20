@@ -78,7 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
           <div className="brand-text">
             <div className="brand-title">{t.brandName}</div>
             <div className="brand-subtitle">
-              {language === 'ar' ? 'التقييم من أجل التعليم' : 'Assessment for Education'}
+              {language === 'ar' ? 'التقييم من أجل التعلم' : 'Assessment for Learning'}
             </div>
           </div>
         </a>
