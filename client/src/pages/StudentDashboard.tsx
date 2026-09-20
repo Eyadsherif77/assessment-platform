@@ -51,6 +51,9 @@ export const StudentDashboard: React.FC = () => {
     } catch (_) {}
   };
 
+  // Dedicated Completed Exams History Modal State
+  const [showExamsHistoryModal, setShowExamsHistoryModal] = useState<boolean>(false);
+
   // Books Data & PDF Reader
   const [books, setBooks] = useState<any[]>([]);
   const [selectedPdfBook, setSelectedPdfBook] = useState<any | null>(null);
@@ -108,16 +111,17 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  // Keyboard shortcut (Escape) & Lock body overflow when PDF is open
+  // Keyboard shortcut (Escape) & Lock body overflow when PDF is open or modal is active
   useEffect(() => {
-    if (selectedPdfBook) {
+    if (selectedPdfBook || showExamsHistoryModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedPdfBook) {
-        handleClosePdf();
+      if (e.key === 'Escape') {
+        if (selectedPdfBook) handleClosePdf();
+        if (showExamsHistoryModal) setShowExamsHistoryModal(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -125,7 +129,7 @@ export const StudentDashboard: React.FC = () => {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [selectedPdfBook, pdfBlobUrl]);
+  }, [selectedPdfBook, pdfBlobUrl, showExamsHistoryModal]);
 
   // Exams Data
   const [exams, setExams] = useState<any[]>([]);
@@ -1977,15 +1981,53 @@ export const StudentDashboard: React.FC = () => {
                 </span>
               </div>
 
-              <div className="goal-card">
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                  {isAr ? 'الامتحانات المكتملة' : 'Completed Exams'}
-                </span>
-                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)' }}>
+              <div 
+                className="goal-card"
+                onClick={() => setShowExamsHistoryModal(true)}
+                style={{
+                  cursor: 'pointer',
+                  border: '1.5px solid var(--primary-200)',
+                  background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+                  transition: 'all 0.2s ease',
+                  position: 'relative'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--primary-500)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(37, 99, 235, 0.14)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--primary-200)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '';
+                }}
+                title={isAr ? 'اضغط هنا لفتح سجل الامتحانات وتفاصيل التقييمات' : 'Click to view completed exams history'}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {isAr ? 'الامتحانات المكتملة' : 'Completed Exams'}
+                  </span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    color: 'var(--primary-700)',
+                    background: 'var(--primary-100)',
+                    padding: '0.18rem 0.5rem',
+                    borderRadius: 'var(--radius-full)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.2rem'
+                  }}>
+                    <span>{isAr ? 'عرض السجل' : 'View'}</span>
+                    <ArrowIcon size={11} />
+                  </span>
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--primary-700)', margin: '0.2rem 0' }}>
                   {totalCompletedAssessments}
                 </div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {isAr ? 'بمعدل تصحيح فوري' : 'With instant diagnosis'}
+                <span style={{ fontSize: '0.75rem', color: 'var(--primary-600)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span>📋</span>
+                  <span>{isAr ? 'اضغط لعرض سجل التقييمات ↗' : 'Click to open exams history ↗'}</span>
                 </span>
               </div>
 
@@ -2638,6 +2680,283 @@ export const StudentDashboard: React.FC = () => {
                 </div>
               );
             })()}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Dedicated Completed Exams History Modal via Portal */}
+      {showExamsHistoryModal && createPortal(
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 999999,
+          padding: '1.25rem',
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            color: 'var(--text-body)',
+            width: '100%',
+            maxWidth: '720px',
+            maxHeight: '88vh',
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--border-light)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--border-light)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              background: 'var(--bg-subtle)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--primary-100)',
+                  color: 'var(--primary-800)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.25rem',
+                  fontWeight: 900
+                }}>
+                  📝
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 900, margin: 0, color: 'var(--text-title)' }}>
+                    {isAr ? 'سجل الامتحانات والتقييمات المنجزة' : 'Completed Assessments History'}
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {isAr 
+                      ? `تم العثور على ${analytics?.completed_exams?.length || totalCompletedAssessments} امتحانات مع تفاصيل النتائج والتشخيص`
+                      : `Found ${analytics?.completed_exams?.length || totalCompletedAssessments} exams with diagnosis breakdown`}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowExamsHistoryModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  padding: '0.4rem',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title={isAr ? 'إغلاق (Esc)' : 'Close (Esc)'}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Quick Metrics Bar inside Modal */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '0.75rem',
+              padding: '1rem 1.5rem',
+              background: 'var(--bg-card)',
+              borderBottom: '1px solid var(--border-light)'
+            }}>
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                  {isAr ? 'الامتحانات المكتملة' : 'Completed Exams'}
+                </div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--primary-700)' }}>
+                  {analytics?.completed_exams?.length || totalCompletedAssessments}
+                </div>
+              </div>
+
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                  {isAr ? 'نسبة الإتقان التراكمي' : 'Cumulative Mastery'}
+                </div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#16A34A' }}>
+                  {calculatedMastery}%
+                </div>
+              </div>
+
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                  {isAr ? 'الفصول المتقنة' : 'Mastered Units'}
+                </div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#D97706' }}>
+                  {analytics?.summary?.mastered_topics_count ?? 0}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body / Exam Items */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              overflowY: 'auto',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.85rem'
+            }}>
+              {analytics?.completed_exams && analytics.completed_exams.length > 0 ? (
+                analytics.completed_exams.map((exam: any, idx: number) => {
+                  const pct = exam.percentage ?? Math.round(((exam.score || 0) / (exam.total || 1)) * 100);
+                  const isMastered = pct >= 80;
+                  const isProficient = pct >= 60 && pct < 80;
+                  const badgeColor = isMastered ? '#16A34A' : isProficient ? '#2563EB' : '#D97706';
+                  const badgeBg = isMastered ? '#F0FDF4' : isProficient ? '#EFF6FF' : '#FFFBEB';
+                  const badgeBorder = isMastered ? '#BBF7D0' : isProficient ? '#BFDBFE' : '#FDE68A';
+                  const statusText = isMastered
+                    ? (isAr ? 'متقن (Mastered)' : 'Mastered')
+                    : isProficient
+                    ? (isAr ? 'متقدم (Proficient)' : 'Proficient')
+                    : (isAr ? 'بحاجة لمراجعة (Developing)' : 'Developing');
+
+                  const formattedDate = exam.created_at
+                    ? new Date(exam.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
+                    : '';
+
+                  return (
+                    <div
+                      key={exam.id || idx}
+                      style={{
+                        padding: '1rem 1.15rem',
+                        background: 'var(--bg-subtle)',
+                        borderRadius: 'var(--radius-lg)',
+                        border: '1px solid var(--border-light)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.75rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flex: 1, minWidth: '220px' }}>
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: 'var(--radius-md)',
+                          background: badgeBg,
+                          border: `1px solid ${badgeBorder}`,
+                          color: badgeColor,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '1.1rem',
+                          fontWeight: 900,
+                          flexShrink: 0
+                        }}>
+                          {exam.type === 'TIMED_EXAM' ? '⏱️' : '🧠'}
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-title)' }}>
+                              {isAr ? (exam.chapter_title_ar || exam.title_ar || exam.subject_name_ar) : (exam.chapter_title_en || exam.title_en || exam.subject_name_en)}
+                            </span>
+                            <span style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              padding: '0.12rem 0.45rem',
+                              borderRadius: 'var(--radius-full)',
+                              background: badgeBg,
+                              color: badgeColor,
+                              border: `1px solid ${badgeBorder}`
+                            }}>
+                              {statusText}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                            <span style={{ fontWeight: 600 }}>{isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}</span>
+                            {exam.book_title_ar && (
+                              <>
+                                <span>•</span>
+                                <span>{isAr ? exam.book_title_ar : (exam.book_title_en || exam.book_title_ar)}</span>
+                              </>
+                            )}
+                            <span>•</span>
+                            <span>{formattedDate}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexShrink: 0 }}>
+                        <div style={{ textAlign: isAr ? 'left' : 'right' }}>
+                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: badgeColor }}>
+                            {pct}%
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {exam.score} / {exam.total} {isAr ? 'درجة' : 'pts'}
+                          </div>
+                        </div>
+
+                        {exam.report && (
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => {
+                              setShowExamsHistoryModal(false);
+                              setAiReport(exam.report);
+                              setActiveTab('ai');
+                              setAiStep(5);
+                            }}
+                            style={{ fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                          >
+                            {isAr ? 'تقرير التشخيص 📋' : 'View Report 📋'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
+                  <p style={{ margin: 0 }}>
+                    {isAr ? 'لا توجد امتحانات مكتملة مسجلة بعد.' : 'No completed exams found yet.'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '0.85rem 1.5rem',
+              borderTop: '1px solid var(--border-light)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              background: 'var(--bg-subtle)'
+            }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowExamsHistoryModal(false)}
+                style={{ fontWeight: 800, padding: '0.5rem 1.5rem' }}
+              >
+                {isAr ? 'إغلاق' : 'Close'}
+              </button>
+            </div>
           </div>
         </div>,
         document.body
