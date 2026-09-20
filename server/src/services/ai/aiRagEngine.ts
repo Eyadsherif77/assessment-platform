@@ -253,6 +253,66 @@ class AIRagEngine {
   }
 
   /**
+   * Detects the educational language of the textbook/chapter based on chunk content and metadata.
+   * Curriculum Content Language Sovereignty:
+   * - Arabic textbooks ALWAYS stay in Arabic for exam generation, regardless of platform UI.
+   * - English textbooks ALWAYS stay in English for exam generation, regardless of platform UI.
+   */
+  public detectLanguage(chunks: { content?: string }[], book?: any): 'ar' | 'en' {
+    const combinedContent = chunks.map(c => c.content || '').join(' ');
+    const arChars = (combinedContent.match(/[\u0600-\u06FF]/g) || []).length;
+    const enChars = (combinedContent.match(/[a-zA-Z]/g) || []).length;
+
+    // Content is the primary source of truth:
+    if (enChars > arChars && enChars > 25) {
+      return 'en';
+    }
+    if (arChars > enChars && arChars > 25) {
+      return 'ar';
+    }
+
+    // Check book metadata indicators
+    const fileUrl = (book?.file_url || '').toLowerCase();
+    const titleEn = (book?.title_en || '').toLowerCase();
+    const titleAr = (book?.title_ar || '').toLowerCase();
+    const bookLanguage = (book?.language || '').toLowerCase();
+    const schoolType = (book?.school_type || '').toLowerCase();
+
+    if (bookLanguage === 'en' || bookLanguage === 'english') {
+      return 'en';
+    }
+    if (bookLanguage === 'ar' || bookLanguage === 'arabic') {
+      return 'ar';
+    }
+
+    const isEnglishMetadata =
+      fileUrl.includes('_en_') ||
+      fileUrl.includes('math_en') ||
+      fileUrl.includes('science_en') ||
+      titleEn.includes('math') ||
+      titleEn.includes('english') ||
+      titleEn.includes('science') ||
+      titleEn.includes('physics') ||
+      titleEn.includes('chemistry') ||
+      titleEn.includes('biology') ||
+      titleAr.includes('math') ||
+      titleAr.includes('english') ||
+      titleAr.includes('science') ||
+      (schoolType === 'لغات' && (titleAr.includes('رياضيات') || titleAr.includes('علوم')));
+
+    if (isEnglishMetadata && arChars < 60) {
+      return 'en';
+    }
+
+    if (isEnglishMetadata && enChars > 15) {
+      return 'en';
+    }
+
+    // Default to Arabic for national curriculum
+    return 'ar';
+  }
+
+  /**
    * Check if questions already exist in the Question Bank in TiDB.
    * If studentId is provided, filters out questions the student has already seen,
    * guaranteeing the student never gets the same question twice!
@@ -262,8 +322,9 @@ class AIRagEngine {
     chapterId: string;
     count: number;
     studentId?: string;
+    expectedLanguage?: 'ar' | 'en';
   }): Promise<GroundedQuestion[] | null> {
-    const { bookId, chapterId, count, studentId } = params;
+    const { bookId, chapterId, count, studentId, expectedLanguage = 'ar' } = params;
     try {
       const itemsRes = await db.query(
         `SELECT id, question_text, difficulty, bloom_level, explanation, page_reference, source_chunk_id
@@ -274,10 +335,21 @@ class AIRagEngine {
 
       if (itemsRes.rows.length === 0) return null;
 
-      // Filter questions through Quality Validation Layer (strip any historical meta wording)
+      // Filter questions through Quality Validation Layer (strip any historical meta wording) & matching language
       const candidateRows = itemsRes.rows.filter((r: any) => {
         const qText = r.question_text || '';
-        return !qText.includes('في صفحة') && !qText.includes('بصفحة') && !qText.includes('رقم الصفحة') && !qText.includes('الفهرس');
+        const arCount = (qText.match(/[\u0600-\u06FF]/g) || []).length;
+        const enCount = (qText.match(/[a-zA-Z]/g) || []).length;
+
+        // Skip cached questions that don't match the curriculum language
+        if (expectedLanguage === 'en' && arCount > enCount) {
+          return false;
+        }
+        if (expectedLanguage === 'ar' && enCount > arCount && arCount < 5) {
+          return false;
+        }
+
+        return !qText.includes('في صفحة') && !qText.includes('بصفحة') && !qText.includes('رقم الصفحة') && !qText.includes('الفهرس') && !/\bpage\s*\d+/i.test(qText);
       });
 
       if (candidateRows.length === 0) return null;
@@ -456,7 +528,7 @@ class AIRagEngine {
 
     // Student Safety Rule: Server-side validation
     const bookCheck = await db.query(
-      `SELECT id, academic_stage_id, grade_id FROM books WHERE id = $1`,
+      `SELECT id, academic_stage_id, grade_id, title_ar, title_en, file_url, school_type FROM books WHERE id = $1`,
       [params.bookId]
     );
     if (bookCheck.rows.length === 0) {
@@ -467,18 +539,7 @@ class AIRagEngine {
       throw new Error('غير مصرح: لا يمكن توليد أسئلة لكتاب خارج مرحلتك وصفك الدراسي المعتمد.');
     }
 
-    // 1. Try Smart Question Bank in TiDB ($0.00 AI Cost, instant response, student deduplication)
-    const cachedQuestions = await this.getQuestionsFromBank({
-      bookId: params.bookId,
-      chapterId: params.chapterId,
-      count: requiredCount,
-      studentId: params.studentId
-    });
-    if (cachedQuestions && cachedQuestions.length >= requiredCount) {
-      return cachedQuestions;
-    }
-
-    // 2. Retrieve grounded educational textbook chunks
+    // 1. Retrieve grounded educational textbook chunks
     let chunks = await this.retrieveGroundedChunks({
       ...params,
       limit: 8
@@ -487,20 +548,24 @@ class AIRagEngine {
     if (chunks.length === 0) {
       try {
         const chInfo = await db.query(
-          `SELECT c.title_ar as ch_title, b.title_ar as b_title
+          `SELECT c.title_ar as ch_title, c.title_en as ch_title_en, b.title_ar as b_title, b.title_en as b_title_en
            FROM book_chapters c
            JOIN books b ON c.book_id = b.id
            WHERE c.id = $1`,
           [params.chapterId]
         );
         if (chInfo.rows.length > 0) {
+          const row = chInfo.rows[0];
+          const isEnAnchor = this.detectLanguage([], book);
           chunks = [{
             id: `anchor-${params.chapterId}`,
             book_id: params.bookId,
             chapter_id: params.chapterId,
             page_number: 1,
             chunk_index: 1,
-            content: `المفاهيم التعليمية والأسس المقررة في درس ${chInfo.rows[0].ch_title} من كتاب ${chInfo.rows[0].b_title}. يتضمن الدرس القواعد الأساسية، والتعريفات الدقيقة، والتطبيقات والمسائل التقييمية.`,
+            content: isEnAnchor === 'en'
+              ? `Curriculum concepts and educational principles in ${row.ch_title_en || row.ch_title} from textbook ${row.b_title_en || row.b_title}. Includes fundamental rules, exact definitions, examples, and assessment exercises.`
+              : `المفاهيم التعليمية والأسس المقررة في درس ${row.ch_title} من كتاب ${row.b_title}. يتضمن الدرس القواعد الأساسية، والتعريفات الدقيقة، والتطبيقات والمسائل التقييمية.`,
             metadata: '{}',
             similarity: 1.0
           }];
@@ -514,13 +579,29 @@ class AIRagEngine {
       throw new Error('المحتوى التعليمي المستخرج من هذا الفصل غير كافٍ لصياغة أسئلة تقييمية معتمدة.');
     }
 
+    // Detect textbook language: 'ar' for Arabic books, 'en' for English / Math / Science in English
+    const detectedLanguage = this.detectLanguage(chunks, book);
+
+    // 2. Try Smart Question Bank in TiDB ($0.00 AI Cost, instant response, student deduplication)
+    // Pass expectedLanguage to ensure cached questions strictly match the curriculum language
+    const cachedQuestions = await this.getQuestionsFromBank({
+      bookId: params.bookId,
+      chapterId: params.chapterId,
+      count: requiredCount,
+      studentId: params.studentId,
+      expectedLanguage: detectedLanguage
+    });
+    if (cachedQuestions && cachedQuestions.length >= requiredCount) {
+      return cachedQuestions;
+    }
+
     let validQuestions: GroundedQuestion[] = [];
 
     // Try Gemini API if key is present
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey) {
       try {
-        const rawAiQuestions = await this.callGeminiForQuestions(chunks, requiredCount, params.bookId, params.chapterId);
+        const rawAiQuestions = await this.callGeminiForQuestions(chunks, requiredCount, params.bookId, params.chapterId, detectedLanguage);
         if (rawAiQuestions && rawAiQuestions.length > 0) {
           // Quality Validation Layer: Filter out any questions mentioning structural tokens
           for (const q of rawAiQuestions) {
@@ -540,7 +621,7 @@ class AIRagEngine {
     // If we need more questions to meet the count, generate deterministic grounded fallback questions
     if (validQuestions.length < requiredCount) {
       const needed = requiredCount - validQuestions.length;
-      const fallbackList = this.generateGroundedFallbackQuestions(chunks, needed, params.bookId, params.chapterId);
+      const fallbackList = this.generateGroundedFallbackQuestions(chunks, needed, params.bookId, params.chapterId, detectedLanguage);
       for (const fbQ of fallbackList) {
         if (validateEducationalQuestion(fbQ).isValid) {
           validQuestions.push(fbQ);
@@ -568,8 +649,11 @@ class AIRagEngine {
     chunks: RetrievedChunk[],
     count: number,
     bookId: string,
-    chapterId: string
+    chapterId: string,
+    language: 'ar' | 'en' = 'ar'
   ): Promise<GroundedQuestion[] | null> {
+    const isEn = language === 'en';
+
     // Exact Bloom's Taxonomy Distribution:
     // 40% Knowledge, 30% Understanding, 20% Application, 10% Analysis
     const knowledgeCount = Math.max(1, Math.round(count * 0.4));
@@ -581,7 +665,61 @@ class AIRagEngine {
       .map(c => `[CHUNK ID: ${c.id} | Page Ref: ${c.page_number}]:\n${c.content}`)
       .join('\n\n---\n\n');
 
-    const prompt = `You are an educational assessment generator.
+    const prompt = isEn ? `You are an educational assessment generator.
+
+Generate questions ONLY from the educational concepts contained in the provided textbook content.
+
+Do NOT generate questions about:
+- Page numbers
+- Chapter numbers
+- Lesson names
+- Unit names
+- Section titles
+- Document structure
+- Metadata
+- File information
+
+Questions must strictly assess:
+- Knowledge
+- Understanding
+- Application
+- Analysis
+
+If the provided content does not contain enough educational material, return:
+"Insufficient educational content for assessment generation."
+
+CRITICAL GENERATION RULES:
+1. Generate exactly ${count} multiple-choice questions in ENGLISH grounded 100% in the educational content. All questions, options, and explanations MUST BE WRITTEN IN ENGLISH.
+2. Required Bloom's Taxonomy Distribution:
+   - ${knowledgeCount} Knowledge question(s) (Definitions, scientific facts, direct recall) -> bloom_level: "KNOWLEDGE"
+   - ${understandingCount} Understanding question(s) (Explanations, cause-and-effect, concept relationships) -> bloom_level: "UNDERSTANDING"
+   - ${applicationCount} Application question(s) (Calculations, practical procedures, real-world examples, predictions) -> bloom_level: "APPLICATION"
+   - ${analysisCount} Analysis question(s) (Comparative deductions, analyzing experiments or relationships) -> bloom_level: "ANALYSIS"
+3. ZERO TOLERANCE for document structure: NEVER use the words "page", "chapter", "lesson", "unit", "title", "heading", "table of contents" in question_text or options.
+4. Each question must have 4 plausible options with exactly 1 correct answer and 3 realistic distractors.
+5. Every question MUST be grounded in a specific chunk, referencing its exact "chunk_id" from the provided content.
+
+Provided Textbook Content:
+${contextText}
+
+Respond ONLY with a valid JSON array of objects (no markdown code fences, no introductory or concluding text):
+[
+  {
+    "chunk_id": "the exact chunk ID provided above",
+    "question_text": "Educational question strictly assessing the concept, formula, rule, or problem",
+    "options": [
+      { "text": "First plausible option", "is_correct": false },
+      { "text": "Second plausible option (correct)", "is_correct": true },
+      { "text": "Third plausible option", "is_correct": false },
+      { "text": "Fourth plausible option", "is_correct": false }
+    ],
+    "difficulty": "EASY" | "MEDIUM" | "HARD",
+    "bloom_level": "KNOWLEDGE" | "UNDERSTANDING" | "APPLICATION" | "ANALYSIS",
+    "page_reference": 4,
+    "source_excerpt": "The exact scientific quotation from the text",
+    "explanation": "Detailed explanation of why the correct option is right"
+  }
+]` : `You are an educational assessment generator.
 
 Generate questions ONLY from the educational concepts contained in the provided textbook content.
 
@@ -680,7 +818,7 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
               return parsed.map((q: any) => {
                 // Ensure chunk_id matches one of the retrieved chunks
                 const matchedChunk = chunks.find(c => c.id === q.chunk_id) || chunks[0];
-                const sanitizedQText = q.question_text.replace(/صفحة\s*\d+/g, '').trim();
+                const sanitizedQText = q.question_text.replace(/صفحة\s*\d+/g, '').replace(/\bpage\s*\d+/gi, '').trim();
                 const optionsList: { id: string; text: string; is_correct: boolean }[] = shuffleArray<{ id: string; text: string; is_correct: boolean }>(
                   (Array.isArray(q.options) ? q.options : []).map((opt: any) => ({
                     id: uuidv4(),
@@ -725,9 +863,11 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
     chunks: RetrievedChunk[],
     count: number = 3,
     bookId: string = '',
-    chapterId: string = ''
+    chapterId: string = '',
+    language: 'ar' | 'en' = 'ar'
   ): GroundedQuestion[] {
     const questions: GroundedQuestion[] = [];
+    const isEn = language === 'en';
 
     for (const chunk of chunks) {
       if (questions.length >= count) break;
@@ -735,180 +875,319 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
       const text = chunk.content;
       if (!text || text.length < 25) continue;
 
-      if ((text.includes('النفيس') || text.includes('ابن النفيس')) && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          chunk_id: chunk.id,
-          book_id: bookId,
-          chapter_id: chapterId,
-          question_text: `ما الإنجاز الطبي الأبرز الذي اشتهر به العالم المسلم ابن النفيس في تاريخ الطب؟`,
-          options: [
-            { id: uuidv4(), text: 'وصف الدورة الدموية الصغرى بدقة علمية قبل علماء الغرب بقرون', is_correct: true },
-            { id: uuidv4(), text: 'اكتشاف المجهر الضوئي لفحص الخلايا الحية', is_correct: false },
-            { id: uuidv4(), text: 'تأسيس علم الجبر وقوانين المثلثات الرياضية', is_correct: false },
-            { id: uuidv4(), text: 'تطوير تقنيات التخدير الكيميائي في العمليات الجراحية', is_correct: false }
-          ],
-          difficulty: 'EASY',
-          bloom_level: 'KNOWLEDGE',
-          page_reference: page,
-          source_excerpt: 'فهو أول من وصف الدورة الدموية الصغرى وصفاً دقيقاً قبل أن يعرفها الغرب بقرون.',
-          explanation: 'ابن النفيس هو أول من اكتشف ووصف الدورة الدموية الصغرى.'
-        });
-      }
-
-      if (text.includes('البيمارستان') && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          chunk_id: chunk.id,
-          book_id: bookId,
-          chapter_id: chapterId,
-          question_text: `ما الدور الرئيسي الذي كانت تقوم به مؤسسة 'البيمارستان' في الحضارة الإسلامية؟`,
-          options: [
-            { id: uuidv4(), text: 'مستشفيات متقدمة تُعنى برعاية المرضى جسدياً ونفسياً وتدريب الأطباء مجاناً', is_correct: true },
-            { id: uuidv4(), text: 'مراكز عسكرية لحماية الثغور وتدريب الجيوش', is_correct: false },
-            { id: uuidv4(), text: 'أسواق تجارية لتبادل البضائع والمنتجات الطبية', is_correct: false },
-            { id: uuidv4(), text: 'مدارس مخصصة لتعليم اللغات الأجنبية فقط', is_correct: false }
-          ],
-          difficulty: 'MEDIUM',
-          bloom_level: 'UNDERSTANDING',
-          page_reference: page,
-          source_excerpt: 'البيمارستانات كانت أكثر من مجرد مستشفيات، بل مؤسسات تُعنى براحة المريض جسدياً ونفسياً.',
-          explanation: 'كانت البيمارستانات مؤسسات طبية وعلاجية وإنسانية راقية.'
-        });
-      }
-
-      if ((text.includes('زويل') || text.includes('أحمد زويل')) && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          chunk_id: chunk.id,
-          book_id: bookId,
-          chapter_id: chapterId,
-          question_text: `ما الاكتشاف العلمي الجليل الذي منح العالم المصري الدكتور أحمد زويل جائزة نوبل؟`,
-          options: [
-            { id: uuidv4(), text: 'ابتكار ميكروسكوب الفيمتو ثانية لتصوير حركة الجزيئات عند التفاعل الكيميائي', is_correct: true },
-            { id: uuidv4(), text: 'ابتكار أجهزة الليزر لعلاج أمراض العيون', is_correct: false },
-            { id: uuidv4(), text: 'اكتشاف عناصر إشعاعية جديدة في الجدول الدوري', is_correct: false },
-            { id: uuidv4(), text: 'تصميم مركبات الفضاء لاستكشاف الكواكب الخارجية', is_correct: false }
-          ],
-          difficulty: 'MEDIUM',
-          bloom_level: 'KNOWLEDGE',
-          page_reference: page,
-          source_excerpt: 'الدكتور أحمد زويل نال نوبل في الكيمياء بفضل ابتكار الفيمتو ثانية.',
-          explanation: 'حاز د. أحمد زويل جائزة نوبل تقديراً لأبحاثه الرائدة في كيمياء الفيمتو ثانية.'
-        });
-      }
-
-      if ((text.includes('الكثافة') || text.includes('البترول')) && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          chunk_id: chunk.id,
-          book_id: bookId,
-          chapter_id: chapterId,
-          question_text: `علل علمياً: لماذا لا يُستخدم الماء في إطفاء حرائق البترول؟`,
-          options: [
-            { id: uuidv4(), text: 'لأن كثافة البترول أقل من كثافة الماء فيطفو فوق سطحه ويظل مشتعلاً', is_correct: true },
-            { id: uuidv4(), text: 'لأن الماء يتفاعل كيميائياً مع البترول وينفجر', is_correct: false },
-            { id: uuidv4(), text: 'لأن كثافة الماء أقل من كثافة البترول فيتبخر سريعاً', is_correct: false },
-            { id: uuidv4(), text: 'لأن البترول يذوب في الماء البارد فقط', is_correct: false }
-          ],
-          difficulty: 'MEDIUM',
-          bloom_level: 'APPLICATION',
-          page_reference: page,
-          source_excerpt: 'لا يستخدم الماء في إطفاء حرائق البترول لأن كثافة البترول أقل من كثافة الماء فيطفو مشتعلاً.',
-          explanation: 'المواد الأقل كثافة تطفو فوق السائل الأعلى كثافة، ولذلك يطفو البترول فوق الماء مشتعلاً.'
-        });
-      }
-
-      if ((text.includes('النسبي') || text.includes('الكسر') || text.includes('المقام')) && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          chunk_id: chunk.id,
-          book_id: bookId,
-          chapter_id: chapterId,
-          question_text: `متى يعبر الكسر (أ / ب) عن عدد نسبي حقيقي في مجموعة الأعداد النسبية (ن)؟`,
-          options: [
-            { id: uuidv4(), text: 'عندما يكون المقام ب عدداً صحيحاً لا يساوي صفراً (ب ≠ 0)', is_correct: true },
-            { id: uuidv4(), text: 'عندما يكون البسط أ مساوياً للصفر دائماً', is_correct: false },
-            { id: uuidv4(), text: 'عندما يكون المقام ب مساوياً للصفر', is_correct: false },
-            { id: uuidv4(), text: 'عندما يكون البسط والمقام أعداداً سالبة فقط', is_correct: false }
-          ],
-          difficulty: 'EASY',
-          bloom_level: 'KNOWLEDGE',
-          page_reference: page,
-          source_excerpt: 'الشرط الأساسي هو أن المقام ب لا يساوي صفراً (ب ≠ 0).',
-          explanation: 'القسمة على صفر ليس لها معنى في الرياضيات، لذلك يجب أن يكون المقام ب ≠ 0.'
-        });
-      }
-
-      if ((text.includes('المعكوس') || text.includes('الضرب') || text.includes('المحايد')) && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          chunk_id: chunk.id,
-          book_id: bookId,
-          chapter_id: chapterId,
-          question_text: `ما خاصية العدد صفر بالنسبة لعملية الضرب في مجموعة الأعداد النسبية؟`,
-          options: [
-            { id: uuidv4(), text: 'العدد صفر هو العدد النسبي الوحيد الذي ليس له معكوس ضربي', is_correct: true },
-            { id: uuidv4(), text: 'العدد صفر هو المحايد الضربي لجميع الأعداد النسبية', is_correct: false },
-            { id: uuidv4(), text: 'معكوسه الضربي هو العدد 1', is_correct: false },
-            { id: uuidv4(), text: 'معكوسه الضربي يساوي معكوسه الجمعي', is_correct: false }
-          ],
-          difficulty: 'MEDIUM',
-          bloom_level: 'UNDERSTANDING',
-          page_reference: page,
-          source_excerpt: 'العدد صفر ليس له معكوس ضربي لأن مقلوبه 1/0 ليس له معنى.',
-          explanation: 'مقلوب الصفر هو 1/0 وهو كمية غير معرفة رياضياً.'
-        });
-      }
-
-      if ((text.includes('الجبري') || text.includes('المقدار') || text.includes('الحد')) && questions.length < count) {
-        questions.push({
-          id: uuidv4(),
-          chunk_id: chunk.id,
-          book_id: bookId,
-          chapter_id: chapterId,
-          question_text: `كيف تُحدد درجة الحد الجبري في الرياضيات؟`,
-          options: [
-            { id: uuidv4(), text: 'بمجموع أسس العوامل الجبرية (الرموز) المكونة له', is_correct: true },
-            { id: uuidv4(), text: 'بضرب المعامل العددي في عدد الحدود', is_correct: false },
-            { id: uuidv4(), text: 'بأعلى معامل عددي في المقدار', is_correct: false },
-            { id: uuidv4(), text: 'بعدد المتغيرات دون النظر إلى أسسها', is_correct: false }
-          ],
-          difficulty: 'MEDIUM',
-          bloom_level: 'APPLICATION',
-          page_reference: page,
-          source_excerpt: 'درجة الحد الجبري هي مجموع أسس العوامل الجبرية المكونة له.',
-          explanation: 'تُحسب درجة الحد الجبري بجمع أسس المتغيرات المكونة له.'
-        });
-      }
-
-      // Sentence-level educational fact extractor
-      if (questions.length < count) {
-        const sentences = text
-          .split(/[.،؛!؟\n]+/)
-          .map(s => s.trim())
-          .filter(s => s.length >= 25 && s.length <= 130 && !s.includes('الفهرس') && !s.includes('المحتويات') && !s.includes('صفحة'));
-
-        if (sentences.length > 0) {
-          const mainSentence = sentences[0];
+      if (isEn) {
+        // English Mathematics curriculum fallback questions
+        if ((text.toLowerCase().includes('rational') || text.includes('a/b') || text.toLowerCase().includes('fraction') || text.toLowerCase().includes('denominator')) && questions.length < count) {
           questions.push({
             id: uuidv4(),
             chunk_id: chunk.id,
             book_id: bookId,
             chapter_id: chapterId,
-            question_text: `أي من العبارات التالية تمثل حقيقة ومفهوماً علمياً دقيقاً ورد في المحتوى التعليمي؟`,
+            question_text: `Under which mathematical condition does the fraction (a / b) represent a rational number in the set Q?`,
             options: [
-              { id: uuidv4(), text: mainSentence, is_correct: true },
-              { id: uuidv4(), text: 'تتناقض المفاهيم الأساسية مع التطبيقات العملية في هذا المجال', is_correct: false },
-              { id: uuidv4(), text: 'تقتصر أهمية دراسة الموضوع على الجانب النظري دون أي تطبيق عملي', is_correct: false },
-              { id: uuidv4(), text: 'المعلومات المذكورة قيد التجربة ولم تثبت صحتها علمياً بعد', is_correct: false }
+              { id: uuidv4(), text: 'When the denominator b is an integer not equal to zero (b ≠ 0)', is_correct: true },
+              { id: uuidv4(), text: 'When the numerator a is always equal to zero', is_correct: false },
+              { id: uuidv4(), text: 'When the denominator b is equal to zero', is_correct: false },
+              { id: uuidv4(), text: 'When both a and b are negative numbers only', is_correct: false }
+            ],
+            difficulty: 'EASY',
+            bloom_level: 'KNOWLEDGE',
+            page_reference: page,
+            source_excerpt: 'The basic condition is that the denominator b is not equal to zero (b ≠ 0).',
+            explanation: 'Division by zero is undefined in mathematics; therefore, the denominator cannot be zero.'
+          });
+        }
+
+        if ((text.toLowerCase().includes('multiplicative') || text.toLowerCase().includes('reciprocal') || text.toLowerCase().includes('zero')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `What is the unique mathematical property of the number zero regarding multiplication in the set of rational numbers Q?`,
+            options: [
+              { id: uuidv4(), text: 'The number zero is the only rational number that has no multiplicative inverse (reciprocal)', is_correct: true },
+              { id: uuidv4(), text: 'Zero is the multiplicative identity element for all rational numbers', is_correct: false },
+              { id: uuidv4(), text: 'Its multiplicative inverse is equal to 1', is_correct: false },
+              { id: uuidv4(), text: 'Its multiplicative inverse equals its additive inverse', is_correct: false }
             ],
             difficulty: 'MEDIUM',
             bloom_level: 'UNDERSTANDING',
             page_reference: page,
-            source_excerpt: mainSentence,
-            explanation: `الحقيقة العلمية المقررة هي: "${mainSentence}".`
+            source_excerpt: 'The number zero has no multiplicative inverse because 1/0 is undefined.',
+            explanation: '1/0 is undefined in mathematics, so zero does not possess a multiplicative inverse.'
           });
+        }
+
+        if ((text.toLowerCase().includes('additive inverse') || text.toLowerCase().includes('opposite')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `For any rational number a, what is the result of adding it to its additive inverse (-a)?`,
+            options: [
+              { id: uuidv4(), text: 'Zero (0), which is the additive identity element in Q', is_correct: true },
+              { id: uuidv4(), text: 'One (1), which is the multiplicative identity element', is_correct: false },
+              { id: uuidv4(), text: 'Two times the number (2a)', is_correct: false },
+              { id: uuidv4(), text: 'A negative rational number', is_correct: false }
+            ],
+            difficulty: 'EASY',
+            bloom_level: 'KNOWLEDGE',
+            page_reference: page,
+            source_excerpt: 'Every rational number a has an additive inverse (-a) such that a + (-a) = 0.',
+            explanation: 'Adding any number to its additive inverse always yields the additive identity, zero.'
+          });
+        }
+
+        if ((text.toLowerCase().includes('algebraic') || text.toLowerCase().includes('degree') || text.toLowerCase().includes('term')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `How is the degree of an algebraic term determined in algebra?`,
+            options: [
+              { id: uuidv4(), text: 'By calculating the sum of the exponents of its variable algebraic factors', is_correct: true },
+              { id: uuidv4(), text: 'By multiplying the numerical coefficient by the number of terms', is_correct: false },
+              { id: uuidv4(), text: 'By taking the largest numerical coefficient in the term', is_correct: false },
+              { id: uuidv4(), text: 'By counting the number of variables without considering exponents', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'APPLICATION',
+            page_reference: page,
+            source_excerpt: 'The degree of an algebraic term is the sum of the exponents of its variable algebraic factors.',
+            explanation: 'The degree of an algebraic term equals the sum of the exponents of all variables in that term.'
+          });
+        }
+
+        if ((text.toLowerCase().includes('equation') || text.toLowerCase().includes('linear') || text.toLowerCase().includes('solve')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `What is the solution set of the linear equation 2x + 5 = 11 in the set of rational numbers Q?`,
+            options: [
+              { id: uuidv4(), text: '{3}', is_correct: true },
+              { id: uuidv4(), text: '{6}', is_correct: false },
+              { id: uuidv4(), text: '{8}', is_correct: false },
+              { id: uuidv4(), text: '{-3}', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'APPLICATION',
+            page_reference: page,
+            source_excerpt: 'Subtract 5 from both sides: 2x = 6; divide by 2: x = 3. S.S. = {3}.',
+            explanation: '2x = 11 - 5 = 6, hence x = 6/2 = 3. Therefore the solution set is {3}.'
+          });
+        }
+
+        // Sentence-level educational fact extractor for English
+        if (questions.length < count) {
+          const sentences = text
+            .split(/[.!?\n]+/)
+            .map(s => s.trim())
+            .filter(s => s.length >= 25 && s.length <= 130 && !/\b(page|chapter|lesson|unit|contents|heading|title)\b/i.test(s));
+
+          if (sentences.length > 0) {
+            const mainSentence = sentences[0];
+            questions.push({
+              id: uuidv4(),
+              chunk_id: chunk.id,
+              book_id: bookId,
+              chapter_id: chapterId,
+              question_text: `Which of the following statements represents an established concept directly stated in the educational curriculum?`,
+              options: [
+                { id: uuidv4(), text: mainSentence, is_correct: true },
+                { id: uuidv4(), text: 'Fundamental principles in this curriculum contradict standard mathematical rules', is_correct: false },
+                { id: uuidv4(), text: 'This topic is purely hypothetical with no established rules or applications', is_correct: false },
+                { id: uuidv4(), text: 'The stated information is unverified and pending mathematical verification', is_correct: false }
+              ],
+              difficulty: 'MEDIUM',
+              bloom_level: 'UNDERSTANDING',
+              page_reference: page,
+              source_excerpt: mainSentence,
+              explanation: `The curriculum establishes that: "${mainSentence}".`
+            });
+          }
+        }
+      } else {
+        // Arabic curriculum fallback questions
+        if ((text.includes('النفيس') || text.includes('ابن النفيس')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `ما الإنجاز الطبي الأبرز الذي اشتهر به العالم المسلم ابن النفيس في تاريخ الطب؟`,
+            options: [
+              { id: uuidv4(), text: 'وصف الدورة الدموية الصغرى بدقة علمية قبل علماء الغرب بقرون', is_correct: true },
+              { id: uuidv4(), text: 'اكتشاف المجهر الضوئي لفحص الخلايا الحية', is_correct: false },
+              { id: uuidv4(), text: 'تأسيس علم الجبر وقوانين المثلثات الرياضية', is_correct: false },
+              { id: uuidv4(), text: 'تطوير تقنيات التخدير الكيميائي في العمليات الجراحية', is_correct: false }
+            ],
+            difficulty: 'EASY',
+            bloom_level: 'KNOWLEDGE',
+            page_reference: page,
+            source_excerpt: 'فهو أول من وصف الدورة الدموية الصغرى وصفاً دقيقاً قبل أن يعرفها الغرب بقرون.',
+            explanation: 'ابن النفيس هو أول من اكتشف ووصف الدورة الدموية الصغرى.'
+          });
+        }
+
+        if (text.includes('البيمارستان') && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `ما الدور الرئيسي الذي كانت تقوم به مؤسسة 'البيمارستان' في الحضارة الإسلامية؟`,
+            options: [
+              { id: uuidv4(), text: 'مستشفيات متقدمة تُعنى برعاية المرضى جسدياً ونفسياً وتدريب الأطباء مجاناً', is_correct: true },
+              { id: uuidv4(), text: 'مراكز عسكرية لحماية الثغور وتدريب الجيوش', is_correct: false },
+              { id: uuidv4(), text: 'أسواق تجارية لتبادل البضائع والمنتجات الطبية', is_correct: false },
+              { id: uuidv4(), text: 'مدارس مخصصة لتعليم اللغات الأجنبية فقط', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'UNDERSTANDING',
+            page_reference: page,
+            source_excerpt: 'البيمارستانات كانت أكثر من مجرد مستشفيات، بل مؤسسات تُعنى براحة المريض جسدياً ونفسياً.',
+            explanation: 'كانت البيمارستانات مؤسسات طبية وعلاجية وإنسانية راقية.'
+          });
+        }
+
+        if ((text.includes('زويل') || text.includes('أحمد زويل')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `ما الاكتشاف العلمي الجليل الذي منح العالم المصري الدكتور أحمد زويل جائزة نوبل؟`,
+            options: [
+              { id: uuidv4(), text: 'ابتكار ميكروسكوب الفيمتو ثانية لتصوير حركة الجزيئات عند التفاعل الكيميائي', is_correct: true },
+              { id: uuidv4(), text: 'ابتكار أجهزة الليزر لعلاج أمراض العيون', is_correct: false },
+              { id: uuidv4(), text: 'اكتشاف عناصر إشعاعية جديدة في الجدول الدوري', is_correct: false },
+              { id: uuidv4(), text: 'تصميم مركبات الفضاء لاستكشاف الكواكب الخارجية', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'KNOWLEDGE',
+            page_reference: page,
+            source_excerpt: 'الدكتور أحمد زويل نال نوبل في الكيمياء بفضل ابتكار الفيمتو ثانية.',
+            explanation: 'حاز د. أحمد زويل جائزة نوبل تقديراً لأبحاثه الرائدة في كيمياء الفيمتو ثانية.'
+          });
+        }
+
+        if ((text.includes('الكثافة') || text.includes('البترول')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `علل علمياً: لماذا لا يُستخدم الماء في إطفاء حرائق البترول؟`,
+            options: [
+              { id: uuidv4(), text: 'لأن كثافة البترول أقل من كثافة الماء فيطفو فوق سطحه ويظل مشتعلاً', is_correct: true },
+              { id: uuidv4(), text: 'لأن الماء يتفاعل كيميائياً مع البترول وينفجر', is_correct: false },
+              { id: uuidv4(), text: 'لأن كثافة الماء أقل من كثافة البترول فيتبخر سريعاً', is_correct: false },
+              { id: uuidv4(), text: 'لأن البترول يذوب في الماء البارد فقط', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'APPLICATION',
+            page_reference: page,
+            source_excerpt: 'لا يستخدم الماء في إطفاء حرائق البترول لأن كثافة البترول أقل من كثافة الماء فيطفو مشتعلاً.',
+            explanation: 'المواد الأقل كثافة تطفو فوق السائل الأعلى كثافة، ولذلك يطفو البترول فوق الماء مشتعلاً.'
+          });
+        }
+
+        if ((text.includes('النسبي') || text.includes('الكسر') || text.includes('المقام')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `متى يعبر الكسر (أ / ب) عن عدد نسبي حقيقي في مجموعة الأعداد النسبية (ن)؟`,
+            options: [
+              { id: uuidv4(), text: 'عندما يكون المقام ب عدداً صحيحاً لا يساوي صفراً (ب ≠ 0)', is_correct: true },
+              { id: uuidv4(), text: 'عندما يكون البسط أ مساوياً للصفر دائماً', is_correct: false },
+              { id: uuidv4(), text: 'عندما يكون المقام ب مساوياً للصفر', is_correct: false },
+              { id: uuidv4(), text: 'عندما يكون البسط والمقام أعداداً سالبة فقط', is_correct: false }
+            ],
+            difficulty: 'EASY',
+            bloom_level: 'KNOWLEDGE',
+            page_reference: page,
+            source_excerpt: 'الشرط الأساسي هو أن المقام ب لا يساوي صفراً (ب ≠ 0).',
+            explanation: 'القسمة على صفر ليس لها معنى في الرياضيات، لذلك يجب أن يكون المقام ب ≠ 0.'
+          });
+        }
+
+        if ((text.includes('المعكوس') || text.includes('الضرب') || text.includes('المحايد')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `ما خاصية العدد صفر بالنسبة لعملية الضرب في مجموعة الأعداد النسبية؟`,
+            options: [
+              { id: uuidv4(), text: 'العدد صفر هو العدد النسبي الوحيد الذي ليس له معكوس ضربي', is_correct: true },
+              { id: uuidv4(), text: 'العدد صفر هو المحايد الضربي لجميع الأعداد النسبية', is_correct: false },
+              { id: uuidv4(), text: 'معكوسه الضربي هو العدد 1', is_correct: false },
+              { id: uuidv4(), text: 'معكوسه الضربي يساوي معكوسه الجمعي', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'UNDERSTANDING',
+            page_reference: page,
+            source_excerpt: 'العدد صفر ليس له معكوس ضربي لأن مقلوبه 1/0 ليس له معنى.',
+            explanation: 'مقلوب الصفر هو 1/0 وهو كمية غير معرفة رياضياً.'
+          });
+        }
+
+        if ((text.includes('الجبري') || text.includes('المقدار') || text.includes('الحد')) && questions.length < count) {
+          questions.push({
+            id: uuidv4(),
+            chunk_id: chunk.id,
+            book_id: bookId,
+            chapter_id: chapterId,
+            question_text: `كيف تُحدد درجة الحد الجبري في الرياضيات؟`,
+            options: [
+              { id: uuidv4(), text: 'بمجموع أسس العوامل الجبرية (الرموز) المكونة له', is_correct: true },
+              { id: uuidv4(), text: 'بضرب المعامل العددي في عدد الحدود', is_correct: false },
+              { id: uuidv4(), text: 'بأعلى معامل عددي في المقدار', is_correct: false },
+              { id: uuidv4(), text: 'بعدد المتغيرات دون النظر إلى أسسها', is_correct: false }
+            ],
+            difficulty: 'MEDIUM',
+            bloom_level: 'APPLICATION',
+            page_reference: page,
+            source_excerpt: 'درجة الحد الجبري هي مجموع أسس العوامل الجبرية المكونة له.',
+            explanation: 'تُحسب درجة الحد الجبري بجمع أسس المتغيرات المكونة له.'
+          });
+        }
+
+        // Sentence-level educational fact extractor
+        if (questions.length < count) {
+          const sentences = text
+            .split(/[.،؛!؟\n]+/)
+            .map(s => s.trim())
+            .filter(s => s.length >= 25 && s.length <= 130 && !s.includes('الفهرس') && !s.includes('المحتويات') && !s.includes('صفحة'));
+
+          if (sentences.length > 0) {
+            const mainSentence = sentences[0];
+            questions.push({
+              id: uuidv4(),
+              chunk_id: chunk.id,
+              book_id: bookId,
+              chapter_id: chapterId,
+              question_text: `أي من العبارات التالية تمثل حقيقة ومفهوماً علمياً دقيقاً ورد في المحتوى التعليمي؟`,
+              options: [
+                { id: uuidv4(), text: mainSentence, is_correct: true },
+                { id: uuidv4(), text: 'تتناقض المفاهيم الأساسية مع التطبيقات العملية في هذا المجال', is_correct: false },
+                { id: uuidv4(), text: 'تقتصر أهمية دراسة الموضوع على الجانب النظري دون أي تطبيق عملي', is_correct: false },
+                { id: uuidv4(), text: 'المعلومات المذكورة قيد التجربة ولم تثبت صحتها علمياً بعد', is_correct: false }
+              ],
+              difficulty: 'MEDIUM',
+              bloom_level: 'UNDERSTANDING',
+              page_reference: page,
+              source_excerpt: mainSentence,
+              explanation: `الحقيقة العلمية المقررة هي: "${mainSentence}".`
+            });
+          }
         }
       }
     }
@@ -918,7 +1197,7 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
     while (questions.length < count) {
       const ch = chunks[(fallbackIdx - 1) % chunks.length] || chunks[0];
       const pNum = ch?.page_number || 1;
-      const snippet = ch?.content?.slice(0, 100) || 'المحتوى العلمي المقرر';
+      const snippet = ch?.content?.slice(0, 100) || (isEn ? 'Accredited curriculum concepts' : 'المحتوى العلمي المقرر');
 
       if (fallbackIdx === 1) {
         questions.push({
@@ -926,8 +1205,15 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
           chunk_id: ch?.id || '',
           book_id: bookId,
           chapter_id: chapterId,
-          question_text: `ما الركيزة الأساسية لفهم واستيعاب هذا الموضوع العلمي وتطبيقه بصورة صحيحة؟`,
-          options: [
+          question_text: isEn
+            ? `What is the foundational requirement for mastering this curriculum topic and solving its problems accurately?`
+            : `ما الركيزة الأساسية لفهم واستيعاب هذا الموضوع العلمي وتطبيقه بصورة صحيحة؟`,
+          options: isEn ? [
+            { id: uuidv4(), text: 'Understanding core definitions, properties, and logical connections between concepts', is_correct: true },
+            { id: uuidv4(), text: 'Superficial memorization of terms without understanding mathematical relationships', is_correct: false },
+            { id: uuidv4(), text: 'Disregarding solved examples and practical exercises in the curriculum', is_correct: false },
+            { id: uuidv4(), text: 'Relying on random guessing without applying curriculum rules', is_correct: false }
+          ] : [
             { id: uuidv4(), text: 'استيعاب المفاهيم والمصطلحات الأساسية والربط المنطقي بينها', is_correct: true },
             { id: uuidv4(), text: 'الحفظ السطحي للألفاظ دون فهم المعنى العلمي والدلالة', is_correct: false },
             { id: uuidv4(), text: 'إهمال الأنشطة والتدريبات العملية الواردة بالمنهج', is_correct: false },
@@ -937,7 +1223,9 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
           bloom_level: 'KNOWLEDGE',
           page_reference: pNum,
           source_excerpt: snippet,
-          explanation: `الفهم العميق للمفاهيم الأساسية هو الركيزة الأساسية للتعلم الفعال.`
+          explanation: isEn
+            ? `Deep comprehension of foundational concepts is essential for educational mastery.`
+            : `الفهم العميق للمفاهيم الأساسية هو الركيزة الأساسية للتعلم الفعال.`
         });
       } else if (fallbackIdx === 2) {
         questions.push({
@@ -945,8 +1233,15 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
           chunk_id: ch?.id || '',
           book_id: bookId,
           chapter_id: chapterId,
-          question_text: `كيف يستدل المتعلم على صحة النتائج العلمية والحلول في هذا المجال؟`,
-          options: [
+          question_text: isEn
+            ? `How do learners verify the accuracy of scientific results and mathematical solutions in this topic?`
+            : `كيف يستدل المتعلم على صحة النتائج العلمية والحلول في هذا المجال؟`,
+          options: isEn ? [
+            { id: uuidv4(), text: 'By adhering to accredited curriculum rules, properties, and systematic steps', is_correct: true },
+            { id: uuidv4(), text: 'By random estimation without referencing established rules', is_correct: false },
+            { id: uuidv4(), text: 'By reading headings only without studying explanations and details', is_correct: false },
+            { id: uuidv4(), text: 'By ignoring solved examples and exercises in the curriculum', is_correct: false }
+          ] : [
             { id: uuidv4(), text: 'بالرجوع إلى القواعد والمعايير العلمية والتطبيقية المعتمدة', is_correct: true },
             { id: uuidv4(), text: 'بالتخمين العشوائي دون سند من نصوص وقواعد المنهج', is_correct: false },
             { id: uuidv4(), text: 'بالاقتصار على قراءة العناوين فقط دون دراسة الشرح والتفاصيل', is_correct: false },
@@ -956,7 +1251,9 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
           bloom_level: 'UNDERSTANDING',
           page_reference: pNum,
           source_excerpt: snippet,
-          explanation: `القواعد والمعايير العلمية والتطبيقية المعتمدة هي المرجع الأساسي لصحة النتائج.`
+          explanation: isEn
+            ? `Standardized scientific rules and validated procedures are the foundation for verifying solutions.`
+            : `القواعد والمعايير العلمية والتطبيقية المعتمدة هي المرجع الأساسي لصحة النتائج.`
         });
       } else {
         questions.push({
@@ -964,8 +1261,15 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
           chunk_id: ch?.id || '',
           book_id: bookId,
           chapter_id: chapterId,
-          question_text: `ما المهارة الأساسية التي يكتسبها الطالب من خلال التدريب والتطبيق العملي على هذا الموضوع؟`,
-          options: [
+          question_text: isEn
+            ? `What key cognitive skill is developed through structured practice and exercises on this topic?`
+            : `ما المهارة الأساسية التي يكتسبها الطالب من خلال التدريب والتطبيق العملي على هذا الموضوع؟`,
+          options: isEn ? [
+            { id: uuidv4(), text: 'Analytical thinking and systematic connection between educational concepts', is_correct: true },
+            { id: uuidv4(), text: 'Mechanical memorization separated from real application and reasoning', is_correct: false },
+            { id: uuidv4(), text: 'Rushing to conclusions without analyzing the problem data', is_correct: false },
+            { id: uuidv4(), text: 'Neglecting cause-and-effect relationships in curriculum principles', is_correct: false }
+          ] : [
             { id: uuidv4(), text: 'التفكير التحليلي والربط بين المعارف بطريقة منهجية منظمة', is_correct: true },
             { id: uuidv4(), text: 'الحفظ الآلي المنفصل عن التطبيق والسياق الحقيقي', is_correct: false },
             { id: uuidv4(), text: 'التسرع في الاستنتاج دون مراجعة معطيات المسألة', is_correct: false },
@@ -975,7 +1279,9 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
           bloom_level: 'ANALYSIS',
           page_reference: pNum,
           source_excerpt: snippet,
-          explanation: `التدريب والتطبيق ينمي التفكير التحليلي والربط المنهجي بين المعارف.`
+          explanation: isEn
+            ? `Structured practice builds analytical problem-solving and systematic deduction.`
+            : `التدريب والتطبيق ينمي التفكير التحليلي والربط المنهجي بين المعارف.`
         });
       }
       fallbackIdx++;
@@ -1011,7 +1317,11 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
 
     // Fetch chapter title
     const chRes = await db.query(`SELECT title_ar, title_en, chapter_number FROM book_chapters WHERE id = $1`, [chapterId]);
-    const chapterName = chRes.rows[0]?.title_ar || 'الفصل الدراسي المقبول';
+    const firstQText = (questions[0]?.question_text || '') + ' ' + (questions[0]?.explanation || '');
+    const isEnEvaluation = (firstQText.match(/[a-zA-Z]/g) || []).length > (firstQText.match(/[\u0600-\u06FF]/g) || []).length;
+    const chapterName = isEnEvaluation 
+      ? (chRes.rows[0]?.title_en || chRes.rows[0]?.title_ar || 'Chapter') 
+      : (chRes.rows[0]?.title_ar || 'الفصل الدراسي المقبول');
 
     let totalScore = 0;
     const maxScore = questions.length;
@@ -1030,25 +1340,35 @@ Respond ONLY with a valid JSON array of objects (no markdown code fences, no int
       totalScore += points;
 
       let studyRec = '';
-      if (!isCorrect) {
-        studyRec = `🎯 خطة العلاج: افتح الكتاب عند ${chapterName} - [صفحة ${q.page_reference}] وراجع بعناية: "${q.source_excerpt.slice(0, 80)}...". مفهوم: ${q.bloom_level}.`;
-        weakTopics.push(`مفهوم صفحة ${q.page_reference}: ${q.question_text.slice(0, 45)}`);
+      if (isEnEvaluation) {
+        if (!isCorrect) {
+          studyRec = `🎯 Action Plan: Open ${chapterName} - [Page ${q.page_reference}] and review: "${(q.source_excerpt || '').slice(0, 80)}...". Bloom Level: ${q.bloom_level}.`;
+          weakTopics.push(`Page ${q.page_reference} Concept: ${q.question_text.slice(0, 45)}`);
+        } else {
+          studyRec = `✅ Mastered: Successfully demonstrated comprehension of page ${q.page_reference} concept.`;
+          strongTopics.push(`Mastered Page ${q.page_reference} Concept`);
+        }
       } else {
-        studyRec = `✅ إتقان تام: تم استيعاب مفهوم صفحة ${q.page_reference} بنجاح.`;
-        strongTopics.push(`إتقان مفهوم صفحة ${q.page_reference}`);
+        if (!isCorrect) {
+          studyRec = `🎯 خطة العلاج: افتح الكتاب عند ${chapterName} - [صفحة ${q.page_reference}] وراجع بعناية: "${q.source_excerpt.slice(0, 80)}...". مفهوم: ${q.bloom_level}.`;
+          weakTopics.push(`مفهوم صفحة ${q.page_reference}: ${q.question_text.slice(0, 45)}`);
+        } else {
+          studyRec = `✅ إتقان تام: تم استيعاب مفهوم صفحة ${q.page_reference} بنجاح.`;
+          strongTopics.push(`إتقان مفهوم صفحة ${q.page_reference}`);
+        }
       }
 
       items.push({
         question_id: q.id,
         question_text: q.question_text,
         selected_option_id: selectedOptId,
-        student_answer_text: selectedOpt?.text || 'لم يتم اختيار إجابة',
+        student_answer_text: selectedOpt?.text || (isEnEvaluation ? 'No answer selected' : 'لم يتم اختيار إجابة'),
         correct_answer_text: correctOpt?.text || '',
         is_correct: isCorrect,
         points: points,
         explanation: q.explanation,
         page_reference: q.page_reference,
-        topic_area: `${chapterName} (ص ${q.page_reference})`,
+        topic_area: isEnEvaluation ? `${chapterName} (p. ${q.page_reference})` : `${chapterName} (ص ${q.page_reference})`,
         study_recommendation: studyRec
       });
     }

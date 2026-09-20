@@ -1095,61 +1095,79 @@ export const StudentDashboard: React.FC = () => {
                 {(() => {
                   const currentQ = aiQuestions[currentQuestionIndex];
                   if (!currentQ) return null;
+                  const isQEn = ((currentQ.question_text || '').match(/[a-zA-Z]/g) || []).length > ((currentQ.question_text || '').match(/[\u0600-\u06FF]/g) || []).length;
 
                   return (
-                    <div className="card" style={{ padding: '1.75rem 1.25rem', borderRadius: 'var(--radius-2xl)', boxShadow: 'var(--shadow-md)', width: '100%', boxSizing: 'border-box' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                        <span className="badge badge-primary">
-                          {isAr ? `مستوى الصعوبة: ${currentQ.difficulty || 'متوسط'}` : `Difficulty: ${currentQ.difficulty || 'Medium'}`}
-                        </span>
-                        {currentQ.source_page && (
-                          <span className="badge" style={{ background: '#F1F5F9', color: '#475569' }}>
-                            📖 {isAr ? `صفحة ${currentQ.source_page}` : `Page ${currentQ.source_page}`}
-                          </span>
-                        )}
-                      </div>
+                    <div key={currentQ.id || currentQuestionIndex} className="card" style={{ padding: '1.75rem 1.25rem', borderRadius: 'var(--radius-2xl)', boxShadow: 'var(--shadow-md)', width: '100%', boxSizing: 'border-box' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                            <span className="badge badge-primary">
+                              {isAr ? `مستوى الصعوبة: ${currentQ.difficulty || 'متوسط'}` : `Difficulty: ${currentQ.difficulty || 'Medium'}`}
+                            </span>
+                            {currentQ.source_page && (
+                              <span className="badge" style={{ background: '#F1F5F9', color: '#475569' }}>
+                                📖 {isAr ? `صفحة ${currentQ.source_page}` : `Page ${currentQ.source_page}`}
+                              </span>
+                            )}
+                          </div>
 
-                      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-title)', lineHeight: 1.6, marginBottom: '1.5rem', wordBreak: 'break-word' }}>
-                        {currentQ.question_text}
-                      </h3>
+                          <h3 style={{
+                            fontSize: '1.2rem',
+                            fontWeight: 800,
+                            color: 'var(--text-title)',
+                            lineHeight: 1.6,
+                            marginBottom: '1.5rem',
+                            wordBreak: 'break-word',
+                            direction: isQEn ? 'ltr' : 'rtl',
+                            textAlign: isQEn ? 'left' : 'right'
+                          }}>
+                            {currentQ.question_text}
+                          </h3>
 
-                      {/* Options */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
-                        {currentQ.options?.map((opt: any) => {
-                          const isSelected = aiAnswers[currentQ.id] === opt.id;
-                          return (
-                            <div
-                              key={opt.id}
-                              onClick={() => setAiAnswers({ ...aiAnswers, [currentQ.id]: opt.id })}
-                              style={{
-                                padding: '1rem 1.15rem',
-                                borderRadius: 'var(--radius-lg)',
-                                border: isSelected ? '2px solid var(--primary-600)' : '1.5px solid var(--border-light)',
-                                background: isSelected ? 'var(--primary-50)' : '#FFFFFF',
-                                color: isSelected ? 'var(--primary-900)' : 'var(--text-title)',
-                                fontWeight: isSelected ? 800 : 600,
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.75rem',
-                                wordBreak: 'break-word',
-                                minWidth: 0
-                              }}
-                            >
-                              <div style={{
-                                width: '22px',
-                                height: '22px',
-                                borderRadius: '50%',
-                                border: isSelected ? '6px solid var(--primary-600)' : '2px solid var(--border-light)',
-                                background: '#FFFFFF',
-                                flexShrink: 0
-                              }} />
-                              <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{opt.option_text || opt.text || ''}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
+                          {/* Options */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+                            {currentQ.options?.map((opt: any) => {
+                              const isSelected = aiAnswers[currentQ.id] === opt.id;
+                              return (
+                                <div
+                                  key={opt.id}
+                                  onClick={() => setAiAnswers({ ...aiAnswers, [currentQ.id]: opt.id })}
+                                  style={{
+                                    padding: '1rem 1.15rem',
+                                    borderRadius: 'var(--radius-lg)',
+                                    border: isSelected ? '2px solid var(--primary-600)' : '1.5px solid var(--border-light)',
+                                    background: isSelected ? 'var(--primary-50)' : '#FFFFFF',
+                                    color: isSelected ? 'var(--primary-900)' : 'var(--text-title)',
+                                    fontWeight: isSelected ? 800 : 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    wordBreak: 'break-word',
+                                    minWidth: 0,
+                                    flexDirection: isQEn ? 'row' : 'row'
+                                  }}
+                                >
+                                  <div style={{
+                                    width: '22px',
+                                    height: '22px',
+                                    borderRadius: '50%',
+                                    border: isSelected ? '6px solid var(--primary-600)' : '2px solid var(--border-light)',
+                                    background: '#FFFFFF',
+                                    flexShrink: 0
+                                  }} />
+                                  <span style={{
+                                    minWidth: 0,
+                                    wordBreak: 'break-word',
+                                    direction: isQEn ? 'ltr' : 'rtl',
+                                    textAlign: isQEn ? 'left' : 'right'
+                                  }}>
+                                    {opt.option_text || opt.text || ''}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
 
                       {/* Navigation Buttons */}
                       <div className="quiz-nav-responsive">
@@ -1326,14 +1344,18 @@ export const StudentDashboard: React.FC = () => {
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '2rem' }}>
                     {aiReport?.items && aiReport.items.length > 0 ? (
-                      aiReport.items.map((item: any, idx: number) => (
+                      aiReport.items.map((item: any, idx: number) => {
+                        const isItemEn = ((item.question_text || '').match(/[a-zA-Z]/g) || []).length > ((item.question_text || '').match(/[\u0600-\u06FF]/g) || []).length;
+                        return (
                         <div
                           key={item.question_id || idx}
                           style={{
                             padding: '1.15rem',
                             background: item.is_correct ? '#F8FCF9' : '#FFFDF5',
                             borderRadius: 'var(--radius-lg)',
-                            border: item.is_correct ? '1px solid #DCFCE7' : '1px solid #FEF3C7'
+                            border: item.is_correct ? '1px solid #DCFCE7' : '1px solid #FEF3C7',
+                            direction: isItemEn ? 'ltr' : 'rtl',
+                            textAlign: isItemEn ? 'left' : 'right'
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.4rem' }}>
@@ -1360,7 +1382,8 @@ export const StudentDashboard: React.FC = () => {
                             </p>
                           )}
                         </div>
-                      ))
+                      );
+                    })
                     ) : (
                       <div style={{ padding: '1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-light)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.4rem' }}>
@@ -1749,8 +1772,16 @@ export const StudentDashboard: React.FC = () => {
                   <div>
                     {/* Questions */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
-                      {activeExam.questions?.map((q: any, idx: number) => (
-                        <div key={q.id} style={{ padding: '1.25rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                      {activeExam.questions?.map((q: any, idx: number) => {
+                        const isQEn = ((q.question_text || '').match(/[a-zA-Z]/g) || []).length > ((q.question_text || '').match(/[\u0600-\u06FF]/g) || []).length;
+                        return (
+                        <div key={q.id} style={{
+                          padding: '1.25rem',
+                          background: 'var(--bg-subtle)',
+                          borderRadius: 'var(--radius-lg)',
+                          direction: isQEn ? 'ltr' : 'rtl',
+                          textAlign: isQEn ? 'left' : 'right'
+                        }}>
                           <div style={{ fontWeight: 800, fontSize: '1rem', marginBottom: '0.75rem' }}>
                             {idx + 1}. {q.question_text} ({q.points} {isAr ? 'نقاط' : 'pts'})
                           </div>
@@ -1783,7 +1814,8 @@ export const StudentDashboard: React.FC = () => {
                             })}
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
