@@ -899,6 +899,23 @@ export const StudentDashboard: React.FC = () => {
                   {selectedAiBook.chapters && selectedAiBook.chapters.length > 0 ? (
                     selectedAiBook.chapters.map((ch: any) => {
                       const isSelected = selectedAiChapterId === ch.id;
+                      const isBookEnglish = !/[\u0600-\u06FF]/.test(selectedAiBook.title_ar || '') || 
+                        /math|science|english/i.test(`${selectedAiBook.title_ar} ${selectedAiBook.title_en} ${selectedAiBook.subject_name_en || ''}`);
+                      
+                      const displayTitle = isBookEnglish 
+                        ? (ch.title_en || ch.title_ar) 
+                        : (isAr ? ch.title_ar : (ch.title_en || ch.title_ar));
+
+                      const displayDescription = isBookEnglish
+                        ? (ch.description_en || (!/[\u0600-\u06FF]/.test(ch.description || '') ? ch.description : (
+                            ch.chapter_number === 1 ? 'The set of rational numbers, ordering, comparisons, fundamental arithmetic operations, and properties.' :
+                            ch.chapter_number === 2 ? 'Algebraic terms and expressions, degrees of terms, operations on polynomials, and linear equations.' :
+                            ch.chapter_number === 3 ? 'Measures of central tendency: arithmetic mean, median, mode, and probability principles.' :
+                            ch.chapter_number === 4 ? 'Angle relationships, vertically opposite angles, triangle congruence criteria, and parallelism.' :
+                            'Curriculum concepts, exercises, and diagnostic assessments.'
+                          )))
+                        : (isAr ? ch.description : (ch.description_en || ch.description));
+
                       return (
                         <div
                           key={ch.id}
@@ -918,23 +935,23 @@ export const StudentDashboard: React.FC = () => {
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                               <span className="badge badge-primary">
-                                {isAr ? `الفصل #${ch.chapter_number}` : `Chapter #${ch.chapter_number}`}
+                                {isBookEnglish || !isAr ? `Chapter #${ch.chapter_number}` : `الفصل #${ch.chapter_number}`}
                               </span>
                               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {isAr ? `${ch.chunks_count ?? 3} فقرات مفهرسة` : `${ch.chunks_count ?? 3} Paragraphs`}
+                                {isBookEnglish || !isAr ? `${ch.chunks_count ?? 3} Paragraphs` : `${ch.chunks_count ?? 3} فقرات مفهرسة`}
                               </span>
                             </div>
                             <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.4rem' }}>
-                              {isAr ? ch.title_ar : (ch.title_en || ch.title_ar)}
+                              {displayTitle}
                             </h4>
-                            {ch.description && (
+                            {displayDescription && (
                               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 0.75rem', lineHeight: '1.4' }}>
-                                {ch.description}
+                                {displayDescription}
                               </p>
                             )}
                           </div>
                           <span style={{ fontSize: '0.78rem', color: 'var(--primary-700)', fontWeight: 700, marginTop: '0.5rem' }}>
-                            {isAr ? 'انقر لاختيار هذا الفصل ⬅️' : 'Click to select this chapter ➡️'}
+                            {isBookEnglish || !isAr ? 'Click to select this chapter ➡️' : 'انقر لاختيار هذا الفصل ⬅️'}
                           </span>
                         </div>
                       );

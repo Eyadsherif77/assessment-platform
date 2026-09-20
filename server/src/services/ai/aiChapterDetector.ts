@@ -9,6 +9,7 @@ export interface DetectedChapter {
   start_page: number;
   end_page: number;
   description?: string;
+  description_en?: string;
 }
 
 export class AIChapterDetector {
@@ -69,8 +70,8 @@ export class AIChapterDetector {
 
       await db.query(
         `INSERT INTO book_chapters (
-           id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description, description_en
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           chId,
           bookId,
@@ -79,7 +80,8 @@ export class AIChapterDetector {
           ch.title_en,
           ch.start_page,
           ch.end_page,
-          ch.description || `محتوى ${ch.title_ar} ومفهرس دلالياً لدعم التقييم التشخيصي وبنوك الأسئلة الذكية.`
+          ch.description || `محتوى ${ch.title_ar} ومفهرس دلالياً لدعم التقييم التشخيصي وبنوك الأسئلة الذكية.`,
+          ch.description_en || ch.description || ''
         ]
       );
       createdChapters.push({ ...ch, id: chId });
@@ -218,7 +220,8 @@ Return ONLY a valid JSON array of chapter objects (no markdown code fences):
     pages: { pageNumber: number; text: string }[];
   }): DetectedChapter[] {
     const { bookTitleAr, bookTitleEn, totalPages } = params;
-    const title = (bookTitleAr + ' ' + bookTitleEn).toLowerCase();
+    const title = (bookTitleAr + ' ' + (bookTitleEn || '')).toLowerCase();
+    const isEnglishCurriculum = !/[\u0600-\u06FF]/.test(bookTitleAr) || title.includes('math') || title.includes('science') || (bookTitleEn && /math|science|english/i.test(bookTitleEn));
 
     // 1. Mathematics Curriculum (Prep 1 Term 1)
     if (title.includes('math') || title.includes('رياضيات') || title.includes('حساب')) {
@@ -228,35 +231,47 @@ Return ONLY a valid JSON array of chapter objects (no markdown code fences):
       return [
         {
           chapter_number: 1,
-          title_ar: 'الوحدة الأولى: الأعداد النسبية والعمليات عليها',
+          title_ar: isEnglishCurriculum ? 'Unit 1: Numbers and Operations (Rational Numbers)' : 'الوحدة الأولى: الأعداد النسبية والعمليات عليها',
           title_en: 'Unit 1: Numbers and Operations (Rational Numbers)',
           start_page: 1,
           end_page: p1End,
-          description: 'مجموعة الأعداد النسبية، المقارنة، والعمليات الحسابية والخواص الأساسية.'
+          description: isEnglishCurriculum 
+            ? 'The set of rational numbers, ordering, comparisons, fundamental arithmetic operations, and properties.'
+            : 'مجموعة الأعداد النسبية، المقارنة، والعمليات الحسابية والخواص الأساسية.',
+          description_en: 'The set of rational numbers, ordering, comparisons, fundamental arithmetic operations, and properties.'
         },
         {
           chapter_number: 2,
-          title_ar: 'الوحدة الثانية: الحدود والمقادير الجبرية',
+          title_ar: isEnglishCurriculum ? 'Unit 2: Algebra & Algebraic Expressions' : 'الوحدة الثانية: الحدود والمقادير الجبرية',
           title_en: 'Unit 2: Algebra & Algebraic Expressions',
           start_page: p1End + 1,
           end_page: p2End,
-          description: 'المفاهيم الجبرية، جمع وطرح وضرب وقسمة الحدود والمقادير والمعادلات.'
+          description: isEnglishCurriculum
+            ? 'Algebraic terms and expressions, degrees of terms, operations on polynomials, and linear equations.'
+            : 'المفاهيم الجبرية، جمع وطرح وضرب وقسمة الحدود والمقادير والمعادلات.',
+          description_en: 'Algebraic terms and expressions, degrees of terms, operations on polynomials, and linear equations.'
         },
         {
           chapter_number: 3,
-          title_ar: 'الوحدة الثالثة: الإحصاء والاحتمال',
+          title_ar: isEnglishCurriculum ? 'Unit 3: Statistics & Probability' : 'الوحدة الثالثة: الإحصاء والاحتمال',
           title_en: 'Unit 3: Statistics & Probability',
           start_page: p2End + 1,
           end_page: p3End,
-          description: 'مقاييس النزعة المركزية: المتوسط الحسابي، والوسيط، والمنوال، ومبادئ الاحتمال.'
+          description: isEnglishCurriculum
+            ? 'Measures of central tendency: arithmetic mean, median, mode, and probability principles.'
+            : 'مقاييس النزعة المركزية: المتوسط الحسابي، والوسيط، والمنوال، ومبادئ الاحتمال.',
+          description_en: 'Measures of central tendency: arithmetic mean, median, mode, and probability principles.'
         },
         {
           chapter_number: 4,
-          title_ar: 'الوحدة الرابعة: المفاهيم الهندسية والقياس والتطابق',
+          title_ar: isEnglishCurriculum ? 'Unit 4: Geometry & Geometric Concepts' : 'الوحدة الرابعة: المفاهيم الهندسية والقياس والتطابق',
           title_en: 'Unit 4: Geometry & Geometric Concepts',
           start_page: p3End + 1,
           end_page: totalPages,
-          description: 'العلاقات بين الزوايا، تطابق المثلثات، التوازي، والإنشاءات الهندسية.'
+          description: isEnglishCurriculum
+            ? 'Angle relationships, vertically opposite angles, triangle congruence criteria, and parallelism.'
+            : 'العلاقات بين الزوايا، تطابق المثلثات، التوازي، والإنشاءات الهندسية.',
+          description_en: 'Angle relationships, vertically opposite angles, triangle congruence criteria, and parallelism.'
         }
       ];
     }
