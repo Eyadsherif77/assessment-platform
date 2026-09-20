@@ -1404,12 +1404,12 @@ export const StudentDashboard: React.FC = () => {
                 <div className="card" style={{ padding: '2rem 1.75rem', borderRadius: 'var(--radius-xl)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary-800)', fontWeight: 800, fontSize: '1.2rem', marginBottom: '1rem' }}>
                     <BookmarkCheck size={24} color="var(--primary-600)" />
-                    <span>{isAr ? 'خطة المراجعة والتوصيات المنهجية (Action Plan)' : 'Action Plan & Textbook Citations'}</span>
+                    <span>{isAr ? 'خطة المراجعة والتوصيات لفهم و تعلم الوحدة' : 'Action Plan & Textbook Citations'}</span>
                   </div>
 
                   <p style={{ color: 'var(--text-body)', lineHeight: 1.7, fontSize: '0.925rem', marginBottom: '1.5rem' }}>
                     {isAr 
-                      ? 'بناءً على إجاباتك المشخصة، إليك تحليل كل سؤال مع رقم الصفحة المعياري من الكتاب المدرسي والتوصية العلاجية:'
+                      ? 'بناءا على اجابة الطالب سنوضح تحليل إجابة كل سؤال مع التوجييه بمراجعة صفحات محددة بالكتاب المدرسى لمزيد من الفهم و التعلم'
                       : 'Based on your diagnosed responses, here is the question-by-question breakdown with textbook page citations:'}
                   </p>
 
