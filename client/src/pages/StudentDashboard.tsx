@@ -1820,24 +1820,188 @@ export const StudentDashboard: React.FC = () => {
                   )}
                 </div>
 
-                {/* Exam Result Display */}
+                {/* Exam Result Display with Textbook Page References */}
                 {examResult ? (
-                  <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-                    <div style={{ fontSize: '3rem' }}>🎯</div>
-                    <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0.5rem 0' }}>
-                      {isAr ? 'انتهى الامتحان وتم التصحيح!' : 'Exam Completed & Graded!'}
-                    </h3>
-                    <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#16A34A', margin: '0.5rem 0' }}>
-                      {examResult.score}%
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+                    {/* Header Score Card */}
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '2rem 1.5rem',
+                      background: 'linear-gradient(180deg, var(--bg-subtle) 0%, #FFFFFF 100%)',
+                      borderRadius: 'var(--radius-xl)',
+                      border: '1px solid var(--border-light)'
+                    }}>
+                      <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🎯</div>
+                      <h3 style={{ fontSize: '1.5rem', fontWeight: 900, margin: '0 0 0.5rem' }}>
+                        {isAr ? 'انتهى الامتحان وتم التصحيح الفوري!' : 'Exam Completed & Automatically Graded!'}
+                      </h3>
+                      <div style={{
+                        fontSize: '3rem',
+                        fontWeight: 900,
+                        color: (examResult.percentage ?? 0) >= 80 ? '#16A34A' : (examResult.percentage ?? 0) >= 50 ? '#D97706' : '#DC2626',
+                        margin: '0.25rem 0'
+                      }}>
+                        {examResult.percentage !== undefined ? `${examResult.percentage}%` : `${Math.round(((examResult.score || 0) / (examResult.total_points || 1)) * 100)}%`}
+                      </div>
+                      <p style={{ color: 'var(--text-muted)', fontWeight: 700, margin: '0 0 1.25rem' }}>
+                        {isAr 
+                          ? `الدرجة المحصلة: ${examResult.score ?? examResult.earned_points ?? 0} من إجمالي ${examResult.total_points || 0} درجة`
+                          : `Score: ${examResult.score ?? examResult.earned_points ?? 0} of ${examResult.total_points || 0} points`}
+                      </p>
+                      <button
+                        className="btn btn-outline"
+                        onClick={() => { setActiveExam(null); setExamResult(null); }}
+                        style={{ fontWeight: 800 }}
+                      >
+                        {isAr ? 'العودة لقائمة الامتحانات ↩' : 'Back to Exams ↩'}
+                      </button>
                     </div>
-                    <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                      {isAr 
-                        ? `الدرجة المحصلة: ${examResult.earned_points} من ${examResult.total_points} نقطة`
-                        : `Final Score: ${examResult.earned_points} of ${examResult.total_points} points`}
-                    </p>
-                    <button className="btn btn-primary" onClick={() => { setActiveExam(null); setExamResult(null); }}>
-                      {isAr ? 'العودة لقائمة الامتحانات' : 'Back to Exams'}
-                    </button>
+
+                    {/* Question Checking Breakdown */}
+                    {examResult.breakdown && examResult.breakdown.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <h4 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span>📝</span>
+                            <span>{isAr ? 'مراجعة إجابات الأسئلة ومراجع الكتاب المدرسي:' : 'Question Review & Textbook References:'}</span>
+                          </h4>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            {isAr ? `${examResult.breakdown.length} أسئلة تم تصحيحها` : `${examResult.breakdown.length} questions reviewed`}
+                          </span>
+                        </div>
+
+                        {examResult.breakdown.map((item: any, idx: number) => {
+                          const isQEn = ((item.question_text || '').match(/[a-zA-Z]/g) || []).length > ((item.question_text || '').match(/[\u0600-\u06FF]/g) || []).length;
+                          const isCorrect = item.is_correct;
+
+                          return (
+                            <div
+                              key={item.question_id || idx}
+                              style={{
+                                padding: '1.5rem',
+                                background: 'var(--bg-card)',
+                                borderRadius: 'var(--radius-xl)',
+                                border: isCorrect ? '1.5px solid #BBF7D0' : '1.5px solid #FECACA',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+                                direction: isQEn ? 'ltr' : 'rtl',
+                                textAlign: isQEn ? 'left' : 'right'
+                              }}
+                            >
+                              {/* Question Title & Points Header */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-title)', flex: 1 }}>
+                                  <span style={{ color: 'var(--primary-700)', marginLeft: isQEn ? '0' : '0.4rem', marginRight: isQEn ? '0.4rem' : '0' }}>
+                                    {isAr ? `السؤال ${idx + 1}:` : `Question ${idx + 1}:`}
+                                  </span>
+                                  {item.question_text}
+                                </div>
+                                <span style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: 800,
+                                  padding: '0.2rem 0.55rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  background: isCorrect ? '#F0FDF4' : '#FEF2F2',
+                                  color: isCorrect ? '#15803D' : '#DC2626',
+                                  border: `1px solid ${isCorrect ? '#BBF7D0' : '#FECACA'}`
+                                }}>
+                                  {item.points_awarded} / {item.max_points} {isAr ? 'درجة' : 'pts'}
+                                </span>
+                              </div>
+
+                              {/* Student's Answer */}
+                              <div style={{
+                                padding: '0.85rem 1rem',
+                                borderRadius: 'var(--radius-md)',
+                                background: isCorrect ? '#F0FDF4' : '#FEF2F2',
+                                border: `1px solid ${isCorrect ? '#BBF7D0' : '#FECACA'}`,
+                                color: isCorrect ? '#15803D' : '#DC2626',
+                                fontWeight: 700,
+                                fontSize: '0.9rem',
+                                marginBottom: '0.65rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                              }}>
+                                <span>{isCorrect ? '✅' : '❌'}</span>
+                                <span>
+                                  <strong>{isAr ? 'إجابتك المسجلة:' : 'Your Answer:'}</strong> {item.selected_text || (isAr ? 'لم يتم اختيار إجابة' : 'No answer selected')}
+                                </span>
+                              </div>
+
+                              {/* Correct Answer + Textbook Page Reference */}
+                              <div style={{
+                                padding: '0.85rem 1rem',
+                                borderRadius: 'var(--radius-md)',
+                                background: '#EFF6FF',
+                                border: '1.5px solid #BFDBFE',
+                                color: '#1E40AF',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                flexWrap: 'wrap',
+                                gap: '0.75rem'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>
+                                  <span>✓</span>
+                                  <span>
+                                    <strong>{isAr ? 'الإجابة النموذجية الصحيحة:' : 'Correct Answer:'}</strong> {item.correct_text}
+                                  </span>
+                                </div>
+
+                                {/* Page Reference Badge shown next to right answer */}
+                                {item.page_reference && (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    background: '#FEF3C7',
+                                    color: '#92400E',
+                                    border: '1.5px solid #FCD34D',
+                                    padding: '0.3rem 0.75rem',
+                                    borderRadius: 'var(--radius-full)',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 800,
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                                  }}>
+                                    <span>📖</span>
+                                    <span>
+                                      {isAr 
+                                        ? `مرجع الإجابة: صفحة ${item.page_reference} بالكتاب المدرسي` 
+                                        : `Answer Reference: Page ${item.page_reference} in textbook`}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Explanation if available */}
+                              {item.explanation && (
+                                <div style={{
+                                  marginTop: '0.65rem',
+                                  padding: '0.7rem 0.9rem',
+                                  background: 'var(--bg-subtle)',
+                                  borderRadius: 'var(--radius-md)',
+                                  fontSize: '0.82rem',
+                                  color: 'var(--text-muted)'
+                                }}>
+                                  💡 <strong>{isAr ? 'توضيح الشرح:' : 'Explanation:'}</strong> {item.explanation}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Final Return Button */}
+                        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                          <button
+                            className="btn btn-primary btn-lg"
+                            onClick={() => { setActiveExam(null); setExamResult(null); }}
+                            style={{ fontWeight: 800, padding: '0.75rem 2.5rem' }}
+                          >
+                            {isAr ? 'إغلاق ومتابعة مسار التعلم' : 'Close & Continue Learning'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div>

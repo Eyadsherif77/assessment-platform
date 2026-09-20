@@ -21,15 +21,14 @@ interface Props {
 }
 
 const COMMON_SPECIALIZATIONS = [
+  'اللغة العربية',
   'الرياضيات',
   'العلوم',
-  'اللغة العربية',
   'اللغة الإنجليزية',
+  'الدراسات الاجتماعية',
   'الفيزياء',
   'الكيمياء',
-  'الأحياء',
-  'الدراسات الاجتماعية',
-  'تكنولوجيا المعلومات'
+  'الأحياء'
 ];
 
 export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
@@ -48,7 +47,7 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
   const [fullName, setFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [specialization, setSpecialization] = useState('الرياضيات');
+  const [specialization, setSpecialization] = useState('اللغة العربية');
   const [schoolName, setSchoolName] = useState('');
 
   // Feedback states
@@ -508,18 +507,30 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
             {/* Specialization / Subject */}
             <div>
               <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                {isAr ? 'التخصص الدراسي / المادة التعليمية:' : 'Subject Specialization:'}
+                {isAr ? 'المادة التعليمية / التخصص (تُعتمد لكتبك واختباراتك):' : 'Teaching Subject / Specialization:'}
               </label>
               <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
-                <input
-                  type="text"
-                  required
-                  className="form-input"
-                  placeholder={isAr ? 'الرياضيات، العلوم، الأحياء...' : 'Mathematics, Science...'}
-                  value={specialization}
-                  onChange={(e) => setSpecialization(e.target.value)}
-                  style={{ paddingRight: isAr ? '2.5rem' : '1rem', paddingLeft: isAr ? '1rem' : '2.5rem' }}
-                />
+                <select
+                  className="form-select"
+                  value={COMMON_SPECIALIZATIONS.includes(specialization) ? specialization : 'OTHER'}
+                  onChange={(e) => {
+                    if (e.target.value !== 'OTHER') {
+                      setSpecialization(e.target.value);
+                    } else {
+                      setSpecialization('');
+                    }
+                  }}
+                  style={{
+                    paddingRight: isAr ? '2.5rem' : '1rem',
+                    paddingLeft: isAr ? '1rem' : '2.5rem',
+                    fontWeight: 700
+                  }}
+                >
+                  {COMMON_SPECIALIZATIONS.map(spec => (
+                    <option key={spec} value={spec}>{spec}</option>
+                  ))}
+                  <option value="OTHER">{isAr ? '✍️ تخصص آخر (إدخال يدوي)' : '✍️ Other Subject'}</option>
+                </select>
                 <BookOpen 
                   size={18} 
                   style={{
@@ -531,6 +542,20 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
                   }} 
                 />
               </div>
+
+              {!COMMON_SPECIALIZATIONS.includes(specialization) && (
+                <div style={{ position: 'relative', marginTop: '0.4rem', marginBottom: '0.5rem' }}>
+                  <input
+                    type="text"
+                    required
+                    className="form-input"
+                    placeholder={isAr ? 'اكتب اسم المادة التعليمية هنا...' : 'Enter subject name here...'}
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    style={{ paddingRight: isAr ? '1rem' : '1rem', paddingLeft: isAr ? '1rem' : '1rem' }}
+                  />
+                </div>
+              )}
 
               {/* Quick suggestion tags */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.35rem' }}>

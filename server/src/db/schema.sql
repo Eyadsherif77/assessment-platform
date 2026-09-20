@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS exams (
     chapter_id TEXT REFERENCES book_chapters(id) ON DELETE SET NULL,
     duration_minutes INTEGER DEFAULT 30,
     is_published INTEGER DEFAULT 0,
+    school_type TEXT DEFAULT 'كلاهما',
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -203,6 +204,7 @@ CREATE TABLE IF NOT EXISTS exam_questions (
     question_text TEXT NOT NULL,
     question_type TEXT DEFAULT 'MULTIPLE_CHOICE',
     points INTEGER DEFAULT 1,
+    page_reference TEXT,
     explanation TEXT,
     order_index INTEGER DEFAULT 1
 );

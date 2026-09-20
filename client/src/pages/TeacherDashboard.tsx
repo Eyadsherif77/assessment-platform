@@ -67,6 +67,7 @@ export const TeacherDashboard: React.FC = () => {
     {
       question_text: '',
       points: 1,
+      page_reference: '',
       options: [
         { option_text: '', is_correct: true },
         { option_text: '', is_correct: false },
@@ -231,6 +232,34 @@ export const TeacherDashboard: React.FC = () => {
     }
   }, [selectedStageId, availableGrades]);
 
+  const teacherSpecialization = (user?.profile?.specialization || '').trim();
+
+  const getMatchedSubject = (subjectList: any[]) => {
+    if (!subjectList || subjectList.length === 0) return null;
+    if (!teacherSpecialization) return subjectList[0];
+
+    const specClean = teacherSpecialization.replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
+    const matched = subjectList.find(s => {
+      const arName = (s.name_ar || '').trim();
+      const arClean = arName.replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
+      const enName = (s.name_en || '').trim().toLowerCase();
+      const code = (s.code || '').toUpperCase();
+
+      if (arName === teacherSpecialization || enName === teacherSpecialization.toLowerCase()) return true;
+      if (arClean.includes(specClean) || specClean.includes(arClean)) return true;
+      if (enName.includes(specClean) || specClean.includes(enName)) return true;
+
+      if ((specClean.includes('عرب') || specClean.includes('arabic')) && (code === 'ARABIC' || arClean.includes('عرب'))) return true;
+      if ((specClean.includes('رياض') || specClean.includes('math')) && (code === 'MATH' || arClean.includes('رياض'))) return true;
+      if ((specClean.includes('علوم') || specClean.includes('science')) && (code === 'SCIENCE' || arClean.includes('علوم'))) return true;
+      if ((specClean.includes('انجليز') || specClean.includes('إنجليز') || specClean.includes('english')) && (code === 'ENGLISH' || arClean.includes('إنجليز') || arClean.includes('انجليز'))) return true;
+
+      return false;
+    });
+
+    return matched || subjectList[0];
+  };
+
   // Load subjects for selected grade
   useEffect(() => {
     if (selectedGradeId) {
@@ -239,12 +268,17 @@ export const TeacherDashboard: React.FC = () => {
         .then(data => {
           if (Array.isArray(data)) {
             setSubjects(data);
-            if (data.length > 0) setSelectedSubjectId(data[0].id);
+            const target = getMatchedSubject(data);
+            if (target) {
+              setSelectedSubjectId(target.id);
+            } else if (data.length > 0) {
+              setSelectedSubjectId(data[0].id);
+            }
           }
         })
         .catch(console.error);
     }
-  }, [selectedGradeId]);
+  }, [selectedGradeId, teacherSpecialization]);
 
   // Poll background job progress if an active upload exists
   useEffect(() => {
@@ -807,10 +841,43 @@ export const TeacherDashboard: React.FC = () => {
 
                 <div className="responsive-form-grid-2">
                   <div className="form-group">
-                    <label className="form-label">{isAr ? 'المادة الدراسية' : 'Subject'}</label>
-                    <select className="form-select" value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)}>
-                      {subjects.map(sub => <option key={sub.id} value={sub.id}>{isAr ? sub.name_ar : (sub.name_en || sub.name_ar)}</option>)}
-                    </select>
+                    <label className="form-label">
+                      {isAr ? 'المادة الدراسية (مثبتة تلقائياً وفق تخصصك)' : 'Subject (Locked to Specialization)'}
+                    </label>
+                    <div style={{
+                      padding: '0.75rem 1rem',
+                      background: 'var(--bg-subtle)',
+                      border: '1.5px solid var(--border-light)',
+                      borderRadius: 'var(--radius-md)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontWeight: 800,
+                      color: 'var(--primary-700)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span>🔒</span>
+                        <span>
+                          {(() => {
+                            const matched = getMatchedSubject(subjects);
+                            if (matched) {
+                              return isAr ? matched.name_ar : (matched.name_en || matched.name_ar);
+                            }
+                            return teacherSpecialization || (isAr ? 'المادة التخصصية' : 'Specialization');
+                          })()}
+                        </span>
+                      </div>
+                      <span className="badge badge-primary" style={{ fontSize: '0.72rem', fontWeight: 800 }}>
+                        {isAr ? 'تخصصك المعتمد' : 'Your Subject'}
+                      </span>
+                    </div>
+                    {/* Hidden input to ensure form submission has the selected subject id */}
+                    <input type="hidden" name="subject_id" value={selectedSubjectId} />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                      {isAr 
+                        ? '🔒 المادة مثبتة تلقائياً وفقاً لتخصصك المسجل ولا يمكن رفع كتب لمادة أخرى.' 
+                        : '🔒 Subject is locked to your registered specialization.'}
+                    </div>
                   </div>
 
                   <div className="form-group">
@@ -982,10 +1049,31 @@ export const TeacherDashboard: React.FC = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">{isAr ? 'المادة الدراسية' : 'Subject'}</label>
-                    <select className="form-select" value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)}>
-                      {subjects.map(s => <option key={s.id} value={s.id}>{isAr ? s.name_ar : (s.name_en || s.name_ar)}</option>)}
-                    </select>
+                    <label className="form-label">{isAr ? 'المادة الدراسية (وفق تخصصك)' : 'Subject (Your Specialization)'}</label>
+                    <div style={{
+                      padding: '0.65rem 0.9rem',
+                      background: 'var(--bg-subtle)',
+                      border: '1.5px solid var(--border-light)',
+                      borderRadius: 'var(--radius-md)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontWeight: 800,
+                      color: 'var(--primary-700)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span>🔒</span>
+                        <span>
+                          {(() => {
+                            const matched = getMatchedSubject(subjects);
+                            return matched ? (isAr ? matched.name_ar : (matched.name_en || matched.name_ar)) : (teacherSpecialization || (isAr ? 'مادتك' : 'Subject'));
+                          })()}
+                        </span>
+                      </div>
+                      <span className="badge badge-primary" style={{ fontSize: '0.7rem' }}>
+                        {isAr ? 'مادتك' : 'Subject'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1013,6 +1101,7 @@ export const TeacherDashboard: React.FC = () => {
                       onClick={() => setExamQuestions([...examQuestions, {
                         question_text: '',
                         points: 1,
+                        page_reference: '',
                         options: [
                           { option_text: '', is_correct: true },
                           { option_text: '', is_correct: false },
@@ -1026,23 +1115,46 @@ export const TeacherDashboard: React.FC = () => {
                   </div>
 
                   {examQuestions.map((q, qIndex) => (
-                    <div key={qIndex} style={{ padding: '1.25rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)', marginBottom: '1rem' }}>
-                      <div className="form-group">
-                        <label className="form-label">
-                          {isAr ? `نص السؤال #${qIndex + 1}` : `Question Text #${qIndex + 1}`}
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          className="form-input"
-                          value={q.question_text}
-                          onChange={e => {
-                            const updated = [...examQuestions];
-                            updated[qIndex].question_text = e.target.value;
-                            setExamQuestions(updated);
-                          }}
-                          placeholder={isAr ? 'مثال: وحدة قياس الكثافة هي...' : 'e.g., The unit of measurement for density is...'}
-                        />
+                    <div key={qIndex} style={{ padding: '1.25rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)', marginBottom: '1rem', border: '1px solid var(--border-light)' }}>
+                      <div className="responsive-form-grid-2" style={{ alignItems: 'flex-start' }}>
+                        <div className="form-group" style={{ flex: 2 }}>
+                          <label className="form-label" style={{ fontWeight: 800 }}>
+                            {isAr ? `نص السؤال #${qIndex + 1}` : `Question Text #${qIndex + 1}`}
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            className="form-input"
+                            value={q.question_text}
+                            onChange={e => {
+                              const updated = [...examQuestions];
+                              updated[qIndex].question_text = e.target.value;
+                              setExamQuestions(updated);
+                            }}
+                            placeholder={isAr ? 'مثال: وحدة قياس الكثافة هي...' : 'e.g., The unit of measurement for density is...'}
+                          />
+                        </div>
+
+                        <div className="form-group" style={{ flex: 1 }}>
+                          <label className="form-label" style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span>📖</span>
+                            <span>{isAr ? 'رقم الصفحة بالكتاب (مرجع الإجابة):' : 'Book Page (Answer Reference):'}</span>
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={q.page_reference || ''}
+                            onChange={e => {
+                              const updated = [...examQuestions];
+                              updated[qIndex].page_reference = e.target.value;
+                              setExamQuestions(updated);
+                            }}
+                            placeholder={isAr ? 'مثال: 5 أو صفحة 5' : 'e.g. 5 or Page 5'}
+                          />
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                            {isAr ? '💡 ستظهر للطالب بجوار الإجابة الصحيحة عند مراجعة الامتحان.' : '💡 Shown to the student next to the correct answer.'}
+                          </div>
+                        </div>
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>

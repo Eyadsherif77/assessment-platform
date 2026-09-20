@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS exams (
     chapter_id VARCHAR(64),
     duration_minutes INT DEFAULT 30,
     is_published INT DEFAULT 0,
+    school_type VARCHAR(64) DEFAULT 'كلاهما',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (academic_stage_id) REFERENCES academic_stages(id),
@@ -224,6 +225,7 @@ CREATE TABLE IF NOT EXISTS exam_questions (
     question_text TEXT NOT NULL,
     question_type VARCHAR(64) DEFAULT 'MULTIPLE_CHOICE',
     points INT DEFAULT 1,
+    page_reference VARCHAR(64),
     explanation TEXT,
     order_index INT DEFAULT 1,
     FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE

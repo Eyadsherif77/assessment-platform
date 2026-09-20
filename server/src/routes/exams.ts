@@ -122,9 +122,17 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
         const q = questions[i];
         const qId = uuidv4();
         await db.query(
-          `INSERT INTO exam_questions (id, exam_id, question_text, points, explanation, order_index)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [qId, examId, q.question_text.trim(), q.points || 1, q.explanation || null, i + 1]
+          `INSERT INTO exam_questions (id, exam_id, question_text, points, page_reference, explanation, order_index)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            qId,
+            examId,
+            q.question_text.trim(),
+            q.points || 1,
+            q.page_reference ? String(q.page_reference).trim() : null,
+            q.explanation || null,
+            i + 1
+          ]
         );
 
         if (Array.isArray(q.options)) {
@@ -201,7 +209,7 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
 
     // Fetch questions
     const questionsRes = await db.query(
-      `SELECT id, question_text, points, explanation, order_index FROM exam_questions WHERE exam_id = $1 ORDER BY order_index ASC`,
+      `SELECT id, question_text, points, page_reference, explanation, order_index FROM exam_questions WHERE exam_id = $1 ORDER BY order_index ASC`,
       [id]
     );
 
@@ -251,7 +259,7 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
 
     // Fetch all questions and their correct options
     const questionsRes = await db.query(
-      `SELECT eq.id, eq.points, eq.explanation, eq.question_text,
+      `SELECT eq.id, eq.points, eq.explanation, eq.question_text, eq.page_reference,
               eqo.id as correct_option_id, eqo.option_text as correct_option_text
        FROM exam_questions eq
        JOIN exam_question_options eqo ON eq.id = eqo.question_id AND eqo.is_correct = 1
@@ -306,7 +314,8 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
         is_correct: isCorrect,
         points_awarded: pointsAwarded,
         max_points: q.points,
-        explanation: q.explanation
+        explanation: q.explanation,
+        page_reference: q.page_reference
       });
     }
 
