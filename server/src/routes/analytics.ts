@@ -11,13 +11,16 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
 
     // 1. Mastery per topic/chapter
     const masteryRes = await db.query(
-      `SELECT stm.*, s.name_ar as subject_name_ar, s.name_en as subject_name_en,
-              bc.title_ar as chapter_title_ar, bc.title_en as chapter_title_en,
-              b.title_ar as book_title
+      `SELECT stm.*, 
+              s.name_ar as subject_name_ar, s.name_en as subject_name_en,
+              COALESCE(bc.title_ar, 'الفصل العام') as chapter_title_ar, 
+              COALESCE(bc.title_en, 'General Chapter') as chapter_title_en,
+              COALESCE(b.title_ar, s.name_ar) as book_title,
+              COALESCE(b.title_en, s.name_en) as book_title_en
        FROM student_topic_mastery stm
-       JOIN subjects s ON stm.subject_id = s.id
-       JOIN book_chapters bc ON stm.chapter_id = bc.id
-       JOIN books b ON bc.book_id = b.id
+       LEFT JOIN subjects s ON stm.subject_id = s.id
+       LEFT JOIN book_chapters bc ON stm.chapter_id = bc.id
+       LEFT JOIN books b ON bc.book_id = b.id
        WHERE stm.student_id = $1
        ORDER BY stm.mastery_percentage ASC`,
       [studentId]
@@ -35,14 +38,31 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
       [studentId]
     );
 
-    // 3. Detailed AI Evaluations and Exam Attempts for real calculations
+    // 3. Detailed AI Evaluations and Exam Attempts for real calculations and exam history
     const aiEvalsRes = await db.query(
-      `SELECT score, total_questions, created_at FROM ai_evaluations WHERE student_id = $1 ORDER BY created_at DESC`,
+      `SELECT ae.id, ae.score, ae.total_questions, ae.created_at, ae.evaluation_report,
+              b.id as book_id, b.title_ar as book_title_ar, b.title_en as book_title_en,
+              s.id as subject_id, s.name_ar as subject_name_ar, s.name_en as subject_name_en,
+              bc.id as chapter_id, bc.title_ar as chapter_title_ar, bc.title_en as chapter_title_en,
+              bc.chapter_number
+       FROM ai_evaluations ae
+       LEFT JOIN books b ON ae.book_id = b.id
+       LEFT JOIN subjects s ON ae.subject_id = s.id
+       LEFT JOIN book_chapters bc ON ae.chapter_id = bc.id
+       WHERE ae.student_id = $1
+       ORDER BY ae.created_at DESC`,
       [studentId]
     );
 
     const examsRes = await db.query(
-      `SELECT score, total_points, completed_at FROM exam_attempts WHERE student_id = $1 ORDER BY completed_at DESC`,
+      `SELECT ea.id, ea.score, ea.total_points, ea.completed_at,
+              e.title_ar as exam_title_ar, e.title_en as exam_title_en,
+              s.name_ar as subject_name_ar, s.name_en as subject_name_en
+       FROM exam_attempts ea
+       LEFT JOIN exams e ON ea.exam_id = e.id
+       LEFT JOIN subjects s ON e.subject_id = s.id
+       WHERE ea.student_id = $1
+       ORDER BY ea.completed_at DESC`,
       [studentId]
     );
 
@@ -50,6 +70,62 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
     const totalExamsCount = examsRes.rows.length;
     const rawAttemptsCount = totalAiCount + totalExamsCount;
     const totalAttempts = Math.max(rawAttemptsCount, masteryRes.rows.length, historyRes.rows.length);
+
+    // Build unified completed exams list
+    const completedExams = [
+      ...aiEvalsRes.rows.map((r: any) => {
+        const qCount = Number(r.total_questions) || 1;
+        const score = Number(r.score) || 0;
+        const pct = Math.round((score / qCount) * 100);
+        let parsedReport = null;
+        try {
+          parsedReport = typeof r.evaluation_report === 'string' ? JSON.parse(r.evaluation_report) : r.evaluation_report;
+        } catch {}
+        return {
+          id: r.id,
+          type: 'AI_DIAGNOSTIC',
+          title_ar: r.chapter_title_ar || r.book_title_ar || r.subject_name_ar || 'تقييم تشخيصي ذكي',
+          title_en: r.chapter_title_en || r.book_title_en || r.subject_name_en || 'AI Diagnostic Assessment',
+          subject_name_ar: r.subject_name_ar || 'المادة الدراسية',
+          subject_name_en: r.subject_name_en || 'Subject',
+          chapter_title_ar: r.chapter_title_ar || r.book_title_ar,
+          chapter_title_en: r.chapter_title_en || r.book_title_en,
+          chapter_number: r.chapter_number,
+          book_title_ar: r.book_title_ar,
+          book_title_en: r.book_title_en,
+          score,
+          total: qCount,
+          percentage: pct,
+          status: pct >= 80 ? 'MASTERED' : pct >= 50 ? 'DEVELOPING' : 'NEEDS_WORK',
+          created_at: r.created_at,
+          report: parsedReport
+        };
+      }),
+      ...examsRes.rows.map((r: any) => {
+        const total = Number(r.total_points) || 1;
+        const score = Number(r.score) || 0;
+        const pct = Math.round((score / total) * 100);
+        return {
+          id: r.id,
+          type: 'TIMED_EXAM',
+          title_ar: r.exam_title_ar || 'امتحان مدرسي محدد بوقت',
+          title_en: r.exam_title_en || 'Timed School Exam',
+          subject_name_ar: r.subject_name_ar || 'المادة الدراسية',
+          subject_name_en: r.subject_name_en || 'Subject',
+          chapter_title_ar: r.exam_title_ar,
+          chapter_title_en: r.exam_title_en,
+          chapter_number: null,
+          book_title_ar: null,
+          book_title_en: null,
+          score,
+          total,
+          percentage: pct,
+          status: pct >= 80 ? 'MASTERED' : pct >= 50 ? 'DEVELOPING' : 'NEEDS_WORK',
+          created_at: r.completed_at,
+          report: null
+        };
+      })
+    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     // Compute real overall mastery percentage across all real student activities
     let scoreSumPercentages = 0;
@@ -134,6 +210,7 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
     return res.json({
       topics: masteryRes.rows,
       history: historyRes.rows,
+      completed_exams: completedExams,
       summary: {
         total_ai_assessments: Math.max(totalAiCount, masteryRes.rows.length),
         total_exams_taken: totalAttempts,

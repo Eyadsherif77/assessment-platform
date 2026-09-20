@@ -777,6 +777,46 @@ export const StudentDashboard: React.FC = () => {
               </div>
             </div>
 
+            {/* Recent Completed Assessments on Home */}
+            {analytics?.completed_exams && analytics.completed_exams.length > 0 && (
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>📊</span>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>
+                      {isAr ? 'آخر الاختبارات والتقييمات المنجزة' : 'Recent Completed Assessments'}
+                    </h3>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab('analytics')}>
+                    {isAr ? 'عرض سجل الإتقان الكامل ⬅️' : 'View Full Mastery Log ➡️'}
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                  {analytics.completed_exams.slice(0, 3).map((exam: any, i: number) => {
+                    const pct = exam.percentage ?? Math.round(((exam.score || 0) / (exam.total || 1)) * 100);
+                    const isMastered = pct >= 80;
+                    const isProficient = pct >= 60 && pct < 80;
+                    const badgeColor = isMastered ? '#16A34A' : isProficient ? '#2563EB' : '#D97706';
+                    return (
+                      <div key={exam.id || i} style={{ padding: '0.85rem 1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>
+                            {isAr ? (exam.chapter_title_ar || exam.title_ar) : (exam.chapter_title_en || exam.title_en)}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)} • {exam.score}/{exam.total} {isAr ? 'درجات' : 'pts'}
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 900, color: badgeColor, fontSize: '1rem' }}>
+                          {pct}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -2006,6 +2046,155 @@ export const StudentDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Completed Exams History Section */}
+            <div className="card" style={{ padding: '1.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>📝</span>
+                    <span>{isAr ? 'سجل الامتحانات والتقييمات المنجزة' : 'Completed Assessments History'}</span>
+                    {analytics?.completed_exams && analytics.completed_exams.length > 0 && (
+                      <span className="badge badge-primary" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}>
+                        {analytics.completed_exams.length} {isAr ? 'امتحانات' : 'Exams'}
+                      </span>
+                    )}
+                  </h3>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'قائمة تفصيلية بجميع الاختبارات التي خضتها مع نتائج التشخيص الدقيقة' : 'Detailed log of all completed exams with diagnostic breakdown'}
+                  </span>
+                </div>
+              </div>
+
+              {analytics?.completed_exams && analytics.completed_exams.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {analytics.completed_exams.map((exam: any, idx: number) => {
+                    const pct = exam.percentage ?? Math.round(((exam.score || 0) / (exam.total || 1)) * 100);
+                    const isMastered = pct >= 80;
+                    const isProficient = pct >= 60 && pct < 80;
+                    const badgeColor = isMastered ? '#16A34A' : isProficient ? '#2563EB' : '#D97706';
+                    const badgeBg = isMastered ? '#F0FDF4' : isProficient ? '#EFF6FF' : '#FFFBEB';
+                    const badgeBorder = isMastered ? '#BBF7D0' : isProficient ? '#BFDBFE' : '#FDE68A';
+                    const statusText = isMastered
+                      ? (isAr ? 'متقن (Mastered)' : 'Mastered')
+                      : isProficient
+                      ? (isAr ? 'متقدم (Proficient)' : 'Proficient')
+                      : (isAr ? 'بحاجة لمراجعة (Developing)' : 'Developing');
+
+                    const formattedDate = exam.created_at
+                      ? new Date(exam.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : '';
+
+                    return (
+                      <div
+                        key={exam.id || idx}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '1.15rem 1.25rem',
+                          background: 'var(--bg-subtle)',
+                          borderRadius: 'var(--radius-lg)',
+                          border: '1px solid var(--border-light)',
+                          flexWrap: 'wrap',
+                          gap: '1rem'
+                        }}
+                      >
+                        {/* Exam Info */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '240px', flex: 1 }}>
+                          <div style={{
+                            width: '44px',
+                            height: '44px',
+                            borderRadius: 'var(--radius-md)',
+                            background: badgeBg,
+                            border: `1px solid ${badgeBorder}`,
+                            color: badgeColor,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.2rem',
+                            fontWeight: 900,
+                            flexShrink: 0
+                          }}>
+                            {exam.type === 'TIMED_EXAM' ? '⏱️' : '🧠'}
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-title)' }}>
+                                {isAr ? (exam.chapter_title_ar || exam.title_ar || exam.subject_name_ar) : (exam.chapter_title_en || exam.title_en || exam.subject_name_en)}
+                              </span>
+                              <span style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: 'var(--radius-full)',
+                                background: badgeBg,
+                                color: badgeColor,
+                                border: `1px solid ${badgeBorder}`
+                              }}>
+                                {statusText}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              <span style={{ fontWeight: 600 }}>{isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}</span>
+                              {exam.book_title_ar && (
+                                <>
+                                  <span>•</span>
+                                  <span>{isAr ? exam.book_title_ar : (exam.book_title_en || exam.book_title_ar)}</span>
+                                </>
+                              )}
+                              <span>•</span>
+                              <span>{formattedDate}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Score & Action */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+                          <div style={{ textAlign: isAr ? 'left' : 'right' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: badgeColor }}>
+                              {pct}%
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              {exam.score} / {exam.total} {isAr ? 'درجات' : 'pts'}
+                            </div>
+                          </div>
+
+                          {exam.report && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => {
+                                setAiReport(exam.report);
+                                setActiveTab('ai');
+                                setAiStep(5);
+                              }}
+                              style={{ fontWeight: 700, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', whiteSpace: 'nowrap' }}
+                              title={isAr ? 'عرض تقرير التشخيص والإجابات' : 'View Diagnostic Report'}
+                            >
+                              <span>{isAr ? 'تقرير التشخيص 📋' : 'Diagnosis Report 📋'}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
+                  <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                    {isAr ? 'لم يتم تسجيل أي امتحانات بعد.' : 'No completed assessments found.'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
