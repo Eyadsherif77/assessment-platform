@@ -490,7 +490,7 @@ export const StudentDashboard: React.FC = () => {
               {user?.fullName}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <div style={{ fontWeight: 600 }}>{isAr ? (user?.profile?.grade_name_ar || 'الصف الأول الإعدادي') : (user?.profile?.grade_name_en || 'Prep 1')}</div>
+              <div style={{ fontWeight: 600 }}>{isAr ? (user?.profile?.grade_name_ar || 'الصف الثالث الإعدادي') : (user?.profile?.grade_name_en || 'Prep 3')}</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
                 <span style={{ fontSize: '0.7rem', color: 'var(--primary-700)', fontWeight: 700 }}>
                   {user?.profile?.school_type === 'لغات' ? (isAr ? '🌐 مدارس لغات' : '🌐 Language School') : (isAr ? '🏫 مدارس عربي' : '🏫 Arabic School')}
@@ -601,7 +601,7 @@ export const StudentDashboard: React.FC = () => {
                 </h2>
                 <p style={{ color: '#CBD5E1', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>
                   {isAr
-                    ? <>أنت مسجل في <strong>{user?.profile?.grade_name_ar || 'الصف الأول الإعدادي'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}</strong> • مناهج وكتب مخصصة ومطابقة 100%.</>
+                    ? <>أنت مسجل في <strong>{user?.profile?.grade_name_ar || 'الصف الثالث الإعدادي'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}</strong> • مناهج وكتب مخصصة ومطابقة 100%.</>
                     : <>Enrolled in <strong>{user?.profile?.grade_name_en || 'Prep 1'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'}</strong> • 100% textbook-grounded curriculum.</>}
                 </p>
                 <div style={{ marginTop: '0.6rem' }}>
@@ -692,7 +692,7 @@ export const StudentDashboard: React.FC = () => {
                     {isAr ? 'استكمل من حيث توقفت' : 'Continue Where You Left Off'}
                   </span>
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--primary-950)', margin: '0.2rem 0' }}>
-                    {isAr ? (books[0]?.title_ar || 'كتاب العلوم - الصف الأول الإعدادي') : (books[0]?.title_en || 'Science Book - Prep 1')}
+                    {isAr ? (books[0]?.title_ar || 'كتاب العلوم - الصف الثالث الإعدادي') : (books[0]?.title_en || 'Science Book - Prep 3')}
                   </h3>
                   <div style={{ fontSize: '0.825rem', color: 'var(--text-body)' }}>
                     {isAr ? 'الوحدة الأولى: المادة وخواصها • جاهز للتقييم الفوري' : 'Unit 1: Matter & Properties • Ready for quiz'}
@@ -1503,7 +1503,7 @@ export const StudentDashboard: React.FC = () => {
                 </h2>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   {isAr 
-                    ? `مخصصة ومقيدة بصفك الدراسي (${user?.profile?.grade_name_ar || 'الصف الأول الإعدادي'}) ونوع مدرستك (${user?.profile?.school_type === 'لغات' ? 'مدارس لغات' : 'مدارس عربي'})`
+                    ? `مخصصة ومقيدة بصفك الدراسي (${user?.profile?.grade_name_ar || 'الصف الثالث الإعدادي'}) ونوع مدرستك (${user?.profile?.school_type === 'لغات' ? 'مدارس لغات' : 'مدارس عربي'})`
                     : `Restricted to your grade (${user?.profile?.grade_name_en || 'Prep 1'}) and school (${user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'})`}
                 </span>
               </div>

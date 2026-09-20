@@ -11,23 +11,27 @@ router.post('/register', async (req, res) => {
   try {
     const {
       email,
+      username,
       password,
       role,
       fullName,
-      countryId,
+      governorate,
       governorateId,
-      schoolId,
       schoolName,
+      studentCode,
+      student_code,
+      term,
+      educationType,
+      schoolType,
+      school_type,
       academicStageId,
       gradeId,
       specialization,
-      section,
-      schoolType,
-      school_type
+      section
     } = req.body;
 
-    if (!email || !password || !role || !fullName) {
-      return res.status(400).json({ error: 'الرجاء إدخال كافة البيانات الأساسية المطلوبة' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور' });
     }
 
     const effectiveRole = (role || 'STUDENT').toUpperCase().trim();
@@ -37,10 +41,22 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanUsername = username ? username.trim() : (fullName ? fullName.trim() : cleanEmail.split('@')[0]);
+    const displayName = cleanUsername;
+
     // Check existing email
-    const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+    const existing = await db.query('SELECT id FROM users WHERE LOWER(email) = $1', [cleanEmail]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
+    }
+
+    // Check existing username if provided
+    if (cleanUsername) {
+      const uExisting = await db.query('SELECT id FROM users WHERE LOWER(username) = $1', [cleanUsername.toLowerCase()]);
+      if (uExisting.rows.length > 0) {
+        return res.status(400).json({ error: 'اسم المستخدم مسجل بالفعل. يرجى اختيار اسم مستخدم آخر.' });
+      }
     }
 
     const userId = uuidv4();
@@ -58,14 +74,15 @@ router.post('/register', async (req, res) => {
       };
 
       await db.query(
-        `INSERT INTO users (id, hybrid_id, email, password_hash, role, full_name, permissions, is_active)
-         VALUES ($1, $2, $3, $4, 'TEACHER', $5, $6, 1)`,
+        `INSERT INTO users (id, hybrid_id, email, username, password_hash, role, full_name, permissions, is_active)
+         VALUES ($1, $2, $3, $4, $5, 'TEACHER', $6, $7, 1)`,
         [
           userId,
           hybridId,
-          email.toLowerCase().trim(),
+          cleanEmail,
+          cleanUsername,
           passwordHash,
-          fullName.trim(),
+          displayName,
           JSON.stringify(defaultPerms)
         ]
       );
@@ -73,14 +90,14 @@ router.post('/register', async (req, res) => {
       await db.query(
         `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization)
          VALUES ($1, $2, $3, $4)`,
-        [userId, fullName.trim(), schoolName || null, specialization || null]
+        [userId, displayName, schoolName || null, specialization || null]
       );
 
       const token = generateToken({
         id: userId,
-        email: email.toLowerCase().trim(),
+        email: cleanEmail,
         role: 'TEACHER',
-        fullName: fullName.trim()
+        fullName: displayName
       });
 
       return res.status(201).json({
@@ -89,13 +106,14 @@ router.post('/register', async (req, res) => {
         user: {
           id: userId,
           hybrid_id: hybridId,
-          email: email.toLowerCase().trim(),
+          email: cleanEmail,
+          username: cleanUsername,
           role: 'TEACHER',
-          fullName: fullName.trim(),
+          fullName: displayName,
           permissions: defaultPerms,
           profile: {
             user_id: userId,
-            full_name: fullName.trim(),
+            full_name: displayName,
             school_name: schoolName || null,
             specialization: specialization || null
           }
@@ -103,41 +121,60 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Student accounts have standard ID only (plain UUID)
-    await db.query(
-      `INSERT INTO users (id, email, password_hash, role, full_name) VALUES ($1, $2, $3, 'STUDENT', $4)`,
-      [userId, email.toLowerCase().trim(), passwordHash, fullName.trim()]
-    );
+    // Student Registration: Locked to Prep 3 (المرحلة الإعدادية - الصف الثالث الإعدادي)
+    const prepStageId = '61998777-4c5f-4e51-bc0a-38de938c842a'; // Preparatory
+    const prep3GradeId = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // Prep 3
+    const egyptCountryId = '23d3a886-cb36-4ec3-9e60-627c2193b1bd';
 
-    if (!academicStageId || !gradeId) {
-      return res.status(400).json({ error: 'يجب اختيار المرحلة الدراسية والصف الدراسي للطالب' });
+    const effectiveStageId = academicStageId || prepStageId;
+    const effectiveGradeId = gradeId || prep3GradeId;
+    const effectiveSchoolType = educationType || schoolType || school_type || 'عربى';
+    const effectiveTerm = term || 'الاول';
+    const effectiveStudentCode = studentCode || student_code || null;
+    const govName = governorate || null;
+
+    // Lookup governorate_id if governorate name provided
+    let resolvedGovId = governorateId || null;
+    if (!resolvedGovId && govName) {
+      const govLookup = await db.query('SELECT id FROM governorates WHERE name_ar = $1 LIMIT 1', [govName]);
+      if (govLookup.rows.length > 0) {
+        resolvedGovId = govLookup.rows[0].id;
+      }
     }
 
-    const effectiveSchoolType = schoolType || school_type || 'عربي';
+    await db.query(
+      `INSERT INTO users (id, email, username, password_hash, role, full_name) 
+       VALUES ($1, $2, $3, $4, 'STUDENT', $5)`,
+      [userId, cleanEmail, cleanUsername, passwordHash, displayName]
+    );
 
     await db.query(
       `INSERT INTO student_profiles (
-         user_id, full_name, country_id, governorate_id, school_id, school_name, academic_stage_id, grade_id, section, school_type
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         user_id, full_name, country_id, governorate_id, governorate_name, school_id, school_name, 
+         academic_stage_id, grade_id, section, school_type, student_code, term
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         userId,
-        fullName.trim(),
-        countryId || null,
-        governorateId || null,
-        schoolId || null,
+        displayName,
+        egyptCountryId,
+        resolvedGovId,
+        govName,
+        null,
         schoolName || null,
-        academicStageId,
-        gradeId,
+        effectiveStageId,
+        effectiveGradeId,
         section || null,
-        effectiveSchoolType
+        effectiveSchoolType,
+        effectiveStudentCode,
+        effectiveTerm
       ]
     );
 
     const token = generateToken({
       id: userId,
-      email: email.toLowerCase().trim(),
+      email: cleanEmail,
       role: 'STUDENT',
-      fullName: fullName.trim()
+      fullName: displayName
     });
 
     return res.status(201).json({
@@ -145,9 +182,23 @@ router.post('/register', async (req, res) => {
       token,
       user: {
         id: userId,
-        email: email.toLowerCase().trim(),
+        email: cleanEmail,
+        username: cleanUsername,
         role: 'STUDENT',
-        fullName: fullName.trim()
+        fullName: displayName,
+        profile: {
+          user_id: userId,
+          full_name: displayName,
+          school_type: effectiveSchoolType,
+          governorate_name: govName,
+          term: effectiveTerm,
+          student_code: effectiveStudentCode,
+          school_name: schoolName || null,
+          academic_stage_id: effectiveStageId,
+          grade_id: effectiveGradeId,
+          grade_name_ar: 'الصف الثالث الإعدادي',
+          stage_name_ar: 'المرحلة الإعدادية'
+        }
       }
     });
   } catch (error: any) {
@@ -240,13 +291,16 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور' });
     }
 
+    const cleanIdent = email.toLowerCase().trim();
     const userRes = await db.query(
-      `SELECT id, super_id, hybrid_id, email, password_hash, role, full_name, permissions, is_active FROM users WHERE email = $1`,
-      [email.toLowerCase().trim()]
+      `SELECT id, super_id, hybrid_id, email, username, password_hash, role, full_name, permissions, is_active 
+       FROM users 
+       WHERE LOWER(email) = $1 OR LOWER(username) = $2`,
+      [cleanIdent, cleanIdent]
     );
 
     if (userRes.rows.length === 0) {
-      return res.status(401).json({ error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' });
+      return res.status(401).json({ error: 'البريد الإلكتروني أو اسم المستخدم أو كلمة المرور غير صحيحة' });
     }
 
     const user = userRes.rows[0];
@@ -257,7 +311,7 @@ router.post('/login', async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      return res.status(401).json({ error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' });
+      return res.status(401).json({ error: 'البريد الإلكتروني أو اسم المستخدم أو كلمة المرور غير صحيحة' });
     }
 
     let profileData: any = null;
@@ -301,6 +355,7 @@ router.post('/login', async (req, res) => {
         super_id: user.super_id || null,
         hybrid_id: user.hybrid_id || null,
         email: user.email,
+        username: user.username || null,
         role: user.role,
         fullName: user.full_name,
         permissions: permissionsObj,
@@ -318,7 +373,7 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
     const userQuery = await db.query(
-      `SELECT super_id, hybrid_id, permissions, is_active FROM users WHERE id = $1`,
+      `SELECT super_id, hybrid_id, username, permissions, is_active FROM users WHERE id = $1`,
       [user.id]
     );
     const userRow = userQuery.rows[0] || {};
@@ -355,6 +410,7 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
         super_id: userRow.super_id || null,
         hybrid_id: userRow.hybrid_id || null,
         email: user.email,
+        username: userRow.username || null,
         role: user.role,
         fullName: user.fullName,
         permissions: permissionsObj,
