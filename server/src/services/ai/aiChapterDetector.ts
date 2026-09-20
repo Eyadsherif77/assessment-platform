@@ -89,25 +89,24 @@ export class AIChapterDetector {
 
     // 4. Update existing book_chunks to link to the corresponding chapter based on page_number
     try {
-      const chunksRes = await db.query(
-        `SELECT id, page_number FROM book_chunks WHERE book_id = $1`,
-        [bookId]
-      );
-
-      for (const chunk of chunksRes.rows) {
-        const pageNum = Number(chunk.page_number) || 1;
-        // Find which chapter covers this page
-        let matchedChapter = detected.find(c => pageNum >= c.start_page && pageNum <= c.end_page);
-        if (!matchedChapter) {
-          matchedChapter = detected[0];
-        }
-        const targetChapterId = chapterIdMap.get(matchedChapter.chapter_number);
+      for (const ch of detected) {
+        const targetChapterId = chapterIdMap.get(ch.chapter_number);
         if (targetChapterId) {
           await db.query(
-            `UPDATE book_chunks SET chapter_id = $1 WHERE id = $2`,
-            [targetChapterId, chunk.id]
+            `UPDATE book_chunks SET chapter_id = $1 
+             WHERE book_id = $2 AND page_number BETWEEN $3 AND $4`,
+            [targetChapterId, bookId, ch.start_page, ch.end_page]
           );
         }
+      }
+      // Any remaining chunks fallback to first chapter
+      const ch1Id = chapterIdMap.get(detected[0]?.chapter_number);
+      if (ch1Id) {
+        await db.query(
+          `UPDATE book_chunks SET chapter_id = $1 
+           WHERE book_id = $2 AND (chapter_id IS NULL OR chapter_id NOT IN (${Array.from(chapterIdMap.values()).map(id => `'${id}'`).join(',')}))`,
+          [ch1Id, bookId]
+        );
       }
     } catch (e) {
       console.warn('Chunk chapter re-linking note:', e);
