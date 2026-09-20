@@ -14,3 +14,4 @@ uploads/*.pdf
 
 server/pgdata_local/
 *.db
+scratch/

@@ -6,6 +6,7 @@ const pdfParse = require('pdf-parse');
 import { db } from '../../db/db.js';
 import { generateEmbedding, createSemanticVector } from '../ai/vectorEmbedding.js';
 import { stripDocumentMetadataAndStructure } from '../../utils/arabicTextNormalizer.js';
+import { aiChapterDetector } from '../ai/aiChapterDetector.js';
 
 export interface BookIngestionJob {
   bookId: string;
@@ -110,18 +111,21 @@ class JobQueueService {
         );
       }
 
-      // Handle or create chapter
-      let chapterId = job.chapterId;
-      if (!chapterId) {
-        chapterId = uuidv4();
-        const chNum = job.chapterNumber || 1;
-        const chTitle = job.chapterTitleAr || 'الفصل الأول: محتوى الكتاب المستخرج';
-        await db.query(
-          `INSERT INTO book_chapters (id, book_id, chapter_number, title_ar, title_en, start_page, end_page)
-           VALUES ($1, $2, $3, $4, $5, 1, $6)`,
-          [chapterId, job.bookId, chNum, chTitle, 'Chapter ' + chNum, pages.length]
-        );
-      }
+      // Fetch book info for AI chapter detection
+      const bookRes = await db.query('SELECT title_ar, title_en, total_pages FROM books WHERE id = $1', [job.bookId]);
+      const bookInfo = bookRes.rows[0] || {};
+
+      // AI Automatic Chapter Detection & Creation
+      const detectedChapters = await aiChapterDetector.detectAndCreateChapters({
+        bookId: job.bookId,
+        bookTitleAr: bookInfo.title_ar || job.chapterTitleAr || 'كتاب دراسي',
+        bookTitleEn: bookInfo.title_en || 'Textbook',
+        totalPages: pages.length,
+        pages,
+        academicStageId: job.academicStageId,
+        gradeId: job.gradeId,
+        subjectId: job.subjectId
+      });
 
       // Semantic chunking & vector embedding
       this.jobStatuses.set(job.bookId, { status: 'EMBEDDING', progress: 60 });
@@ -140,6 +144,11 @@ class JobQueueService {
         // Split page into semantic segments of 300-500 chars with 100 char overlap
         const paragraphs = sanitizedPageText.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 20);
         const segments: string[] = paragraphs.length > 0 ? paragraphs : [sanitizedPageText];
+
+        const matchedChapter = detectedChapters.find(
+          c => page.pageNumber >= c.start_page && page.pageNumber <= c.end_page
+        ) || detectedChapters[0];
+        const assignedChapterId = matchedChapter?.id || job.bookId;
 
         for (const segment of segments) {
           if (chunkIdx > maxChunks) break;
@@ -165,7 +174,7 @@ class JobQueueService {
             [
               chunkId,
               job.bookId,
-              chapterId,
+              assignedChapterId,
               job.academicStageId,
               job.gradeId,
               job.subjectId,

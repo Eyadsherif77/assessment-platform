@@ -80,6 +80,109 @@ export const TeacherDashboard: React.FC = () => {
   // Analytics
   const [teacherAnalytics, setTeacherAnalytics] = useState<any | null>(null);
 
+  // Chapter Management State
+  const [selectedBookForChapters, setSelectedBookForChapters] = useState<any | null>(null);
+  const [bookChaptersList, setBookChaptersList] = useState<any[]>([]);
+  const [isLoadingChapters, setIsLoadingChapters] = useState(false);
+  const [isDetectingChapters, setIsDetectingChapters] = useState(false);
+  const [showAddChapterForm, setShowAddChapterForm] = useState(false);
+  const [newChNumber, setNewChNumber] = useState(1);
+  const [newChTitleAr, setNewChTitleAr] = useState('');
+  const [newChTitleEn, setNewChTitleEn] = useState('');
+  const [newChStartPage, setNewChStartPage] = useState(1);
+  const [newChEndPage, setNewChEndPage] = useState(20);
+
+  const handleOpenChaptersModal = async (book: any) => {
+    setSelectedBookForChapters(book);
+    setShowAddChapterForm(false);
+    setIsLoadingChapters(true);
+    try {
+      const res = await fetch(apiUrl(`/api/books/${book.id}/chapters`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setBookChaptersList(Array.isArray(data) ? data : []);
+      if (Array.isArray(data)) {
+        setNewChNumber(data.length + 1);
+        const lastPage = data[data.length - 1]?.end_page || 1;
+        setNewChStartPage(lastPage + 1);
+        setNewChEndPage(lastPage + 25);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingChapters(false);
+    }
+  };
+
+  const handleAutoDetectChapters = async (bookId: string) => {
+    setIsDetectingChapters(true);
+    try {
+      const res = await fetch(apiUrl(`/api/books/${bookId}/auto-detect-chapters`), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to detect chapters');
+      alert(data.message || (isAr ? 'تم استخراج الفصول بنجاح' : 'Chapters detected successfully'));
+      handleOpenChaptersModal(selectedBookForChapters);
+      loadTeacherData();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsDetectingChapters(false);
+    }
+  };
+
+  const handleAddChapter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBookForChapters) return;
+    try {
+      const res = await fetch(apiUrl(`/api/books/${selectedBookForChapters.id}/chapters`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          chapter_number: newChNumber,
+          title_ar: newChTitleAr,
+          title_en: newChTitleEn || `Chapter ${newChNumber}`,
+          start_page: newChStartPage,
+          end_page: newChEndPage
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add chapter');
+      setShowAddChapterForm(false);
+      setNewChTitleAr('');
+      setNewChTitleEn('');
+      handleOpenChaptersModal(selectedBookForChapters);
+      loadTeacherData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteChapter = async (chapterId: string) => {
+    if (!selectedBookForChapters) return;
+    if (!confirm(isAr ? 'هل أنت متأكد من حذف هذا الفصل؟' : 'Are you sure you want to delete this chapter?')) return;
+    try {
+      const res = await fetch(apiUrl(`/api/books/${selectedBookForChapters.id}/chapters/${chapterId}`), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || 'Failed to delete');
+      }
+      handleOpenChaptersModal(selectedBookForChapters);
+      loadTeacherData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   // Load stages on mount
   useEffect(() => {
     fetch(apiUrl('/api/meta/stages'))
@@ -619,9 +722,16 @@ export const TeacherDashboard: React.FC = () => {
                           : (isAr ? '🤝 عام ولغات (كلاهما)' : 'Both')}
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                      {isAr ? 'الفصول:' : 'Chapters:'} {book.chapters?.length || 1}
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                      {isAr ? 'الفصول:' : 'Chapters:'} {book.chapters_count || book.chapters?.length || 1}
                     </div>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleOpenChaptersModal(book)}
+                      style={{ width: '100%', marginBottom: '0.75rem', fontWeight: 700, fontSize: '0.8rem' }}
+                    >
+                      📖 {isAr ? 'إدارة وتعديل الفصول' : 'Manage & Edit Chapters'}
+                    </button>
                   </div>
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 700 }}>
@@ -1085,6 +1195,201 @@ export const TeacherDashboard: React.FC = () => {
           <span>{isAr ? 'الأداء' : 'Analytics'}</span>
         </button>
       </nav>
+
+        {/* =========================================================
+            CHAPTER MANAGEMENT MODAL
+            ========================================================= */}
+        {selectedBookForChapters && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem'
+          }}>
+            <div className="card" style={{
+              maxWidth: '750px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '2rem',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-xl)',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.3rem', fontWeight: 900, margin: 0 }}>
+                    {isAr ? `فصول كتاب: ${selectedBookForChapters.title_ar}` : `Chapters of: ${selectedBookForChapters.title_en || selectedBookForChapters.title_ar}`}
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'تقسيم الكتاب لوحدات وفصول دراسية مع توزيع الفقرات التعليمية' : 'Manage textbook units, chapters & educational chunk partitions'}
+                  </span>
+                </div>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setSelectedBookForChapters(null)}
+                  style={{ borderRadius: '50%', width: '36px', height: '36px', padding: 0 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Actions Toolbar */}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setShowAddChapterForm(!showAddChapterForm)}
+                  style={{ fontWeight: 800 }}
+                >
+                  {showAddChapterForm ? (isAr ? 'إلغاء الإضافة' : 'Cancel') : (isAr ? '➕ إضافة فصل يدوياً' : '➕ Add Chapter Manually')}
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  disabled={isDetectingChapters}
+                  onClick={() => handleAutoDetectChapters(selectedBookForChapters.id)}
+                  style={{ fontWeight: 800, background: '#EEF2FF', borderColor: '#818CF8', color: '#4F46E5' }}
+                >
+                  {isDetectingChapters ? (isAr ? 'جاري الفحص الذكي...' : 'Detecting...') : (isAr ? '✨ استخراج الفصول بالذكاء الاصطناعي' : '✨ AI Auto-Detect Chapters')}
+                </button>
+              </div>
+
+              {/* Add Chapter Inline Form */}
+              {showAddChapterForm && (
+                <div style={{ background: 'var(--bg-subtle)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', marginBottom: '1.5rem', border: '1px solid var(--border-light)' }}>
+                  <h4 style={{ fontWeight: 800, fontSize: '0.95rem', margin: '0 0 1rem' }}>
+                    {isAr ? 'إضافة فصل دراسي جديد للكتاب:' : 'Add New Chapter to Textbook:'}
+                  </h4>
+                  <form onSubmit={handleAddChapter}>
+                    <div className="responsive-form-grid-2" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'رقم الفصل' : 'Chapter #'}</label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          className="form-input"
+                          value={newChNumber}
+                          onChange={e => setNewChNumber(parseInt(e.target.value, 10) || 1)}
+                        />
+                      </div>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'عنوان الفصل (بالعربية)' : 'Title (Arabic)'}</label>
+                        <input
+                          type="text"
+                          required
+                          className="form-input"
+                          value={newChTitleAr}
+                          onChange={e => setNewChTitleAr(e.target.value)}
+                          placeholder={isAr ? 'الوحدة الثانية: الجبر' : 'Unit 2: Algebra'}
+                        />
+                      </div>
+                    </div>
+                    <div className="responsive-form-grid-2" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'عنوان الفصل (بالإنجليزية)' : 'Title (English)'}</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          value={newChTitleEn}
+                          onChange={e => setNewChTitleEn(e.target.value)}
+                          placeholder="Unit 2: Algebra & Expressions"
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'من ص' : 'From p.'}</label>
+                          <input
+                            type="number"
+                            min="1"
+                            className="form-input"
+                            value={newChStartPage}
+                            onChange={e => setNewChStartPage(parseInt(e.target.value, 10) || 1)}
+                          />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'إلى ص' : 'To p.'}</label>
+                          <input
+                            type="number"
+                            min="1"
+                            className="form-input"
+                            value={newChEndPage}
+                            onChange={e => setNewChEndPage(parseInt(e.target.value, 10) || 1)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAddChapterForm(false)}>
+                        {isAr ? 'إلغاء' : 'Cancel'}
+                      </button>
+                      <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 800 }}>
+                        {isAr ? 'حفظ الفصل' : 'Save Chapter'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Chapters List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {isLoadingChapters ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'جاري تحميل الفصول...' : 'Loading chapters...'}
+                  </div>
+                ) : bookChaptersList.length > 0 ? (
+                  bookChaptersList.map(ch => (
+                    <div
+                      key={ch.id}
+                      style={{
+                        padding: '1rem',
+                        background: 'var(--bg-subtle)',
+                        borderRadius: 'var(--radius-lg)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          <span className="badge badge-primary">
+                            {isAr ? `الفصل #${ch.chapter_number}` : `Chapter #${ch.chapter_number}`}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            📖 {isAr ? `الصفحات: ${ch.start_page} - ${ch.end_page}` : `Pages: ${ch.start_page} - ${ch.end_page}`}
+                          </span>
+                          <span className="badge" style={{ background: '#F1F5F9', color: '#475569', fontSize: '0.7rem' }}>
+                            {isAr ? `${ch.chunks_count || 0} فقرات مفهرسة` : `${ch.chunks_count || 0} Chunks`}
+                          </span>
+                        </div>
+                        <h4 style={{ fontWeight: 800, fontSize: '0.95rem', margin: 0, color: 'var(--text-title)' }}>
+                          {isAr ? ch.title_ar : (ch.title_en || ch.title_ar)}
+                        </h4>
+                      </div>
+                      <button
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleDeleteChapter(ch.id)}
+                        style={{ color: '#DC2626', borderColor: '#FECDD3', background: '#FFF1F2', fontSize: '0.75rem' }}
+                      >
+                        {isAr ? 'حذف' : 'Delete'}
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'لا توجد فصول مضافة بعد. انقر على "استخراج الفصول بالذكاء الاصطناعي" أعلاه.' : 'No chapters yet. Click "AI Auto-Detect Chapters" above.'}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
     </div>
   );

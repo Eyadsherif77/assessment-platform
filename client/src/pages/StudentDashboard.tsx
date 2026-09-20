@@ -909,21 +909,31 @@ export const StudentDashboard: React.FC = () => {
                             border: isSelected ? '2px solid var(--primary-600)' : '1px solid var(--border-light)',
                             background: isSelected ? 'var(--primary-50)' : 'var(--bg-card)',
                             cursor: 'pointer',
-                            transition: 'all 0.2s ease'
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                            <span className="badge badge-primary">
-                              {isAr ? `الفصل #${ch.chapter_number}` : `Chapter #${ch.chapter_number}`}
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              {isAr ? `${ch.chunks_count || 3} فقرات مفهرسة` : `${ch.chunks_count || 3} Paragraphs`}
-                            </span>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span className="badge badge-primary">
+                                {isAr ? `الفصل #${ch.chapter_number}` : `Chapter #${ch.chapter_number}`}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {isAr ? `${ch.chunks_count ?? 3} فقرات مفهرسة` : `${ch.chunks_count ?? 3} Paragraphs`}
+                              </span>
+                            </div>
+                            <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.4rem' }}>
+                              {isAr ? ch.title_ar : (ch.title_en || ch.title_ar)}
+                            </h4>
+                            {ch.description && (
+                              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 0.75rem', lineHeight: '1.4' }}>
+                                {ch.description}
+                              </p>
+                            )}
                           </div>
-                          <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.5rem' }}>
-                            {isAr ? ch.title_ar : (ch.title_en || ch.title_ar)}
-                          </h4>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--primary-700)', fontWeight: 700 }}>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--primary-700)', fontWeight: 700, marginTop: '0.5rem' }}>
                             {isAr ? 'انقر لاختيار هذا الفصل ⬅️' : 'Click to select this chapter ➡️'}
                           </span>
                         </div>

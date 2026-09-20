@@ -11,6 +11,7 @@ const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 import { createSemanticVector } from '../services/ai/vectorEmbedding.js';
 import { cleanArabicText } from '../utils/arabicTextNormalizer.js';
+import { aiChapterDetector } from '../services/ai/aiChapterDetector.js';
 
 const router = Router();
 
@@ -206,30 +207,7 @@ router.post(
         ]
       );
 
-      // 2. Insert primary chapter
-      const chapterId = uuidv4();
-      const chNum = parseInt(chapter_number, 10) || 1;
-      const chTitle = chapter_title_ar ? chapter_title_ar.trim() : 'الوحدة الأولى: المنهج الدراسي';
-      const firstPageNum = pagesList[0].pageNumber || 1;
-      const lastPageNum = pagesList[pagesList.length - 1].pageNumber || pagesList.length;
-
-      await db.query(
-        `INSERT INTO book_chapters (
-           id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          chapterId,
-          bookId,
-          chNum,
-          chTitle,
-          `Chapter ${chNum}`,
-          firstPageNum,
-          lastPageNum,
-          `محتوى ${chTitle} المستخرج ومفهرس دلالياً لدعم التقييم التشخيصي وبنوك الأسئلة.`
-        ]
-      );
-
-      // 3. Insert book pages
+      // 2. Insert book pages
       for (const p of pagesList) {
         const pageId = uuidv4();
         await db.query(
@@ -239,7 +217,19 @@ router.post(
         );
       }
 
-      // 4. Create semantic chunks
+      // 3. AI Automatic Chapter Detection & Partitioning for ANY uploaded textbook
+      const detectedChapters = await aiChapterDetector.detectAndCreateChapters({
+        bookId,
+        bookTitleAr: title_ar.trim(),
+        bookTitleEn: title_en ? title_en.trim() : title_ar.trim(),
+        totalPages: pagesList.length,
+        pages: pagesList,
+        academicStageId: academic_stage_id,
+        gradeId: grade_id,
+        subjectId: subject_id
+      });
+
+      // 4. Create semantic chunks linked to their respective chapter
       let chunkIdx = 1;
       const maxChunks = 120;
       for (let i = 0; i < pagesList.length && chunkIdx <= maxChunks; i++) {
@@ -248,6 +238,12 @@ router.post(
 
         const paragraphs = page.text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 20);
         const segments = paragraphs.length > 0 ? paragraphs : [page.text];
+
+        // Find which chapter covers this page
+        const matchedChapter = detectedChapters.find(
+          c => page.pageNumber >= c.start_page && page.pageNumber <= c.end_page
+        ) || detectedChapters[0];
+        const assignedChapterId = matchedChapter?.id || bookId;
 
         for (const segment of segments) {
           if (chunkIdx > maxChunks) break;
@@ -262,7 +258,7 @@ router.post(
             [
               chunkId,
               bookId,
-              chapterId,
+              assignedChapterId,
               academic_stage_id,
               grade_id,
               subject_id,
@@ -461,26 +457,7 @@ router.post(
         console.warn('Could not store PDF chunks in book_pdf_chunks:', pdfStoreErr);
       }
 
-      // 5. Insert primary chapter
-      const chapterId = uuidv4();
-      const chNum = parseInt(chapter_number, 10) || 1;
-      const chTitle = chapter_title_ar ? chapter_title_ar.trim() : 'الوحدة الأولى: المنهج الدراسي';
-      await db.query(
-        `INSERT INTO book_chapters (
-           id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description
-         ) VALUES ($1, $2, $3, $4, $5, 1, $6, $7)`,
-        [
-          chapterId,
-          bookId,
-          chNum,
-          chTitle,
-          `Chapter ${chNum}`,
-          totalNumPages || pages.length,
-          `محتوى ${chTitle} المستخرج ومفهرس دلالياً لدعم التقييم والأسئلة الذكية.`
-        ]
-      );
-
-      // 6. Insert book pages in batches
+      // 5. Insert book pages in batches
       const pageBatchSize = 25;
       for (let i = 0; i < pages.length; i += pageBatchSize) {
         const batch = pages.slice(i, i + pageBatchSize);
@@ -497,7 +474,19 @@ router.post(
         );
       }
 
-      // 7. Create semantic chunks with 768-dim embeddings in batches
+      // 6. AI Automatic Chapter Detection & Partitioning for ANY uploaded textbook
+      const detectedChapters = await aiChapterDetector.detectAndCreateChapters({
+        bookId,
+        bookTitleAr: title_ar.trim(),
+        bookTitleEn: title_en ? title_en.trim() : title_ar.trim(),
+        totalPages: totalNumPages || pages.length,
+        pages,
+        academicStageId: academic_stage_id,
+        gradeId: grade_id,
+        subjectId: subject_id
+      });
+
+      // 7. Create semantic chunks with 768-dim embeddings linked to each respective chapter
       const chunkItems: any[] = [];
       let chunkIdx = 1;
       const maxChunks = 80;
@@ -507,6 +496,11 @@ router.post(
         const paras = page.text.split(/\n\s*\n/).map((s: string) => s.trim()).filter((s: string) => s.length > 20);
         const segs = paras.length > 0 ? paras : [page.text];
 
+        const targetChapter = detectedChapters.find(
+          c => page.pageNumber >= c.start_page && page.pageNumber <= c.end_page
+        ) || detectedChapters[0];
+        const assignedChapterId = targetChapter?.id || bookId;
+
         for (const seg of segs) {
           if (chunkIdx > maxChunks) break;
           const chunkId = uuidv4();
@@ -514,7 +508,7 @@ router.post(
           chunkItems.push({
             id: chunkId,
             bookId,
-            chapterId,
+            chapterId: assignedChapterId,
             academicStageId: academic_stage_id,
             gradeId: grade_id,
             subjectId: subject_id,
@@ -686,7 +680,11 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
     }
 
     const chaptersRes = await db.query(
-      `SELECT * FROM book_chapters WHERE book_id = $1 ORDER BY chapter_number ASC`,
+      `SELECT bc.*, 
+              (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id) as chunks_count
+       FROM book_chapters bc 
+       WHERE bc.book_id = $1 
+       ORDER BY bc.chapter_number ASC`,
       [id]
     );
 
@@ -868,6 +866,159 @@ router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res)
   } catch (err: any) {
     console.error('Stream PDF error:', err);
     return res.status(500).json({ error: 'حدث خطأ أثناء تحميل ملف الـ PDF: ' + err.message });
+  }
+});
+
+// List chapters of a book with chunk statistics
+router.get('/:id/chapters', authenticateToken, async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const chaptersRes = await db.query(
+      `SELECT bc.*, 
+              (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id) as chunks_count
+       FROM book_chapters bc
+       WHERE bc.book_id = $1
+       ORDER BY bc.chapter_number ASC`,
+      [id]
+    );
+    return res.json(chaptersRes.rows);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب فصول الكتاب: ' + err.message });
+  }
+});
+
+// Teacher manually adds a chapter to a book
+router.post('/:id/chapters', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const { chapter_number, title_ar, title_en, start_page, end_page, description } = req.body;
+
+    if (!title_ar) {
+      return res.status(400).json({ error: 'الرجاء إدخال عنوان الفصل' });
+    }
+
+    const bookRes = await db.query('SELECT id, academic_stage_id, grade_id, subject_id FROM books WHERE id = $1', [id]);
+    if (bookRes.rows.length === 0) {
+      return res.status(404).json({ error: 'الكتاب غير موجود' });
+    }
+    const book = bookRes.rows[0];
+
+    const chapterId = uuidv4();
+    const chNum = parseInt(chapter_number, 10) || 1;
+    const sPage = parseInt(start_page, 10) || 1;
+    const ePage = parseInt(end_page, 10) || (sPage + 15);
+
+    await db.query(
+      `INSERT INTO book_chapters (id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        chapterId,
+        id,
+        chNum,
+        title_ar.trim(),
+        title_en ? title_en.trim() : `Chapter ${chNum}`,
+        sPage,
+        ePage,
+        description || `محتوى ${title_ar} ومفهرس دلالياً لدعم التقييم التشخيصي.`
+      ]
+    );
+
+    // Link chunks in this page range to the new chapter
+    await db.query(
+      `UPDATE book_chunks SET chapter_id = $1 
+       WHERE book_id = $2 AND page_number BETWEEN $3 AND $4`,
+      [chapterId, id, sPage, ePage]
+    );
+
+    return res.status(201).json({
+      message: 'تمت إضافة الفصل بنجاح',
+      chapter: {
+        id: chapterId,
+        book_id: id,
+        chapter_number: chNum,
+        title_ar,
+        title_en: title_en || `Chapter ${chNum}`,
+        start_page: sPage,
+        end_page: ePage
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في إضافة الفصل: ' + err.message });
+  }
+});
+
+// Teacher updates a chapter
+router.put('/:id/chapters/:chapterId', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const chapterId = String(req.params.chapterId);
+    const { chapter_number, title_ar, title_en, start_page, end_page } = req.body;
+
+    await db.query(
+      `UPDATE book_chapters 
+       SET chapter_number = COALESCE($3, chapter_number),
+           title_ar = COALESCE($4, title_ar),
+           title_en = COALESCE($5, title_en),
+           start_page = COALESCE($6, start_page),
+           end_page = COALESCE($7, end_page)
+       WHERE id = $1 AND book_id = $2`,
+      [chapterId, id, chapter_number, title_ar, title_en, start_page, end_page]
+    );
+
+    return res.json({ message: 'تم تحديث بيانات الفصل بنجاح' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في تحديث الفصل: ' + err.message });
+  }
+});
+
+// Teacher deletes a chapter
+router.delete('/:id/chapters/:chapterId', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const chapterId = String(req.params.chapterId);
+    await db.query('DELETE FROM book_chapters WHERE id = $1 AND book_id = $2', [chapterId, id]);
+    return res.json({ message: 'تم حذف الفصل بنجاح' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في حذف الفصل: ' + err.message });
+  }
+});
+
+// Run AI Auto-Detection of chapters on an existing book
+router.post('/:id/auto-detect-chapters', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const bookRes = await db.query(
+      'SELECT id, title_ar, title_en, total_pages, academic_stage_id, grade_id, subject_id FROM books WHERE id = $1',
+      [id]
+    );
+    if (bookRes.rows.length === 0) {
+      return res.status(404).json({ error: 'الكتاب غير موجود' });
+    }
+    const book = bookRes.rows[0];
+
+    const pagesRes = await db.query(
+      'SELECT page_number, raw_text as text FROM book_pages WHERE book_id = $1 ORDER BY page_number ASC LIMIT 30',
+      [id]
+    );
+
+    const detected = await aiChapterDetector.detectAndCreateChapters({
+      bookId: id,
+      bookTitleAr: book.title_ar,
+      bookTitleEn: book.title_en,
+      totalPages: Number(book.total_pages) || 120,
+      pages: pagesRes.rows.map((r: any) => ({ pageNumber: Number(r.page_number) || 1, text: r.text || '' })),
+      academicStageId: book.academic_stage_id,
+      gradeId: book.grade_id,
+      subjectId: book.subject_id
+    });
+
+    return res.json({
+      message: `تم استخراج وتقسيم ${detected.length} فصول بنجاح بالذكاء الاصطناعي.`,
+      chapters: detected
+    });
+  } catch (err: any) {
+    console.error('Auto detect chapters error:', err);
+    return res.status(500).json({ error: 'فشل استخراج الفصول آلياً: ' + err.message });
   }
 });
 
