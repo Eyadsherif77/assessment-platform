@@ -130,8 +130,13 @@ router.post('/register', async (req, res) => {
     const effectiveGradeId = gradeId || prep3GradeId;
     const effectiveSchoolType = educationType || schoolType || school_type || 'عربى';
     const effectiveTerm = term || 'الاول';
-    const effectiveStudentCode = studentCode || student_code || null;
     const govName = governorate || null;
+
+    // Auto-generate sequential student code (#s000001, #s000002, ...)
+    const studentCountRes = await db.query(`SELECT COUNT(*) as cnt FROM users WHERE role = 'STUDENT'`);
+    const studentCount = parseInt(studentCountRes.rows[0]?.cnt || studentCountRes.rows[0]?.COUNT || '0', 10);
+    const autoStudentCode = `#s${String(studentCount + 1).padStart(6, '0')}`;
+    const effectiveStudentCode = autoStudentCode;
 
     // Lookup governorate_id if governorate name provided
     let resolvedGovId = governorateId || null;
@@ -143,9 +148,9 @@ router.post('/register', async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO users (id, email, username, password_hash, role, full_name) 
-       VALUES ($1, $2, $3, $4, 'STUDENT', $5)`,
-      [userId, cleanEmail, cleanUsername, passwordHash, displayName]
+      `INSERT INTO users (id, super_id, email, username, password_hash, role, full_name) 
+       VALUES ($1, $2, $3, $4, $5, 'STUDENT', $6)`,
+      [userId, autoStudentCode, cleanEmail, cleanUsername, passwordHash, displayName]
     );
 
     await db.query(
@@ -182,6 +187,7 @@ router.post('/register', async (req, res) => {
       token,
       user: {
         id: userId,
+        super_id: autoStudentCode,
         email: cleanEmail,
         username: cleanUsername,
         role: 'STUDENT',

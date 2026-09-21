@@ -1,4 +1,12 @@
+// In-memory embedding cache for sub-millisecond retrieval of repeated queries
+const embeddingCache = new Map<string, number[]>();
+
 export async function generateEmbedding(text: string): Promise<number[]> {
+  const cacheKey = text.trim().slice(0, 500);
+  if (embeddingCache.has(cacheKey)) {
+    return embeddingCache.get(cacheKey)!;
+  }
+
   const geminiKey = process.env.GEMINI_API_KEY;
 
   if (geminiKey) {
@@ -17,6 +25,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       if (response.ok) {
         const data = await response.json();
         if (data.embedding?.values) {
+          embeddingCache.set(cacheKey, data.embedding.values);
           return data.embedding.values;
         }
       }
@@ -26,7 +35,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   // Robust educational vectorizer (768 dimensions)
-  return createSemanticVector(text, 768);
+  const fallbackVec = createSemanticVector(text, 768);
+  embeddingCache.set(cacheKey, fallbackVec);
+  return fallbackVec;
 }
 
 // Normalized 768-dim semantic hash vectorizer

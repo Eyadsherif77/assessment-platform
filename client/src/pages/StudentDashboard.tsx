@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
@@ -17,10 +17,11 @@ import {
   Flame,
   Target,
   LayoutDashboard,
-  ShieldCheck,
   Edit3,
   ExternalLink,
-  X
+  X,
+  Calendar,
+  TrendingUp
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
@@ -179,6 +180,130 @@ export const StudentDashboard: React.FC = () => {
     || analytics?.summary?.total_attempts 
     || analytics?.topics?.length 
     || 0;
+
+  // Periodic Average Level Filter State (Monthly / Weekly / Subject)
+  const [periodType, setPeriodType] = useState<'month' | 'week'>('month');
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>('all');
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
+
+  const { monthlyGroups, weeklyGroups, activePeriodGroup, filteredExams, currentAvgRate, availableSubjects } = useMemo(() => {
+    const allExams: any[] = analytics?.completed_exams || [];
+
+    // --- Extract unique subjects from all exams ---
+    const subjectMap = new Map<string, { id: string; nameAr: string; nameEn: string; count: number }>();
+    allExams.forEach(e => {
+      if (!e) return;
+      const sid = e.subject_id || e.subject_name_ar || 'unknown';
+      if (!subjectMap.has(sid)) {
+        subjectMap.set(sid, {
+          id: sid,
+          nameAr: e.subject_name_ar || 'غير محدد',
+          nameEn: e.subject_name_en || e.subject_name_ar || 'Unknown',
+          count: 0
+        });
+      }
+      subjectMap.get(sid)!.count++;
+    });
+    const availableSubjects = Array.from(subjectMap.values()).sort((a, b) => b.count - a.count);
+
+    // --- Filter by selected subject first ---
+    const subjectFiltered = selectedSubjectFilter === 'all'
+      ? allExams
+      : allExams.filter(e => e && (e.subject_id === selectedSubjectFilter || e.subject_name_ar === selectedSubjectFilter));
+    
+    // Sort exams by created_at descending (latest first)
+    const sortedExams = [...subjectFiltered].filter(e => e && e.created_at).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    const monthMap = new Map<string, { labelAr: string; labelEn: string; startDate: Date; endDate: Date; exams: any[] }>();
+    const weekMap = new Map<string, { labelAr: string; labelEn: string; subLabelAr?: string; subLabelEn?: string; startDate: Date; endDate: Date; exams: any[] }>();
+
+    sortedExams.forEach(exam => {
+      const d = new Date(exam.created_at);
+      if (isNaN(d.getTime())) return;
+
+      // --- Month Grouping ---
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthMap.has(monthKey)) {
+        const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+        const labelAr = d.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+        const labelEn = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        monthMap.set(monthKey, { labelAr, labelEn, startDate: monthStart, endDate: monthEnd, exams: [] });
+      }
+      monthMap.get(monthKey)!.exams.push(exam);
+
+      // --- Week Grouping (Week starts on Saturday) ---
+      const day = d.getDay(); // 0 is Sun, 6 is Sat
+      const offset = (day + 1) % 7;
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - offset);
+      weekStart.setHours(0, 0, 0, 0);
+
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      const weekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+      if (!weekMap.has(weekKey)) {
+        const labelAr = `${weekStart.getDate()} ${weekStart.toLocaleDateString('ar-EG', { month: 'short' })} - ${weekEnd.getDate()} ${weekEnd.toLocaleDateString('ar-EG', { month: 'short', year: 'numeric' })}`;
+        const labelEn = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        
+        const now = new Date();
+        const isCurrentWeek = now >= weekStart && now <= weekEnd;
+        const subLabelAr = isCurrentWeek ? 'الأسبوع الحالي' : `أسبوع ${weekStart.getDate()} ${weekStart.toLocaleDateString('ar-EG', { month: 'short' })}`;
+        const subLabelEn = isCurrentWeek ? 'Current Week' : `Week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+        weekMap.set(weekKey, { labelAr, labelEn, subLabelAr, subLabelEn, startDate: weekStart, endDate: weekEnd, exams: [] });
+      }
+      weekMap.get(weekKey)!.exams.push(exam);
+    });
+
+    const buildGroupList = (map: Map<string, any>) => {
+      return Array.from(map.entries()).map(([key, data]) => {
+        const percentages = data.exams.map((e: any) => e.percentage ?? Math.round(((e.score || 0) / (e.total || 1)) * 100));
+        const avgPercentage = percentages.length > 0 
+          ? Math.round(percentages.reduce((a: number, b: number) => a + b, 0) / percentages.length)
+          : 0;
+        const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
+        const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
+
+        return {
+          key,
+          labelAr: data.labelAr,
+          labelEn: data.labelEn,
+          subLabelAr: data.subLabelAr,
+          subLabelEn: data.subLabelEn,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          exams: data.exams,
+          avgPercentage,
+          highestScore,
+          lowestScore
+        };
+      }).sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
+    };
+
+    const monthlyGroups = buildGroupList(monthMap);
+    const weeklyGroups = buildGroupList(weekMap);
+
+    const activeList = periodType === 'month' ? monthlyGroups : weeklyGroups;
+    const activePeriodGroup = selectedPeriodKey === 'all' 
+      ? null 
+      : activeList.find(g => g.key === selectedPeriodKey) || null;
+
+    const filteredExams = activePeriodGroup 
+      ? activePeriodGroup.exams 
+      : sortedExams;
+
+    const currentPercentages = filteredExams.map((e: any) => e.percentage ?? Math.round(((e.score || 0) / (e.total || 1)) * 100));
+    const currentAvgRate = currentPercentages.length > 0
+      ? Math.round(currentPercentages.reduce((a: number, b: number) => a + b, 0) / currentPercentages.length)
+      : (calculatedMastery || 0);
+
+    return { monthlyGroups, weeklyGroups, activePeriodGroup, filteredExams, currentAvgRate, availableSubjects };
+  }, [analytics?.completed_exams, periodType, selectedPeriodKey, selectedSubjectFilter, calculatedMastery]);
 
   // Profile edit modal state
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -530,16 +655,7 @@ export const StudentDashboard: React.FC = () => {
             onClick={() => setActiveTab('ai')}
           >
             <BrainCircuit size={18} />
-            <span>{isAr ? 'المعلم الذكي والتقييم' : 'Smart AI Tutor'}</span>
-            <span className="sidebar-badge badge-primary">{isAr ? 'تفاعلي' : 'Interactive'}</span>
-          </button>
-
-          <button
-            className={`sidebar-btn ${activeTab === 'books' ? 'active' : ''}`}
-            onClick={() => setActiveTab('books')}
-          >
-            <BookOpen size={18} />
-            <span>{isAr ? `كتبي ومناهجي (${books.length})` : `My Textbooks (${books.length})`}</span>
+            <span>{isAr ? 'امتحانات متغيرة' : 'Variable Exams'}</span>
           </button>
 
           <button
@@ -547,7 +663,7 @@ export const StudentDashboard: React.FC = () => {
             onClick={() => setActiveTab('exams')}
           >
             <Clock size={18} />
-            <span>{isAr ? `الامتحانات المجدولة (${exams.length})` : `Scheduled Exams (${exams.length})`}</span>
+            <span>{isAr ? `امتحانات ثابتة (${exams.length})` : `Fixed Exams (${exams.length})`}</span>
           </button>
 
           <button
@@ -555,18 +671,9 @@ export const StudentDashboard: React.FC = () => {
             onClick={() => setActiveTab('analytics')}
           >
             <BarChart3 size={18} />
-            <span>{isAr ? 'سجل الإتقان والتقدم' : 'Mastery & Analytics'}</span>
+            <span>{isAr ? 'تحليلات النتائج' : 'Results Analytics'}</span>
           </button>
         </nav>
-
-        {/* Bottom Support Info */}
-        <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, color: 'var(--primary-700)', marginBottom: '0.2rem' }}>
-            <ShieldCheck size={14} />
-            <span>{isAr ? 'منهج وزاري معتمد 2026' : 'Certified Curriculum 2026'}</span>
-          </div>
-          <div>{isAr ? 'مرتبط حصرياً بكتب مدرستك' : 'Grounded in official school textbooks'}</div>
-        </div>
       </aside>
 
       {/* =========================================================
@@ -601,9 +708,10 @@ export const StudentDashboard: React.FC = () => {
                 </h2>
                 <p style={{ color: '#CBD5E1', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>
                   {isAr
-                    ? <>أنت مسجل في <strong>{user?.profile?.grade_name_ar || 'الصف الثالث الإعدادي'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}</strong> • مناهج وكتب مخصصة ومطابقة 100%.</>
-                    : <>Enrolled in <strong>{user?.profile?.grade_name_en || 'Prep 1'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'}</strong> • 100% textbook-grounded curriculum.</>}
+                    ? <>{user?.profile?.grade_name_ar || 'الصف الثالث الإعدادي'} • <strong>{user?.profile?.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}</strong></>
+                    : <>Enrolled in <strong>{user?.profile?.grade_name_en || 'Prep 1'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'}</strong></>}
                 </p>
+
                 <div style={{ marginTop: '0.6rem' }}>
                   <button
                     onClick={handleOpenProfileModal}
@@ -735,26 +843,8 @@ export const StudentDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Grid: Available Books and Exams */}
+            {/* Quick Grid: Available Exams */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
-              <div className="card" style={{ padding: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0 }}>
-                    {isAr ? 'مناهجي المفهرسة' : 'My Indexed Textbooks'}
-                  </h3>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab('books')}>
-                    {isAr ? 'عرض الكل ⬅️' : 'View All ➡️'}
-                  </button>
-                </div>
-                {books.slice(0, 2).map(b => (
-                  <div key={b.id} style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{isAr ? b.title_ar : (b.title_en || b.title_ar)}</div>
-                    <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
-                      {isAr ? '✓ معتمد' : '✓ Certified'}
-                    </span>
-                  </div>
-                ))}
-              </div>
 
               <div className="card" style={{ padding: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -781,6 +871,7 @@ export const StudentDashboard: React.FC = () => {
               </div>
             </div>
 
+
             {/* Recent Completed Assessments on Home */}
             {analytics?.completed_exams && analytics.completed_exams.length > 0 && (
               <div className="card" style={{ padding: '1.5rem' }}>
@@ -792,7 +883,7 @@ export const StudentDashboard: React.FC = () => {
                     </h3>
                   </div>
                   <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab('analytics')}>
-                    {isAr ? 'عرض سجل الإتقان الكامل ⬅️' : 'View Full Mastery Log ➡️'}
+                    {isAr ? 'عرض تحليلات النتائج ⬅️' : 'View Results Analytics ➡️'}
                   </button>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
@@ -860,12 +951,10 @@ export const StudentDashboard: React.FC = () => {
                     {isAr ? 'الخطوة 1 من 6' : 'Step 1 of 6'}
                   </span>
                   <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--text-title)' }}>
-                    {isAr ? 'اختر المادة الدراسية للتقييم' : 'Select Subject for Diagnostic Quiz'}
+                    {isAr ? 'اختار المادة الدراسية للتقييم' : 'Select Subject for Diagnostic Quiz'}
                   </h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                    {isAr ? 'يتم استخراج الأسئلة حصرياً من كتاب الوزارة المعتمد لصفك' : 'Questions are strictly extracted from your official curriculum textbook'}
-                  </p>
                 </div>
+
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
                   {books.map(b => {
@@ -903,15 +992,8 @@ export const StudentDashboard: React.FC = () => {
                           <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.25rem' }}>
                             {isAr ? b.title_ar : (b.title_en || b.title_ar)}
                           </h4>
-                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.2rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              {isAr ? b.subject_name_ar : (b.subject_name_en || b.subject_name_ar)}
-                            </span>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: b.school_type === 'لغات' ? '#1D4ED8' : b.school_type === 'عربي' ? '#15803D' : '#6D28D9' }}>
-                              • {b.school_type === 'عربي' ? (isAr ? '🏫 عربي' : 'Arabic') : b.school_type === 'لغات' ? (isAr ? '🌐 لغات' : 'Language') : (isAr ? '🤝 عام ولغات' : 'Common')}
-                            </span>
-                          </div>
                         </div>
+
                       </div>
                     );
                   })}
@@ -1027,14 +1109,10 @@ export const StudentDashboard: React.FC = () => {
                   <Sparkles size={32} />
                 </div>
 
-                <h2 style={{ fontSize: 'clamp(1.25rem, 4.5vw, 1.6rem)', fontWeight: 900, marginBottom: '0.65rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
-                  {isAr ? 'جاهز لتوليد أسئلة الفصل الذكية؟' : 'Ready to Generate Questions?'}
+                <h2 style={{ fontSize: 'clamp(1.25rem, 4.5vw, 1.6rem)', fontWeight: 900, marginBottom: '1.75rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
+                  {isAr ? 'جاهز لامتحان جديد' : 'Ready for a New Exam?'}
                 </h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6, maxWidth: '520px', margin: '0 auto 1.75rem' }}>
-                  {isAr 
-                    ? 'سيقوم محرك الذكاء الاصطناعي باستخراج فقرات الكتاب المنهجي وصياغة 3 أسئلة معيارية وفق تصنيف بلوم مع ربط الصفحة لكل سؤال.'
-                    : 'The AI engine will retrieve paragraphs from your textbook and generate 3 Bloom-calibrated questions grounded in specific pages.'}
-                </p>
+
 
                 {aiGenError && (
                   <div style={{
@@ -1065,8 +1143,8 @@ export const StudentDashboard: React.FC = () => {
                     style={{ fontWeight: 800, borderRadius: 'var(--radius-full)' }}
                   >
                     {isGeneratingAi 
-                      ? (isAr ? 'جاري استخراج الأسئلة من الكتاب...' : 'Extracting from textbook...') 
-                      : (isAr ? 'توليد الأسئلة وبدء الحل 🚀' : 'Generate Questions & Start 🚀')}
+                      ? (isAr ? 'جاري تجهيز أسئلة الاختبار...' : 'Preparing exam questions...') 
+                      : (isAr ? 'بدء الاختبار وحل الأسئلة 🚀' : 'Start Exam & Solve Questions 🚀')}
                   </button>
                   <button className="btn btn-outline" onClick={() => setAiStep(2)} disabled={isGeneratingAi}>
                     {isAr ? 'الرجوع للفصول' : 'Back to Chapters'}
@@ -1434,17 +1512,15 @@ export const StudentDashboard: React.FC = () => {
                             textAlign: isItemEn ? 'left' : 'right'
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                               <span style={{ fontSize: '1.1rem' }}>{item.is_correct ? '✅' : '❌'}</span>
                               <strong style={{ color: 'var(--primary-950)', fontSize: '0.95rem' }}>
                                 {isAr ? `السؤال ${idx + 1}` : `Question ${idx + 1}`}: {item.question_text}
                               </strong>
+                              <span className="badge badge-primary" style={{ marginInlineStart: '0.25rem' }}>
+                                📖 {isAr ? `صفحة ${item.page_reference || '7'}` : `Page ${item.page_reference || '7'}`}
+                              </span>
                             </div>
-                            <span className="badge badge-primary">
-                              📖 {isAr ? `صفحة ${item.page_reference || '7'}` : `Page ${item.page_reference || '7'}`}
-                            </span>
-                          </div>
 
                           <div style={{ fontSize: '0.85rem', margin: '0.4rem 0', color: item.is_correct ? '#15803D' : '#B45309', fontWeight: 600 }}>
                             {item.study_recommendation || (item.is_correct
@@ -2129,7 +2205,7 @@ export const StudentDashboard: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
-                {isAr ? 'سجل الإتقان والتقدم التراكمي' : 'Mastery & Learning Progress'}
+                {isAr ? 'تحليلات النتائج والتقدم التراكمي' : 'Results Analytics & Learning Progress'}
               </h2>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                 {isAr ? 'متابعة دقيقة للأداء عبر الفصول الدراسية وتصنيف نواتج التعلم' : 'Longitudinal tracking across chapters and curriculum benchmarks'}
@@ -2248,12 +2324,563 @@ export const StudentDashboard: React.FC = () => {
                     <h4 style={{ fontWeight: 800, margin: '0 0 0.5rem' }}>{isAr ? 'لا توجد تقييمات مسجلة بعد' : 'No evaluation records yet'}</h4>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '440px', margin: '0 auto 1.25rem' }}>
                       {isAr
-                        ? 'ابدأ أول تقييم تشخيصي مع المعلم الذكي أو خض امتحاناً لتظهر تحليلات نواتج التعلم وسجل الإتقان هنا.'
-                        : 'Take your first AI diagnostic quiz or timed exam to generate real mastery analytics.'}
+                        ? 'ابدأ أول تقييم تشخيصي أو خض امتحاناً لتظهر تحليلات نواتج التعلم وتحليلات النتائج هنا.'
+                        : 'Take your first diagnostic assessment or timed exam to generate real mastery analytics.'}
                     </p>
                     <button className="btn btn-primary" onClick={() => { setActiveTab('ai'); setAiStep(1); }}>
                       {isAr ? 'بدء تقييم تشخيصي الآن 🚀' : 'Start Diagnostic Quiz 🚀'}
                     </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Periodic Level Average & Performance Box (Monthly / Weekly / Subject Filter) */}
+            <div className="card" style={{
+              padding: '1.75rem',
+              border: '1.5px solid var(--border-light)',
+              background: 'linear-gradient(180deg, var(--bg-card) 0%, var(--bg-subtle) 100%)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              {/* Header with Title and Mode Switcher */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                gap: '1rem',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                  <div style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: 'var(--radius-lg)',
+                    background: 'linear-gradient(135deg, var(--primary-600) 0%, var(--primary-800) 100%)',
+                    color: '#FFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+                    flexShrink: 0
+                  }}>
+                    <TrendingUp size={24} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 900, margin: 0, color: 'var(--text-title)' }}>
+                      {isAr ? 'معدل المستوى ومتوسط الدرجات الدوري' : 'Periodic Level Average & Mastery Trends'}
+                    </h3>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                      {isAr 
+                        ? 'احسب متوسط مستواك التراكمي وتطور أدائك شهرياً أو أسبوعياً استناداً لتواريخ الاختبارات الفعلية'
+                        : 'Calculate your average level & learning growth monthly or weekly based on actual exam dates'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filter Controls: Monthly / Weekly toggle + Select dropdown */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {/* Period Type Pills */}
+                  <div style={{
+                    display: 'flex',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: 'var(--radius-full)',
+                    padding: '3px'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPeriodType('month');
+                        setSelectedPeriodKey('all');
+                      }}
+                      style={{
+                        border: 'none',
+                        background: periodType === 'month' ? 'var(--primary-600)' : 'transparent',
+                        color: periodType === 'month' ? '#FFFFFF' : 'var(--text-muted)',
+                        padding: '0.4rem 0.9rem',
+                        borderRadius: 'var(--radius-full)',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Calendar size={14} />
+                      <span>{isAr ? 'شهرياً' : 'Monthly'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPeriodType('week');
+                        setSelectedPeriodKey('all');
+                      }}
+                      style={{
+                        border: 'none',
+                        background: periodType === 'week' ? 'var(--primary-600)' : 'transparent',
+                        color: periodType === 'week' ? '#FFFFFF' : 'var(--text-muted)',
+                        padding: '0.4rem 0.9rem',
+                        borderRadius: 'var(--radius-full)',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Clock size={14} />
+                      <span>{isAr ? 'أسبوعياً' : 'Weekly'}</span>
+                    </button>
+                  </div>
+
+                  {/* Dropdown Selector */}
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      value={selectedPeriodKey}
+                      onChange={(e) => setSelectedPeriodKey(e.target.value)}
+                      style={{
+                        padding: '0.45rem 1.8rem 0.45rem 0.9rem',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1.5px solid var(--border-light)',
+                        background: 'var(--bg-card)',
+                        color: 'var(--text-title)',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        outline: 'none',
+                        minWidth: '170px'
+                      }}
+                    >
+                      <option value="all">
+                        {isAr 
+                          ? (periodType === 'month' ? '✨ كل الأشهر (المتوسط العام)' : '✨ كل الأسابيع (المتوسط العام)')
+                          : (periodType === 'month' ? '✨ All Months (Overall Avg)' : '✨ All Weeks (Overall Avg)')}
+                      </option>
+                      {(periodType === 'month' ? monthlyGroups : weeklyGroups).map(g => (
+                        <option key={g.key} value={g.key}>
+                          {isAr ? g.labelAr : g.labelEn} ({g.avgPercentage}% - {g.exams.length} {isAr ? 'اختبار' : 'tests'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subject Filter Pills */}
+              {availableSubjects.length > 1 && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                    {isAr ? '📚 تصفية حسب المادة:' : '📚 Filter by Subject:'}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+                    {/* All subjects pill */}
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedSubjectFilter('all'); setSelectedPeriodKey('all'); }}
+                      style={{
+                        padding: '0.35rem 0.85rem',
+                        borderRadius: 'var(--radius-full)',
+                        border: `2px solid ${selectedSubjectFilter === 'all' ? 'var(--primary-500)' : 'var(--border-light)'}`,
+                        background: selectedSubjectFilter === 'all' ? 'var(--primary-600)' : 'var(--bg-card)',
+                        color: selectedSubjectFilter === 'all' ? '#FFF' : 'var(--text-title)',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
+                      }}
+                    >
+                      <span>🗂️</span>
+                      <span>{isAr ? 'جميع المواد' : 'All Subjects'}</span>
+                      <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({analytics?.completed_exams?.length || 0})</span>
+                    </button>
+
+                    {/* Per-subject pills */}
+                    {availableSubjects.map(subj => (
+                      <button
+                        key={subj.id}
+                        type="button"
+                        onClick={() => { setSelectedSubjectFilter(subj.id); setSelectedPeriodKey('all'); }}
+                        style={{
+                          padding: '0.35rem 0.85rem',
+                          borderRadius: 'var(--radius-full)',
+                          border: `2px solid ${selectedSubjectFilter === subj.id ? 'var(--primary-500)' : 'var(--border-light)'}`,
+                          background: selectedSubjectFilter === subj.id ? 'var(--primary-600)' : 'var(--bg-card)',
+                          color: selectedSubjectFilter === subj.id ? '#FFF' : 'var(--text-title)',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem'
+                        }}
+                      >
+                        <span>{isAr ? subj.nameAr : subj.nameEn}</span>
+                        <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({subj.count})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* KPI Summary Cards */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem',
+                marginBottom: '1.5rem'
+              }}>
+                {/* 1. Average Rate */}
+                <div style={{
+                  padding: '1.25rem',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1.5px solid var(--border-light)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                      {isAr ? 'متوسط معدل المستوى' : 'Average Level Rate'}
+                    </span>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 800,
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: 'var(--radius-full)',
+                      background: currentAvgRate >= 80 ? '#F0FDF4' : currentAvgRate >= 60 ? '#EFF6FF' : '#FFFBEB',
+                      color: currentAvgRate >= 80 ? '#16A34A' : currentAvgRate >= 60 ? '#2563EB' : '#D97706',
+                      border: `1px solid ${currentAvgRate >= 80 ? '#BBF7D0' : currentAvgRate >= 60 ? '#BFDBFE' : '#FDE68A'}`
+                    }}>
+                      {currentAvgRate >= 85 
+                        ? (isAr ? '🌟 متفوق' : '🌟 Excellent') 
+                        : currentAvgRate >= 70 
+                        ? (isAr ? '🟢 متقدم' : '🟢 Advanced') 
+                        : currentAvgRate >= 50 
+                        ? (isAr ? '🟡 متوسط' : '🟡 Good') 
+                        : (isAr ? '🟠 بحاجة لدعم' : '🟠 Developing')}
+                    </span>
+                  </div>
+                  <div style={{
+                    fontSize: '2.25rem',
+                    fontWeight: 900,
+                    color: currentAvgRate >= 80 ? '#16A34A' : currentAvgRate >= 60 ? 'var(--primary-700)' : '#D97706',
+                    lineHeight: 1.1,
+                    marginBottom: '0.4rem'
+                  }}>
+                    {currentAvgRate}%
+                  </div>
+                  {/* Visual Bar */}
+                  <div style={{ width: '100%', height: '6px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{
+                      width: `${currentAvgRate}%`,
+                      height: '100%',
+                      background: currentAvgRate >= 80 ? '#16A34A' : currentAvgRate >= 60 ? 'var(--primary-600)' : '#D97706',
+                      borderRadius: '999px',
+                      transition: 'width 0.4s ease'
+                    }} />
+                  </div>
+                </div>
+
+                {/* 2. Exams Count */}
+                <div style={{
+                  padding: '1.25rem',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1.5px solid var(--border-light)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {isAr ? 'الاختبارات المحسوبة' : 'Calculated Assessments'}
+                  </span>
+                  <div style={{ fontSize: '2.25rem', fontWeight: 900, color: 'var(--text-title)', lineHeight: 1.1, margin: '0.4rem 0' }}>
+                    {filteredExams.length}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {isAr ? 'تقييمات مجتازة في النطاق المحدد' : 'Completed within this timeframe'}
+                  </span>
+                </div>
+
+                {/* 3. Highest / Lowest Score */}
+                <div style={{
+                  padding: '1.25rem',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1.5px solid var(--border-light)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {isAr ? 'المدى التقييمي للدرجات' : 'Score Range (Min / Max)'}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0.4rem 0' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 700 }}>{isAr ? 'الأعلى:' : 'Max:'}</span>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#16A34A' }}>
+                        {filteredExams.length > 0 ? `${Math.max(...filteredExams.map((e: any) => e.percentage ?? Math.round(((e.score || 0) / (e.total || 1)) * 100)))}%` : '0%'}
+                      </div>
+                    </div>
+                    <div style={{ width: '1px', height: '28px', background: 'var(--border-light)' }} />
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#D97706', fontWeight: 700 }}>{isAr ? 'الأدنى:' : 'Min:'}</span>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#D97706' }}>
+                        {filteredExams.length > 0 ? `${Math.min(...filteredExams.map((e: any) => e.percentage ?? Math.round(((e.score || 0) / (e.total || 1)) * 100)))}%` : '0%'}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {isAr ? 'أفضل وأقل نتيجة مسجلة' : 'Best & lowest recorded score'}
+                  </span>
+                </div>
+
+                {/* 4. Active Period Name */}
+                <div style={{
+                  padding: '1.25rem',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1.5px solid var(--border-light)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {isAr ? 'الفترة المحددة' : 'Selected Timeframe'}
+                  </span>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--primary-700)', margin: '0.4rem 0', wordBreak: 'break-word' }}>
+                    {activePeriodGroup 
+                      ? (isAr ? activePeriodGroup.labelAr : activePeriodGroup.labelEn)
+                      : (isAr ? (periodType === 'month' ? 'جميع الأشهر' : 'جميع الأسابيع') : (periodType === 'month' ? 'All Months' : 'All Weeks'))}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {activePeriodGroup 
+                      ? (isAr ? `${activePeriodGroup.exams.length} اختبارات في هذه الفترة` : `${activePeriodGroup.exams.length} exams in this period`)
+                      : (isAr ? 'عرض المعدل التراكمي الشامل' : 'Showing overall cumulative average')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Periodic Breakdown Timeline Cards (Interactive List of all months or weeks) */}
+              {(periodType === 'month' ? monthlyGroups : weeklyGroups).length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>{periodType === 'month' ? '🗓️' : '⏱️'}</span>
+                      <span>
+                        {isAr 
+                          ? (periodType === 'month' ? 'تطور المعدل عبر الأشهر:' : 'تطور المعدل عبر الأسابيع:') 
+                          : (periodType === 'month' ? 'Monthly Performance Breakdown:' : 'Weekly Performance Breakdown:')}
+                      </span>
+                    </h4>
+                    {selectedPeriodKey !== 'all' && (
+                      <button
+                        onClick={() => setSelectedPeriodKey('all')}
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', height: 'auto', fontWeight: 700 }}
+                      >
+                        {isAr ? 'إلغاء التحديد وعرض الكل ✕' : 'Clear Filter ✕'}
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                    gap: '0.75rem'
+                  }}>
+                    {(periodType === 'month' ? monthlyGroups : weeklyGroups).map((group) => {
+                      const isSelected = selectedPeriodKey === group.key;
+                      const gPct = group.avgPercentage;
+                      const gColor = gPct >= 80 ? '#16A34A' : gPct >= 60 ? 'var(--primary-600)' : '#D97706';
+
+                      return (
+                        <div
+                          key={group.key}
+                          onClick={() => setSelectedPeriodKey(isSelected ? 'all' : group.key)}
+                          style={{
+                            padding: '0.85rem 1rem',
+                            background: isSelected ? 'var(--primary-50)' : 'var(--bg-card)',
+                            border: `2px solid ${isSelected ? 'var(--primary-500)' : 'var(--border-light)'}`,
+                            borderRadius: 'var(--radius-lg)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            boxShadow: isSelected ? '0 4px 14px rgba(37, 99, 235, 0.12)' : 'none',
+                            position: 'relative'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                            <span style={{ fontWeight: 800, fontSize: '0.85rem', color: isSelected ? 'var(--primary-800)' : 'var(--text-title)' }}>
+                              {isAr ? group.labelAr : group.labelEn}
+                            </span>
+                            <span style={{
+                              fontWeight: 900,
+                              fontSize: '0.95rem',
+                              color: gColor
+                            }}>
+                              {gPct}%
+                            </span>
+                          </div>
+
+                          {/* Progress bar */}
+                          <div style={{ width: '100%', height: '5px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden', marginBottom: '0.45rem' }}>
+                            <div style={{ width: `${gPct}%`, height: '100%', background: gColor, borderRadius: '999px' }} />
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            <span>{group.exams.length} {isAr ? 'تقييمات' : 'assessments'}</span>
+                            <span style={{ fontWeight: 700, color: isSelected ? 'var(--primary-600)' : 'inherit' }}>
+                              {isSelected ? (isAr ? '✓ محدد' : '✓ Active') : (isAr ? 'اضغط للفلترة' : 'Click to filter')}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Filtered Exams List for this timeframe */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span>📋</span>
+                    <span>
+                      {isAr 
+                        ? `الاختبارات المنجزة في الفترة المحددة (${filteredExams.length}):`
+                        : `Assessments Completed in Selected Timeframe (${filteredExams.length}):`}
+                    </span>
+                  </h4>
+                  {activePeriodGroup && (
+                    <span style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: 'var(--radius-full)',
+                      background: 'var(--primary-100)',
+                      color: 'var(--primary-700)'
+                    }}>
+                      {isAr ? activePeriodGroup.labelAr : activePeriodGroup.labelEn}
+                    </span>
+                  )}
+                </div>
+
+                {filteredExams.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {filteredExams.map((exam: any, idx: number) => {
+                      const pct = exam.percentage ?? Math.round(((exam.score || 0) / (exam.total || 1)) * 100);
+                      const isMastered = pct >= 80;
+                      const isProficient = pct >= 60 && pct < 80;
+                      const badgeColor = isMastered ? '#16A34A' : isProficient ? '#2563EB' : '#D97706';
+                      const badgeBg = isMastered ? '#F0FDF4' : isProficient ? '#EFF6FF' : '#FFFBEB';
+                      const badgeBorder = isMastered ? '#BBF7D0' : isProficient ? '#BFDBFE' : '#FDE68A';
+
+                      const examDate = exam.created_at
+                        ? new Date(exam.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+                            weekday: 'short',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : '';
+
+                      return (
+                        <div
+                          key={exam.id || idx}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '0.9rem 1.1rem',
+                            background: 'var(--bg-card)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-light)',
+                            flexWrap: 'wrap',
+                            gap: '0.75rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '220px', flex: 1 }}>
+                            <div style={{
+                              width: '38px',
+                              height: '38px',
+                              borderRadius: 'var(--radius-md)',
+                              background: badgeBg,
+                              border: `1px solid ${badgeBorder}`,
+                              color: badgeColor,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '1.1rem',
+                              fontWeight: 900,
+                              flexShrink: 0
+                            }}>
+                              {exam.type === 'TIMED_EXAM' ? '⏱️' : '📝'}
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                              <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-title)' }}>
+                                {isAr ? (exam.chapter_title_ar || exam.title_ar || exam.subject_name_ar) : (exam.chapter_title_en || exam.title_en || exam.subject_name_en)}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                <span style={{ fontWeight: 600 }}>{isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}</span>
+                                <span>•</span>
+                                <span>{examDate}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexShrink: 0 }}>
+                            <div style={{ textAlign: isAr ? 'left' : 'right' }}>
+                              <div style={{ fontSize: '1.15rem', fontWeight: 900, color: badgeColor }}>
+                                {pct}%
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                {exam.score} / {exam.total} {isAr ? 'درجة' : 'pts'}
+                              </div>
+                            </div>
+
+                            {exam.report && (
+                              <button
+                                className="btn btn-outline btn-sm"
+                                onClick={() => {
+                                  setAiReport(exam.report);
+                                  setActiveTab('ai');
+                                  setAiStep(5);
+                                }}
+                                style={{ fontWeight: 700, fontSize: '0.75rem', padding: '0.3rem 0.6rem', height: 'auto', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                title={isAr ? 'عرض تقرير التشخيص والإجابات' : 'View Diagnostic Report'}
+                              >
+                                <span>{isAr ? 'التقرير 📋' : 'Report 📋'}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '2rem 1rem',
+                    background: 'var(--bg-card)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1px dashed var(--border-light)',
+                    color: 'var(--text-muted)'
+                  }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.4rem' }}>📅</div>
+                    <div style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                      {isAr ? 'لا توجد اختبارات مسجلة في هذا النطاق الزمني' : 'No assessments found for this timeframe'}
+                    </div>
+                    <p style={{ fontSize: '0.78rem', margin: 0 }}>
+                      {isAr 
+                        ? 'جرّب تغيير الفلتر لاختيار شهر أو أسبوع آخر، أو ابدأ امتحاناً جديداً لتسجيل درجاتك.' 
+                        : 'Try changing the filter to another period or take a new exam to record your performance.'}
+                    </p>
                   </div>
                 )}
               </div>
@@ -2334,7 +2961,7 @@ export const StudentDashboard: React.FC = () => {
                             fontWeight: 900,
                             flexShrink: 0
                           }}>
-                            {exam.type === 'TIMED_EXAM' ? '⏱️' : '🧠'}
+                            {exam.type === 'TIMED_EXAM' ? '⏱️' : '📝'}
                           </div>
 
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
@@ -2357,12 +2984,6 @@ export const StudentDashboard: React.FC = () => {
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                               <span style={{ fontWeight: 600 }}>{isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}</span>
-                              {exam.book_title_ar && (
-                                <>
-                                  <span>•</span>
-                                  <span>{isAr ? exam.book_title_ar : (exam.book_title_en || exam.book_title_ar)}</span>
-                                </>
-                              )}
                               <span>•</span>
                               <span>{formattedDate}</span>
                             </div>
@@ -2429,15 +3050,7 @@ export const StudentDashboard: React.FC = () => {
           onClick={() => setActiveTab('ai')}
         >
           <BrainCircuit size={18} />
-          <span>{isAr ? 'المعلم الذكي' : 'AI Tutor'}</span>
-        </button>
-
-        <button
-          className={`mobile-nav-btn ${activeTab === 'books' ? 'active' : ''}`}
-          onClick={() => setActiveTab('books')}
-        >
-          <BookOpen size={18} />
-          <span>{isAr ? 'مناهجي' : 'Books'}</span>
+          <span>{isAr ? 'امتحانات متغيرة' : 'Variable Exams'}</span>
         </button>
 
         <button
@@ -2445,7 +3058,7 @@ export const StudentDashboard: React.FC = () => {
           onClick={() => setActiveTab('exams')}
         >
           <Clock size={18} />
-          <span>{isAr ? 'الامتحانات' : 'Exams'}</span>
+          <span>{isAr ? 'امتحانات ثابتة' : 'Fixed Exams'}</span>
         </button>
 
         <button
@@ -2453,7 +3066,7 @@ export const StudentDashboard: React.FC = () => {
           onClick={() => setActiveTab('analytics')}
         >
           <BarChart3 size={18} />
-          <span>{isAr ? 'الإتقان' : 'Mastery'}</span>
+          <span>{isAr ? 'تحليلات النتائج' : 'Results Analytics'}</span>
         </button>
       </nav>
 

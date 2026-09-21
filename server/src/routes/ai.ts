@@ -156,7 +156,7 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
     });
 
     return res.json({
-      message: 'تم إتمام التقييم الذكي وتشخيص نقاط الضعف وخطة العلاج بنجاح',
+      message: 'تم إتمام التقييم الذكي وتشخيص نقاط الضعف وخطة المراجعة بنجاح',
       report
     });
   } catch (err: any) {

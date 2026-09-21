@@ -113,11 +113,16 @@ class DatabaseManager {
     });
 
     if (this.tidbConn) {
-      let tidbSql = sql.replace(/\$(\d+)/g, '?');
+      const orderedParams: any[] = [];
+      let tidbSql = sql.replace(/\$(\d+)/g, (_, idxStr) => {
+        const idx = parseInt(idxStr, 10) - 1;
+        orderedParams.push(sanitizedParams[idx]);
+        return '?';
+      });
       tidbSql = tidbSql.replace(/datetime\(['"]now['"]\)/gi, 'NOW()');
       tidbSql = tidbSql.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
 
-      const res = (await this.tidbConn.execute(tidbSql, sanitizedParams, { fullResult: true })) as any;
+      const res = (await this.tidbConn.execute(tidbSql, orderedParams, { fullResult: true })) as any;
       const rows = (res.rows || []) as T[];
       return {
         rows,
@@ -131,17 +136,22 @@ class DatabaseManager {
       };
     } else if (this.sqlite) {
       // Convert PostgreSQL $1 placeholders to SQLite ? placeholders
-      const sqliteSql = sql.replace(/\$(\d+)/g, '?');
+      const orderedParams: any[] = [];
+      const sqliteSql = sql.replace(/\$(\d+)/g, (_, idxStr) => {
+        const idx = parseInt(idxStr, 10) - 1;
+        orderedParams.push(sanitizedParams[idx]);
+        return '?';
+      });
 
       // Determine if this is a SELECT query or a mutation
       const trimmed = sqliteSql.trim().toUpperCase();
       if (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH')) {
         const stmt = this.sqlite.prepare(sqliteSql);
-        const rows = stmt.all(...sanitizedParams) as T[];
+        const rows = stmt.all(...orderedParams) as T[];
         return { rows, rowCount: rows.length };
       } else {
         const stmt = this.sqlite.prepare(sqliteSql);
-        const info = stmt.run(...sanitizedParams);
+        const info = stmt.run(...orderedParams);
         return { rows: [], rowCount: info.changes };
       }
     } else {

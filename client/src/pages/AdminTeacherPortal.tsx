@@ -506,8 +506,9 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
 
             {/* Specialization / Subject */}
             <div>
-              <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                {isAr ? 'المادة التعليمية / التخصص (تُعتمد لكتبك واختباراتك):' : 'Teaching Subject / Specialization:'}
+              <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <BookOpen size={16} style={{ color: 'var(--primary-600)', flexShrink: 0 }} />
+                <span>{isAr ? 'المادة التعليمية / التخصص (تُعتمد لكتبك واختباراتك):' : 'Teaching Subject / Specialization:'}</span>
               </label>
               <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
                 <select
@@ -521,9 +522,9 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
                     }
                   }}
                   style={{
-                    paddingRight: isAr ? '2.5rem' : '1rem',
-                    paddingLeft: isAr ? '1rem' : '2.5rem',
-                    fontWeight: 700
+                    padding: '0.75rem 1rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
                   }}
                 >
                   {COMMON_SPECIALIZATIONS.map(spec => (
@@ -531,16 +532,6 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
                   ))}
                   <option value="OTHER">{isAr ? '✍️ تخصص آخر (إدخال يدوي)' : '✍️ Other Subject'}</option>
                 </select>
-                <BookOpen 
-                  size={18} 
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    [isAr ? 'right' : 'left']: '0.85rem',
-                    color: 'var(--text-muted)'
-                  }} 
-                />
               </div>
 
               {!COMMON_SPECIALIZATIONS.includes(specialization) && (

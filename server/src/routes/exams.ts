@@ -24,19 +24,30 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
     const params: any[] = [];
     const conditions: string[] = [];
 
-    // Students only see published exams strictly matching their stage, grade & school_type
+    // Students only see published exams matching their stage, grade & school_type
     if (req.user?.role === 'STUDENT' && req.studentProfile) {
       params.push(req.studentProfile.academicStageId);
       conditions.push(`e.academic_stage_id = $${params.length}`);
 
-      params.push(req.studentProfile.gradeId);
-      conditions.push(`e.grade_id = $${params.length}`);
+      if (req.studentProfile.gradeId) {
+        params.push(req.studentProfile.gradeId);
+        params.push(req.studentProfile.academicStageId);
+        conditions.push(`(e.grade_id = $${params.length - 1} OR e.grade_id IS NULL OR e.academic_stage_id = $${params.length})`);
+      }
 
       conditions.push(`e.is_published = 1`);
 
-      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      const studentSchoolType = (req.studentProfile.schoolType || 'عربي').trim();
+      const normStudentSchoolType = studentSchoolType.replace('ى', 'ي');
       params.push(studentSchoolType);
-      conditions.push(`(COALESCE(e.school_type, b.school_type, 'كلاهما') = $${params.length} OR COALESCE(e.school_type, b.school_type, 'كلاهما') = 'كلاهما' OR COALESCE(e.school_type, b.school_type) IS NULL)`);
+      params.push(normStudentSchoolType);
+      conditions.push(`(
+        COALESCE(e.school_type, b.school_type, 'كلاهما') IN ('كلاهما', 'both', 'Both', 'عربي ولغات', 'عام ولغات')
+        OR COALESCE(e.school_type, b.school_type) IS NULL
+        OR COALESCE(e.school_type, b.school_type) = $${params.length - 1}
+        OR COALESCE(e.school_type, b.school_type) = $${params.length}
+        OR REPLACE(COALESCE(e.school_type, b.school_type, ''), 'ى', 'ي') = $${params.length}
+      )`);
     } else if (req.user?.role === 'TEACHER') {
       // Teachers see their own exams or all
       if (req.query.my_only === 'true') {
@@ -91,9 +102,12 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
       questions
     } = req.body;
 
-    if (!title_ar || !academic_stage_id || !grade_id || !subject_id) {
+    if (!title_ar || !subject_id) {
       return res.status(400).json({ error: 'الرجاء إدخال البيانات الأساسية للاختبار' });
     }
+
+    const prepStageId = '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
+    const prep3GradeId = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
 
     const examId = uuidv4();
     await db.query(
@@ -106,8 +120,8 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
         title_ar.trim(),
         title_en ? title_en.trim() : title_ar.trim(),
         req.user!.id,
-        academic_stage_id,
-        grade_id,
+        prepStageId,
+        prep3GradeId,
         subject_id,
         book_id || null,
         chapter_id || null,
@@ -160,9 +174,10 @@ router.patch('/:id/publish', authenticateToken, requireRole(['TEACHER', 'ADMIN']
     const { id } = req.params;
     const { is_published } = req.body;
 
+    const publishVal = (is_published === true || is_published === 1 || is_published === '1') ? 1 : 0;
     await db.query(
-      `UPDATE exams SET is_published = $2 WHERE id = $1 AND (teacher_id = $3 OR $4 = 'ADMIN')`,
-      [id, is_published ? 1 : 0, req.user!.id, req.user!.role]
+      `UPDATE exams SET is_published = $1 WHERE id = $2 AND (teacher_id = $3 OR $4 = 'ADMIN')`,
+      [publishVal, id, req.user!.id, req.user!.role]
     );
 
     return res.json({ message: 'تم تحديث حالة نشر الاختبار بنجاح' });
@@ -195,14 +210,16 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
 
     // Enforce student access
     if (req.user?.role === 'STUDENT' && req.studentProfile) {
-      if (exam.grade_id !== req.studentProfile.gradeId) {
-        return res.status(403).json({ error: 'هذا الاختبار غير مخصص لصفك الدراسي' });
+      if (exam.academic_stage_id !== req.studentProfile.academicStageId && exam.grade_id !== req.studentProfile.gradeId) {
+        return res.status(403).json({ error: 'هذا الاختبار غير مخصص لمرحلتك أو صفك الدراسي' });
       }
       if (!exam.is_published) {
         return res.status(403).json({ error: 'هذا الاختبار غير منشور حالياً' });
       }
-      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
-      if (exam.school_type && exam.school_type !== 'كلاهما' && exam.school_type !== studentSchoolType) {
+      const studentSchoolType = (req.studentProfile.schoolType || 'عربي').trim().replace('ى', 'ي');
+      const examSchoolType = (exam.school_type || 'كلاهما').trim().replace('ى', 'ي');
+      const isBoth = ['كلاهما', 'both', 'عربي ولغات', 'عام ولغات'].includes(examSchoolType);
+      if (!isBoth && examSchoolType && examSchoolType !== studentSchoolType) {
         return res.status(403).json({ error: 'هذا الاختبار غير مخصص لنوع مدرستك' });
       }
     }
@@ -249,11 +266,13 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
     }
 
     const exam = examRes.rows[0];
-    if (exam.grade_id !== req.studentProfile?.gradeId) {
-      return res.status(403).json({ error: 'الاختبار غير مخصص لصفك الدراسي' });
+    if (exam.academic_stage_id !== req.studentProfile?.academicStageId && exam.grade_id !== req.studentProfile?.gradeId) {
+      return res.status(403).json({ error: 'الاختبار غير مخصص لمرحلتك أو صفك الدراسي' });
     }
-    const studentSchoolType = req.studentProfile?.schoolType || 'عربي';
-    if (exam.school_type && exam.school_type !== 'كلاهما' && exam.school_type !== studentSchoolType) {
+    const studentSchoolType = (req.studentProfile?.schoolType || 'عربي').trim().replace('ى', 'ي');
+    const examSchoolType = (exam.school_type || 'كلاهما').trim().replace('ى', 'ي');
+    const isBoth = ['كلاهما', 'both', 'عربي ولغات', 'عام ولغات'].includes(examSchoolType);
+    if (!isBoth && examSchoolType && examSchoolType !== studentSchoolType) {
       return res.status(403).json({ error: 'الاختبار غير مخصص لنوع مدرستك' });
     }
 

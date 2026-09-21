@@ -148,7 +148,7 @@ const PlatformApp: React.FC = () => {
         }}>
           <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
             <p style={{ fontWeight: 700, color: 'var(--primary-800)', margin: 0 }}>
-              {t.brandName} • {language === 'ar' ? 'منظومة التقويم التشخيصي الذكي المستند للمناهج' : 'Diagnostic Educational Assessment Platform'}
+              {t.brandName}
             </p>
           </div>
         </footer>

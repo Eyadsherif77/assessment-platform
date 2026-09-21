@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Sparkles, CheckCircle2, Lock, Mail, User, School, MapPin, Hash, GraduationCap } from 'lucide-react';
+import { X, Lock, Mail, User, School, MapPin, GraduationCap } from 'lucide-react';
 import { apiUrl } from '../utils/api';
 
 interface AuthModalProps {
@@ -39,9 +39,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [term, setTerm] = useState<'الاول' | 'التانى'>('الاول');
   // 4. إسم المدرسة
   const [schoolName, setSchoolName] = useState<string>('');
-  // 5. كود الطالب
-  const [studentCode, setStudentCode] = useState<string>('');
-  // 6. email
+  // 5. email
   const [email, setEmail] = useState<string>('');
   // 7. username
   const [username, setUsername] = useState<string>('');
@@ -50,10 +48,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [registeredCode, setRegisteredCode] = useState<string | null>(null);
 
   useEffect(() => {
     setMode(initialMode);
     setError(null);
+    setRegisteredCode(null);
   }, [initialMode, isOpen]);
 
   if (!isOpen) return null;
@@ -76,7 +76,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           governorate,
           term,
           schoolName: schoolName.trim(),
-          studentCode: studentCode.trim(),
           email: email.trim(),
           username: username.trim(),
           password,
@@ -96,8 +95,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
 
         login(data.token, data.user);
-        onSuccess();
-        onClose();
+        // Show success screen with the student code before closing
+        const code = data.user?.super_id || data.user?.profile?.student_code || null;
+        if (code) {
+          setRegisteredCode(code);
+        } else {
+          onSuccess();
+          onClose();
+        }
       } else {
         // Login mode
         if (!email.trim() || !password) {
@@ -142,6 +147,89 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       padding: '1rem'
     }}>
       <div className="auth-split-modal" style={{ position: 'relative' }}>
+
+        {/* ============================================================
+            SUCCESS SCREEN: Show student code after registration
+            ============================================================ */}
+        {registeredCode && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 50,
+            background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 60%, #1D4ED8 100%)',
+            borderRadius: 'inherit',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2.5rem 2rem',
+            textAlign: 'center',
+            gap: '1.25rem'
+          }}>
+            {/* Celebration */}
+            <div style={{ fontSize: '3.5rem', lineHeight: 1 }}>🎉</div>
+
+            <h2 style={{ fontSize: '1.6rem', fontWeight: 900, color: '#FFFFFF', margin: 0, lineHeight: 1.3 }}>
+              {isAr ? 'تم إنشاء حسابك بنجاح!' : 'Account Created Successfully!'}
+            </h2>
+
+            <p style={{ fontSize: '0.9rem', color: '#CBD5E1', margin: 0, lineHeight: 1.6, maxWidth: '360px' }}>
+              {isAr
+                ? 'هذا هو كود الطالب الخاص بك. احتفظ به جيداً، فهو رقمك التعريفي الدائم في المنصة.'
+                : 'This is your unique student code. Keep it safe — it is your permanent ID on this platform.'}
+            </p>
+
+            {/* The Code Box */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.12)',
+              border: '2px solid rgba(255, 255, 255, 0.35)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '1.25rem 2.5rem',
+              backdropFilter: 'blur(8px)',
+              width: '100%',
+              maxWidth: '320px'
+            }}>
+              <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                {isAr ? 'كود الطالب التعريفي' : 'Your Student Code'}
+              </div>
+              <div style={{
+                fontSize: '2.25rem',
+                fontWeight: 900,
+                color: '#FFFFFF',
+                letterSpacing: '0.05em',
+                fontFamily: 'monospace'
+              }}>
+                {registeredCode}
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.78rem', color: '#64748B', margin: 0 }}>
+              {isAr ? '⚠️ دوّن هذا الكود الآن قبل المتابعة' : '⚠️ Write down this code before continuing'}
+            </p>
+
+            {/* CTA Button */}
+            <button
+              onClick={() => { onSuccess(); onClose(); }}
+              style={{
+                marginTop: '0.5rem',
+                background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+                color: '#FFFFFF',
+                fontWeight: 900,
+                fontSize: '1.05rem',
+                padding: '0.9rem 2.5rem',
+                borderRadius: 'var(--radius-full)',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 8px 24px rgba(29, 78, 216, 0.5)',
+                transition: 'all 0.2s ease',
+                width: '100%',
+                maxWidth: '320px'
+              }}
+            >
+              {isAr ? 'الدخول للمنصة 🚀' : 'Enter Platform 🚀'}
+            </button>
+          </div>
+        )}
         {/* Floating Close Button */}
         <button
           type="button"
@@ -171,61 +259,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <X size={18} />
         </button>
 
-        {/* LEFT PANEL: EDUCATIONAL STORYTELLING */}
-        <div className="auth-visual-panel">
-          <div>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              background: 'rgba(255, 255, 255, 0.15)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: 'var(--radius-full)',
-              padding: '0.35rem 0.85rem',
-              fontSize: '0.75rem',
-              fontWeight: 800,
-              marginBottom: '1.25rem'
-            }}>
-              <Sparkles size={14} />
-              <span>{isAr ? 'الصف الثالث الإعدادي • Prep 3' : '3rd Prep Curriculum 2026'}</span>
-            </div>
-
-            <h3 style={{ fontSize: '1.6rem', fontWeight: 900, lineHeight: 1.3, marginBottom: '1rem', color: '#FFFFFF' }}>
-              {isAr ? 'التقييم من أجل التعلم والتشخيص الفوري' : 'Assessment for Learning & Instant Diagnostics'}
-            </h3>
-
-            <p style={{ fontSize: '0.85rem', color: '#CBD5E1', lineHeight: 1.6, marginBottom: '1.75rem' }}>
-              {isAr
-                ? 'انضم الآن لطلاب الصف الثالث الإعدادي واستمتع بأسئلة مشتقة 100% من كتاب الوزارة الرسمي مع إرشاد دقيق لرقم كل صفحة.'
-                : 'Join 3rd Prep students with questions 100% grounded in official textbooks with precise page citations.'}
-            </p>
-
-            {/* Feature Checklist */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.825rem', color: '#F1F5F9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <CheckCircle2 size={16} color="#34D399" />
-                <span>{isAr ? 'مخصص حصرياً لمنهج الصف الثالث الإعدادي' : 'Strictly tailored for Grade 9 (Prep 3)'}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <CheckCircle2 size={16} color="#34D399" />
-                <span>{isAr ? 'أسئلة معتمدة مطابقة للتقويم الوزاري' : 'Official curriculum alignment'}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <CheckCircle2 size={16} color="#34D399" />
-                <span>{isAr ? 'تشخيص فوري للأخطاء وخطة مذاكرة بالصفحة' : 'Instant misconception diagnosis'}</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{
-            marginTop: '2rem',
-            paddingTop: '1.25rem',
-            borderTop: '1px solid rgba(255, 255, 255, 0.15)',
-            fontSize: '0.75rem',
-            color: '#94A3B8'
-          }}>
-            {isAr ? 'منظومة التقويم الذكي المعتمدة 2026' : 'Certified AI Assessment 2026'}
-          </div>
+        {/* LEFT PANEL: OFFICIAL EMBLEM LOGO */}
+        <div className="auth-visual-panel" style={{
+          background: '#FFFFFF',
+          padding: '1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRight: isAr ? 'none' : '1px solid var(--border-light)',
+          borderLeft: isAr ? '1px solid var(--border-light)' : 'none',
+          overflow: 'hidden'
+        }}>
+          <img
+            src="/logo.png"
+            alt={isAr ? 'حزب مستقبل وطن - أمانة التعليم والبحث العلمي المركزية' : 'Official Educational Emblem'}
+            style={{
+              width: '100%',
+              height: '100%',
+              maxHeight: '520px',
+              objectFit: 'contain',
+              display: 'block'
+            }}
+          />
         </div>
 
         {/* RIGHT PANEL: AUTHENTICATION FORM */}
@@ -343,7 +398,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {/* 3. الفصل الدراسى (الاول / التانى) */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
-                    {isAr ? 'الفصل الدراسى' : 'Academic Term'}
+                    {isAr ? 'الفصل الدراسى (grades)' : 'Academic Term (Grades)'}
                   </label>
                   <select
                     className="form-select"
@@ -371,31 +426,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   />
                 </div>
 
-                {/* 5. كود الطالب (مع توضيح ما يحتويه) */}
-                <div className="form-group">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
-                    <label className="form-label" style={{ marginBottom: 0, fontWeight: 800 }}>
-                      <Hash size={15} style={{ display: 'inline', marginInlineEnd: '4px' }} />
-                      {isAr ? 'كود الطالب' : 'Student Code'}
-                    </label>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--primary-600)', fontWeight: 700 }}>
-                      {isAr ? 'الرقم التعريفي للطالب' : 'Student ID'}
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    className="form-input"
-                    value={studentCode}
-                    onChange={e => setStudentCode(e.target.value)}
-                    placeholder={isAr ? 'اكتب كود الطالب التعريفي (أرقام)' : 'e.g. 10293847'}
-                  />
-                  <small style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.25rem', lineHeight: 1.4 }}>
-                    {isAr 
-                      ? 'كود الطالب التعريفي الموحد المسجل لدى المدرسة أو وزارة التربية والتعليم' 
-                      : 'The unique student identification code registered with the school or ministry'}
-                  </small>
-                </div>
+
 
                 {/* 6. email */}
                 <div className="form-group">
