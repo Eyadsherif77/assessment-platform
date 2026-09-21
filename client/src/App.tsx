@@ -135,8 +135,8 @@ const PlatformApp: React.FC = () => {
         )}
       </main>
 
-      {/* Footer (Only on Home View) */}
-      {activeView === 'home' && (
+      {/* Footer (On Home & Students Page) */}
+      {(activeView === 'home' || (activeView === 'dashboard' && user?.role === 'STUDENT')) && (
         <footer style={{
           borderTop: '1px solid var(--border-light)',
           background: '#FFFFFF',
@@ -148,7 +148,7 @@ const PlatformApp: React.FC = () => {
         }}>
           <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
             <p style={{ fontWeight: 700, color: 'var(--primary-800)', margin: 0 }}>
-              {t.brandName}
+              {language === 'ar' ? 'منصة التقييم من أجل التعلم' : 'Assessment for Learning Platform'}
             </p>
           </div>
         </footer>
