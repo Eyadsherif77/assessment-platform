@@ -137,7 +137,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                   {user.role === 'TEACHER' && (
                     <>
                       <User size={13} />
-                      <span className="badge-text">{user.hybrid_id ? (language === 'ar' ? `معلم (${user.hybrid_id})` : `Teacher (${user.hybrid_id})`) : t.teacherRole}</span>
+                      <span className="badge-text">{language === 'ar' ? 'المعلم' : 'Teacher'}</span>
                     </>
                   )}
                   {user.role === 'ADMIN' && (
