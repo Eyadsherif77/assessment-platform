@@ -13,7 +13,8 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
              st.name_ar as stage_name_ar, g.name_ar as grade_name_ar,
              u.full_name as teacher_name,
              COALESCE(e.school_type, b.school_type, 'كلاهما') as effective_school_type,
-             (SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id) as questions_count
+             (SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id) as questions_count,
+             (SELECT COUNT(*) FROM exam_attempts ea WHERE ea.exam_id = e.id) as submissions_count
       FROM exams e
       JOIN subjects s ON e.subject_id = s.id
       JOIN academic_stages st ON e.academic_stage_id = st.id
@@ -391,6 +392,162 @@ router.get('/:id/attempts', authenticateToken, async (req: AuthenticatedRequest,
     return res.json(result.rows);
   } catch (err: any) {
     return res.status(500).json({ error: 'خطأ في جلب نتائج المحاولات' });
+  }
+});
+
+// View submissions / attempts for an exam with student details (Teacher / Admin)
+router.get('/:id/submissions', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const sql = `
+      SELECT ea.id, ea.exam_id, ea.student_id, ea.score, ea.total_points, ea.status, ea.completed_at,
+             u.full_name as student_name, u.email as student_email,
+             sp.student_code, sp.school_name, sp.school_type,
+             ROUND((ea.score / NULLIF(ea.total_points, 0)) * 100, 1) as percentage
+      FROM exam_attempts ea
+      JOIN users u ON ea.student_id = u.id
+      LEFT JOIN student_profiles sp ON ea.student_id = sp.user_id
+      WHERE ea.exam_id = $1
+      ORDER BY ea.completed_at DESC
+    `;
+    const result = await db.query(sql, [id]);
+    return res.json(result.rows);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب تسليمات الطلاب: ' + err.message });
+  }
+});
+
+// Review student exam attempt with questions, options, and student selected answers
+router.get('/attempts/:attemptId/review', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { attemptId } = req.params;
+
+    // 1. Fetch attempt and exam details
+    const attemptRes = await db.query(`
+      SELECT ea.id, ea.exam_id, ea.student_id, ea.score, ea.total_points, ea.status, ea.completed_at,
+             u.full_name as student_name, u.email as student_email,
+             sp.student_code, sp.school_name, sp.school_type,
+             e.title_ar as exam_title_ar, e.title_en as exam_title_en,
+             e.teacher_id, e.subject_id,
+             s.name_ar as subject_name_ar, s.name_en as subject_name_en,
+             g.name_ar as grade_name_ar
+      FROM exam_attempts ea
+      JOIN exams e ON ea.exam_id = e.id
+      JOIN users u ON ea.student_id = u.id
+      LEFT JOIN student_profiles sp ON ea.student_id = sp.user_id
+      JOIN subjects s ON e.subject_id = s.id
+      JOIN grades g ON e.grade_id = g.id
+      WHERE ea.id = $1
+    `, [attemptId]);
+
+    if (attemptRes.rows.length === 0) {
+      return res.status(404).json({ error: 'سجل المحاولة غير موجود' });
+    }
+
+    const attempt = attemptRes.rows[0];
+
+    // Check permission: Student can only review their own attempt; Teachers / Admins can review
+    if (req.user?.role === 'STUDENT' && attempt.student_id !== req.user.id) {
+      return res.status(403).json({ error: 'غير مصرح لك بالاطلاع على محاولة طالب آخر' });
+    }
+
+    // 2. Fetch questions for this exam
+    const questionsRes = await db.query(`
+      SELECT eq.id, eq.question_text, eq.question_type, eq.points, eq.page_reference, eq.explanation, eq.order_index
+      FROM exam_questions eq
+      WHERE eq.exam_id = $1
+      ORDER BY eq.order_index ASC, eq.id ASC
+    `, [attempt.exam_id]);
+
+    // 3. Fetch all options for these questions
+    const questionIds = questionsRes.rows.map((q: any) => q.id);
+    let optionsMap: Record<string, any[]> = {};
+    if (questionIds.length > 0) {
+      const placeholders = questionIds.map((_, i) => `$${i + 1}`).join(',');
+      const optRes = await db.query(`
+        SELECT eqo.id, eqo.question_id, eqo.option_text, eqo.is_correct
+        FROM exam_question_options eqo
+        WHERE eqo.question_id IN (${placeholders})
+        ORDER BY eqo.id ASC
+      `, questionIds);
+
+      for (const opt of optRes.rows) {
+        if (!optionsMap[opt.question_id]) {
+          optionsMap[opt.question_id] = [];
+        }
+        optionsMap[opt.question_id].push(opt);
+      }
+    }
+
+    // 4. Fetch student's submitted answers
+    const answersRes = await db.query(`
+      SELECT sa.id, sa.question_id, sa.selected_option_id, sa.answer_text, sa.is_correct, sa.points_awarded
+      FROM student_answers sa
+      WHERE sa.attempt_id = $1
+    `, [attemptId]);
+
+    const answersMap: Record<string, any> = {};
+    for (const ans of answersRes.rows) {
+      answersMap[ans.question_id] = ans;
+    }
+
+    // 5. Assemble questions with options and student choices
+    const questions = questionsRes.rows.map((q: any) => {
+      const studentAns = answersMap[q.id] || null;
+      const opts = (optionsMap[q.id] || []).map((o: any) => ({
+        id: o.id,
+        option_text: o.option_text,
+        is_correct: o.is_correct === 1 || o.is_correct === true
+      }));
+
+      const correctOpt = opts.find((o: any) => o.is_correct);
+
+      return {
+        id: q.id,
+        question_text: q.question_text,
+        question_type: q.question_type,
+        points: q.points,
+        points_awarded: studentAns ? Number(studentAns.points_awarded) : 0,
+        is_correct: studentAns ? (studentAns.is_correct === 1 || studentAns.is_correct === true) : false,
+        selected_option_id: studentAns?.selected_option_id || null,
+        answer_text: studentAns?.answer_text || null,
+        correct_option_id: correctOpt?.id || null,
+        correct_option_text: correctOpt?.option_text || '',
+        explanation: q.explanation || null,
+        page_reference: q.page_reference || null,
+        options: opts
+      };
+    });
+
+    const totalPts = Number(attempt.total_points) || 1;
+    const score = Number(attempt.score) || 0;
+    const percentage = Math.round((score / totalPts) * 100);
+
+    return res.json({
+      attempt: {
+        id: attempt.id,
+        exam_id: attempt.exam_id,
+        exam_title: attempt.exam_title_ar || attempt.exam_title_en,
+        exam_title_ar: attempt.exam_title_ar,
+        exam_title_en: attempt.exam_title_en,
+        student_id: attempt.student_id,
+        student_name: attempt.student_name,
+        student_email: attempt.student_email,
+        student_code: attempt.student_code || attempt.student_id.substring(0, 8),
+        school_name: attempt.school_name,
+        school_type: attempt.school_type,
+        subject_name: attempt.subject_name_ar || attempt.subject_name_en,
+        grade_name: attempt.grade_name_ar,
+        score,
+        total_points: totalPts,
+        percentage,
+        completed_at: attempt.completed_at
+      },
+      questions
+    });
+  } catch (err: any) {
+    console.error('Exam review error:', err);
+    return res.status(500).json({ error: 'خطأ في جلب تفاصيل ورقة إجابات الطالب: ' + err.message });
   }
 });
 

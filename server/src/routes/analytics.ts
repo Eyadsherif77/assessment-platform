@@ -274,7 +274,7 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
 
     // 4. Student attempts on teacher exams
     const examAttemptsRes = await db.query(`
-      SELECT ea.id, ea.score, ea.total_points, ea.completed_at,
+      SELECT ea.id, ea.exam_id, ea.score, ea.total_points, ea.completed_at,
              u.full_name as student_name, e.title_ar as exam_title
       FROM exam_attempts ea
       JOIN exams e ON ea.exam_id = e.id
@@ -309,6 +309,9 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         const pct = Math.round((score / total) * 100);
         return {
           id: r.id,
+          attempt_id: r.id,
+          exam_id: r.exam_id,
+          attempt_type: 'EXAM',
           student_name: r.student_name,
           exam_title: r.exam_title,
           score,
@@ -324,6 +327,8 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         const pct = Math.round((score / total) * 100);
         return {
           id: r.id,
+          attempt_id: r.id,
+          attempt_type: 'AI_EVALUATION',
           student_name: r.student_name,
           exam_title: r.exam_title,
           score,

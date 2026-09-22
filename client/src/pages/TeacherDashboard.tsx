@@ -13,7 +13,8 @@ import {
   TrendingUp,
   AlertTriangle,
   Clock,
-  Award
+  Award,
+  Eye
 } from 'lucide-react';
 
 export const TeacherDashboard: React.FC = () => {
@@ -87,6 +88,63 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
   // Analytics
   const [teacherAnalytics, setTeacherAnalytics] = useState<any | null>(null);
+
+  // Submissions & Exam Review States
+  const [isSubmissionsModalOpen, setIsSubmissionsModalOpen] = useState(false);
+  const [examForSubmissions, setExamForSubmissions] = useState<any | null>(null);
+  const [submissionsList, setSubmissionsList] = useState<any[]>([]);
+  const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
+
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewData, setReviewData] = useState<any | null>(null);
+  const [isLoadingReview, setIsLoadingReview] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  const handleOpenSubmissionsModal = async (exam: any) => {
+    setExamForSubmissions(exam);
+    setIsSubmissionsModalOpen(true);
+    setIsLoadingSubmissions(true);
+    try {
+      const res = await fetch(apiUrl(`/api/exams/${exam.id}/submissions`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSubmissionsList(Array.isArray(data) ? data : []);
+      } else {
+        setSubmissionsList([]);
+      }
+    } catch (e) {
+      console.error(e);
+      setSubmissionsList([]);
+    } finally {
+      setIsLoadingSubmissions(false);
+    }
+  };
+
+  const handleOpenReviewModal = async (attemptId: string, isAiEval: boolean = false) => {
+    setIsReviewModalOpen(true);
+    setIsLoadingReview(true);
+    setReviewError(null);
+    setReviewData(null);
+    try {
+      const endpoint = isAiEval 
+        ? `/api/ai/evaluations/${attemptId}/review`
+        : `/api/exams/attempts/${attemptId}/review`;
+      const res = await fetch(apiUrl(endpoint), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || (isAr ? 'فشل تحميل ورقة إجابة الطالب' : 'Failed to load student exam review'));
+      }
+      setReviewData(data);
+    } catch (err: any) {
+      setReviewError(err.message || (isAr ? 'حدث خطأ في تحميل المراجعة' : 'Error loading review'));
+    } finally {
+      setIsLoadingReview(false);
+    }
+  };
 
   // Chapter Management State
   const [selectedBookForChapters, setSelectedBookForChapters] = useState<any | null>(null);
@@ -191,13 +249,48 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
     }
   };
 
+  const teacherSpecialization = (user?.profile?.specialization || '').trim();
+
+  const isBookMatchingSpecialization = (book: any, spec: string) => {
+    if (!spec) return true;
+    const specClean = spec.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase();
+    const subjAr = (book.subject_name_ar || '').replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
+    const subjEn = (book.subject_name_en || '').toLowerCase();
+    const titleAr = (book.title_ar || '').toLowerCase();
+    const titleEn = (book.title_en || '').toLowerCase();
+
+    if (specClean.includes('عرب') || specClean.includes('arabic')) {
+      return subjAr.includes('عرب') || subjEn.includes('arabic') || titleAr.includes('عرب') || titleEn.includes('arabic');
+    }
+    if (specClean.includes('رياض') || specClean.includes('math')) {
+      return subjAr.includes('رياض') || subjEn.includes('math') || titleAr.includes('رياض') || titleEn.includes('math');
+    }
+    if (specClean.includes('علوم') || specClean.includes('science')) {
+      return subjAr.includes('علوم') || subjEn.includes('science') || titleAr.includes('علوم') || titleEn.includes('science');
+    }
+    if (specClean.includes('انجليز') || specClean.includes('إنجليز') || specClean.includes('english')) {
+      return subjAr.includes('إنجليز') || subjAr.includes('انجليز') || subjEn.includes('english') || titleAr.includes('انجليز') || titleEn.includes('english');
+    }
+    if (specClean.includes('دراسات') || specClean.includes('social')) {
+      return subjAr.includes('دراسات') || subjEn.includes('social') || titleAr.includes('دراسات') || titleEn.includes('social');
+    }
+
+    return subjAr.includes(specClean) || specClean.includes(subjAr) || subjEn.includes(specClean);
+  };
+
   const loadTeacherData = () => {
     if (!token) return;
 
-    // Load Books (only books uploaded by this teacher)
+    // Load Books (strictly filtered to this teacher's subject)
     fetch(apiUrl('/api/books?my_only=true'), { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setBooks(data); })
+      .then(data => {
+        if (Array.isArray(data)) {
+          const spec = (user?.profile?.specialization || '').trim();
+          const filtered = spec ? data.filter(b => isBookMatchingSpecialization(b, spec)) : data;
+          setBooks(filtered);
+        }
+      })
       .catch(console.error);
 
     // Load Exams
@@ -215,9 +308,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
   useEffect(() => {
     loadTeacherData();
-  }, [token]);
-
-  const teacherSpecialization = (user?.profile?.specialization || '').trim();
+  }, [token, user?.profile?.specialization]);
 
   const getMatchedSubject = (subjectList: any[]) => {
     if (!subjectList || subjectList.length === 0) return null;
@@ -1022,9 +1113,17 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                     </div>
                   </div>
 
-                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <button
-                      className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-primary'}`}
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleOpenSubmissionsModal(exam)}
+                      style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                    >
+                      <Eye size={15} />
+                      <span>{isAr ? `إجابات وتسليمات الطلاب (${exam.submissions_count || 0})` : `Submissions (${exam.submissions_count || 0})`}</span>
+                    </button>
+                    <button
+                      className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-secondary'}`}
                       onClick={() => handleTogglePublish(exam.id, exam.is_published)}
                     >
                       {exam.is_published 
@@ -1575,6 +1674,26 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                     >
                       {att.percentage >= 80 ? (isAr ? 'إتقان تام' : 'Mastered') : att.percentage >= 50 ? (isAr ? 'مستوى متوسط' : 'Developing') : (isAr ? 'يحتاج دعم' : 'Needs Support')}
                     </span>
+
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleOpenReviewModal(att.attempt_id || att.id, att.attempt_type === 'AI_EVALUATION')}
+                      style={{
+                        fontWeight: 800,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        borderColor: 'var(--primary-300)',
+                        color: 'var(--primary-700)',
+                        background: '#FFFFFF',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Eye size={14} />
+                      <span>{isAr ? 'مراجعة الإجابات' : 'Review Answers'}</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1820,6 +1939,471 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================
+            STUDENT SUBMISSIONS LIST MODAL
+            ========================================================= */}
+        {isSubmissionsModalOpen && examForSubmissions && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem'
+          }}>
+            <div className="card" style={{
+              maxWidth: '800px',
+              width: '100%',
+              maxHeight: '88vh',
+              overflowY: 'auto',
+              padding: '2rem',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-xl)',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '1rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <span className="badge badge-primary">
+                      {isAr ? 'تسليمات وإجابات الطلاب' : 'Student Submissions'}
+                    </span>
+                    <span className="badge badge-secondary">
+                      {isAr ? `${submissionsList.length} طالب أنجز الاختبار` : `${submissionsList.length} completed`}
+                    </span>
+                  </div>
+                  <h3 style={{ fontSize: '1.3rem', fontWeight: 900, margin: 0 }}>
+                    {examForSubmissions.title}
+                  </h3>
+                </div>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => { setIsSubmissionsModalOpen(false); setExamForSubmissions(null); }}
+                  style={{ borderRadius: '50%', width: '36px', height: '36px', padding: 0 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {isLoadingSubmissions ? (
+                <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
+                  <div>{isAr ? 'جاري جلب إجابات وتسليمات الطلاب...' : 'Loading student submissions...'}</div>
+                </div>
+              ) : submissionsList.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📝</div>
+                  <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.35rem' }}>
+                    {isAr ? 'لا توجد تسليمات مسجلة لهذا الاختبار حتى الآن' : 'No submissions yet for this exam'}
+                  </div>
+                  <div style={{ fontSize: '0.82rem' }}>
+                    {isAr ? 'عندما يحل الطلاب هذا الاختبار، ستظهر هنا درجاتهم مع إمكانية مراجعة إجابة كل طالب سؤالاً بسؤال.' : 'When students complete this exam, their submissions and answers will appear here for review.'}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {submissionsList.map((sub: any) => (
+                    <div
+                      key={sub.id}
+                      style={{
+                        padding: '1rem',
+                        background: 'var(--bg-subtle)',
+                        borderRadius: 'var(--radius-lg)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.75rem',
+                        border: '1px solid var(--border-light)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+                          color: '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 800,
+                          fontSize: '0.95rem',
+                          flexShrink: 0
+                        }}>
+                          {sub.student_name?.charAt(0) || 'ط'}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-title)' }}>
+                            {sub.student_name}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {sub.student_code ? `كود الطالب: ${sub.student_code}` : sub.student_email} • {sub.school_name || (isAr ? 'المدرسة' : 'School')}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ textAlign: isAr ? 'left' : 'right' }}>
+                          <div style={{ fontWeight: 900, fontSize: '1rem', color: sub.percentage >= 80 ? '#16A34A' : sub.percentage >= 50 ? '#D97706' : '#DC2626' }}>
+                            {sub.percentage}% ({sub.score} / {sub.total_points})
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                            {sub.completed_at ? new Date(sub.completed_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US') : ''}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleOpenReviewModal(sub.id, false)}
+                          style={{
+                            fontWeight: 800,
+                            fontSize: '0.8rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.45rem 0.85rem'
+                          }}
+                        >
+                          <Eye size={15} />
+                          <span>{isAr ? 'مراجعة الإجابات' : 'Review Paper'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================
+            STUDENT EXAM PAPER REVIEW MODAL (FULL ANSWERS INSPECTION)
+            ========================================================= */}
+        {isReviewModalOpen && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(7px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1050,
+            padding: '1rem'
+          }}>
+            <div className="card" style={{
+              maxWidth: '840px',
+              width: '100%',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              padding: '2rem',
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              position: 'relative'
+            }}>
+              {/* Modal Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', borderBottom: '1.5px solid var(--border-light)', paddingBottom: '1rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                    <span className="badge badge-primary" style={{ fontWeight: 800 }}>
+                      📝 {isAr ? 'مراجعة ورقة إجابات الطالب' : 'Student Exam Answer Sheet'}
+                    </span>
+                    {reviewData?.attempt?.is_ai_evaluation && (
+                      <span className="badge badge-secondary">
+                        🤖 {isAr ? 'تقييم تشخيصي ذكي' : 'AI Diagnostic'}
+                      </span>
+                    )}
+                  </div>
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 900, margin: '0 0 0.25rem', color: 'var(--text-title)' }}>
+                    {reviewData?.attempt?.exam_title || (isAr ? 'مراجعة الاختبار' : 'Exam Review')}
+                  </h3>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'فحص دقيق لخيارات وإجابات الطالب مقابل الإجابات النموذجية ومصادر المنهج' : 'Detailed breakdown of student answers vs correct answers'}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => { setIsReviewModalOpen(false); setReviewData(null); setReviewError(null); }}
+                  style={{ borderRadius: '50%', width: '36px', height: '36px', padding: 0 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {isLoadingReview ? (
+                <div style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
+                  <div style={{ fontWeight: 700 }}>{isAr ? 'جاري تحميل ورقة الإجابة والأسئلة...' : 'Loading exam paper & answers...'}</div>
+                </div>
+              ) : reviewError ? (
+                <div style={{ padding: '1.5rem', background: '#FEF2F2', border: '1px solid #FECDD3', borderRadius: 'var(--radius-md)', color: '#DC2626' }}>
+                  <div style={{ fontWeight: 800, marginBottom: '0.5rem' }}>⚠️ {isAr ? 'خطأ في جلب المراجعة' : 'Review Error'}</div>
+                  <div>{reviewError}</div>
+                </div>
+              ) : reviewData ? (
+                <div>
+                  {/* Student & Score Banner */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+                    color: '#FFFFFF',
+                    padding: '1.5rem',
+                    borderRadius: 'var(--radius-lg)',
+                    marginBottom: '1.75rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '1rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                      <div style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+                        color: '#FFFFFF',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 900,
+                        fontSize: '1.2rem',
+                        flexShrink: 0
+                      }}>
+                        {reviewData.attempt.student_name?.charAt(0) || 'ط'}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 900 }}>
+                          {reviewData.attempt.student_name}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '0.15rem' }}>
+                          {reviewData.attempt.student_code ? `كود الطالب: ${reviewData.attempt.student_code}` : reviewData.attempt.student_email}
+                          {reviewData.attempt.school_name ? ` • ${reviewData.attempt.school_name}` : ''}
+                        </div>
+                        <div style={{ fontSize: '0.73rem', color: '#64748B', marginTop: '0.2rem' }}>
+                          {isAr ? 'تاريخ التسليم:' : 'Submitted:'} {reviewData.attempt.completed_at ? new Date(reviewData.attempt.completed_at).toLocaleString(isAr ? 'ar-EG' : 'en-US') : ''}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: isAr ? 'left' : 'right', background: 'rgba(255,255,255,0.08)', padding: '0.85rem 1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 700 }}>
+                        {isAr ? 'النتيجة الإجمالية' : 'Total Score'}
+                      </div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: reviewData.attempt.percentage >= 80 ? '#4ADE80' : reviewData.attempt.percentage >= 50 ? '#FBBF24' : '#F87171' }}>
+                        {reviewData.attempt.score} / {reviewData.attempt.total_points}
+                        <span style={{ fontSize: '1rem', marginRight: '0.35rem', marginLeft: '0.35rem', color: '#FFFFFF' }}>
+                          ({reviewData.attempt.percentage}%)
+                        </span>
+                      </div>
+                      <span className={`badge ${reviewData.attempt.percentage >= 80 ? 'badge-success' : reviewData.attempt.percentage >= 50 ? 'badge-warning' : 'badge-danger'}`} style={{ fontSize: '0.72rem', fontWeight: 800, marginTop: '0.25rem' }}>
+                        {reviewData.attempt.percentage >= 80 ? (isAr ? 'إتقان تام 🌟' : 'Mastered') : reviewData.attempt.percentage >= 50 ? (isAr ? 'مستوى متوسط 📈' : 'Developing') : (isAr ? 'بحاجة لدعم ⚠️' : 'Needs Support')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* AI Evaluation Diagnostic Summary (if available) */}
+                  {reviewData.attempt.evaluation_report && reviewData.attempt.evaluation_report.strengths && (
+                    <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '1.25rem', borderRadius: 'var(--radius-lg)', marginBottom: '1.5rem' }}>
+                      <h4 style={{ color: '#15803D', fontWeight: 800, margin: '0 0 0.5rem', fontSize: '0.92rem' }}>
+                        ✨ {isAr ? 'التحليل والتشخيص التربوي للمحاولة:' : 'Educational Diagnosis:'}
+                      </h4>
+                      <p style={{ fontSize: '0.83rem', color: '#166534', margin: 0, lineHeight: 1.6 }}>
+                        {reviewData.attempt.evaluation_report.summary || reviewData.attempt.evaluation_report.study_plan || (isAr ? 'تم تشخيص نقاط القوة ومعالجة المفاهيم التربوية بنجاح.' : 'Performance analyzed successfully.')}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Questions Breakdown List */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <h4 style={{ fontWeight: 900, fontSize: '1.1rem', margin: '0 0 1rem', color: 'var(--text-title)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span>📋</span>
+                      <span>{isAr ? `ورقة الأسئلة وإجابات الطالب (${reviewData.questions.length} سؤال):` : `Questions & Student Answers (${reviewData.questions.length}):`}</span>
+                    </h4>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      {reviewData.questions.map((q: any, qIdx: number) => (
+                        <div
+                          key={q.id || qIdx}
+                          style={{
+                            background: 'var(--bg-subtle)',
+                            border: q.is_correct ? '1.5px solid #BBF7D0' : '1.5px solid #FECDD3',
+                            borderRadius: 'var(--radius-lg)',
+                            padding: '1.25rem',
+                            position: 'relative'
+                          }}
+                        >
+                          {/* Question Top Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                background: q.is_correct ? '#DCFCE7' : '#FEE2E2',
+                                color: q.is_correct ? '#16A34A' : '#DC2626',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 900,
+                                fontSize: '0.85rem'
+                              }}>
+                                {qIdx + 1}
+                              </span>
+                              <strong style={{ fontSize: '0.9rem', color: 'var(--text-title)' }}>
+                                {isAr ? `السؤال رقم ${qIdx + 1}` : `Question #${qIdx + 1}`}
+                              </strong>
+                              {q.page_reference && (
+                                <span className="badge badge-secondary" style={{ fontSize: '0.7rem' }}>
+                                  📖 {isAr ? `صفحة ${q.page_reference}` : `p. ${q.page_reference}`}
+                                </span>
+                              )}
+                            </div>
+
+                            <span
+                              className={`badge ${q.is_correct ? 'badge-success' : 'badge-danger'}`}
+                              style={{ fontSize: '0.75rem', fontWeight: 800 }}
+                            >
+                              {q.is_correct 
+                                ? (isAr ? `✓ إجابة صحيحة (${q.points_awarded}/${q.points} درجة)` : `✓ Correct (${q.points_awarded}/${q.points})`)
+                                : (isAr ? `✗ إجابة غير صحيحة (0/${q.points} درجة)` : `✗ Incorrect (0/${q.points})`)}
+                            </span>
+                          </div>
+
+                          {/* Question Text */}
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-title)', marginBottom: '1rem', lineHeight: 1.6 }}>
+                            {q.question_text}
+                          </div>
+
+                          {/* Options List */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                            {q.options && q.options.map((opt: any, optIdx: number) => {
+                              const isStudentSelected = opt.id === q.selected_option_id;
+                              const isCorrectOpt = opt.is_correct;
+
+                              let optBg = '#FFFFFF';
+                              let optBorder = '1px solid #E2E8F0';
+                              let optColor = '#334155';
+                              let optBadgeText = '';
+                              let optBadgeBg = '';
+                              let optBadgeColor = '';
+
+                              if (isStudentSelected && isCorrectOpt) {
+                                optBg = '#DCFCE7';
+                                optBorder = '2px solid #16A34A';
+                                optColor = '#14532D';
+                                optBadgeText = isAr ? '✓ إجابة الطالب (صحيحة)' : '✓ Student Answer (Correct)';
+                                optBadgeBg = '#16A34A';
+                                optBadgeColor = '#FFFFFF';
+                              } else if (isStudentSelected && !isCorrectOpt) {
+                                optBg = '#FEE2E2';
+                                optBorder = '2px solid #DC2626';
+                                optColor = '#7F1D1D';
+                                optBadgeText = isAr ? '✗ إجابة الطالب (خاطئة)' : '✗ Student Answer (Wrong)';
+                                optBadgeBg = '#DC2626';
+                                optBadgeColor = '#FFFFFF';
+                              } else if (isCorrectOpt) {
+                                optBg = '#F0FDF4';
+                                optBorder = '2px dashed #16A34A';
+                                optColor = '#15803D';
+                                optBadgeText = isAr ? '✓ الإجابة النموذجية الصحيحة' : '✓ Model Answer';
+                                optBadgeBg = '#22C55E';
+                                optBadgeColor = '#FFFFFF';
+                              }
+
+                              return (
+                                <div
+                                  key={opt.id || optIdx}
+                                  style={{
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: 'var(--radius-md)',
+                                    background: optBg,
+                                    border: optBorder,
+                                    color: optColor,
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    fontWeight: (isStudentSelected || isCorrectOpt) ? 800 : 500,
+                                    fontSize: '0.88rem'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <span style={{
+                                      width: '22px',
+                                      height: '22px',
+                                      borderRadius: '50%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 800,
+                                      background: (isStudentSelected || isCorrectOpt) ? 'rgba(0,0,0,0.08)' : '#E2E8F0'
+                                    }}>
+                                      {String.fromCharCode(65 + optIdx)}
+                                    </span>
+                                    <span>{opt.option_text}</span>
+                                  </div>
+
+                                  {optBadgeText && (
+                                    <span style={{
+                                      fontSize: '0.72rem',
+                                      fontWeight: 800,
+                                      padding: '0.2rem 0.5rem',
+                                      borderRadius: 'var(--radius-full)',
+                                      background: optBadgeBg,
+                                      color: optBadgeColor,
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      {optBadgeText}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Explanation if available */}
+                          {q.explanation && (
+                            <div style={{
+                              background: '#F8FAFC',
+                              border: '1px solid #E2E8F0',
+                              padding: '0.75rem 0.9rem',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: '0.8rem',
+                              color: '#475569',
+                              lineHeight: 1.5
+                            }}>
+                              <strong style={{ color: 'var(--primary-700)', display: 'block', marginBottom: '0.2rem' }}>
+                                💡 {isAr ? 'التوضيح والشرح النموذجي:' : 'Explanation:'}
+                              </strong>
+                              {q.explanation}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Close Modal Footer */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem', borderTop: '1px solid var(--border-light)', paddingTop: '1rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => { setIsReviewModalOpen(false); setReviewData(null); }}
+                      style={{ fontWeight: 800 }}
+                    >
+                      {isAr ? 'إغلاق المراجعة' : 'Close Review'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

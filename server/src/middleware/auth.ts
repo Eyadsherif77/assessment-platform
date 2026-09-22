@@ -20,9 +20,15 @@ export interface StudentProfileInfo {
   schoolType: string;
 }
 
+export interface TeacherProfileInfo {
+  specialization: string;
+  schoolName?: string;
+}
+
 export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
   studentProfile?: StudentProfileInfo;
+  teacherProfile?: TeacherProfileInfo;
 }
 
 export function generateToken(user: AuthUser): string {
@@ -56,6 +62,17 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
           countryId: profile.rows[0].country_id,
           governorateId: profile.rows[0].governorate_id,
           schoolType: profile.rows[0].school_type || 'عربي'
+        };
+      }
+    } else if (decoded.role === 'TEACHER') {
+      const tProfile = await db.query(
+        `SELECT specialization, school_name FROM teacher_profiles WHERE user_id = $1`,
+        [decoded.id]
+      );
+      if (tProfile.rows.length > 0) {
+        req.teacherProfile = {
+          specialization: (tProfile.rows[0].specialization || '').trim(),
+          schoolName: tProfile.rows[0].school_name || ''
         };
       }
     }

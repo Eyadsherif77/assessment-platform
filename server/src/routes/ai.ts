@@ -213,4 +213,108 @@ router.get('/evaluations/:id', authenticateToken, async (req: AuthenticatedReque
   }
 });
 
+// Get Single AI Evaluation Formatted Review for Teachers/Students
+router.get('/evaluations/:id/review', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const resEval = await db.query(
+      `SELECT ae.*, b.title_ar as book_title, s.name_ar as subject_name, bc.title_ar as chapter_title,
+              u.full_name as student_name, u.email as student_email,
+              sp.student_code, sp.school_name, sp.school_type
+       FROM ai_evaluations ae
+       JOIN books b ON ae.book_id = b.id
+       JOIN subjects s ON ae.subject_id = s.id
+       JOIN users u ON ae.student_id = u.id
+       LEFT JOIN student_profiles sp ON ae.student_id = sp.user_id
+       LEFT JOIN book_chapters bc ON ae.chapter_id = bc.id
+       WHERE ae.id = $1`,
+      [id]
+    );
+
+    if (resEval.rows.length === 0) {
+      return res.status(404).json({ error: 'تقرير التقييم غير موجود' });
+    }
+
+    const row = resEval.rows[0];
+
+    // Check permission
+    if (req.user?.role === 'STUDENT' && row.student_id !== req.user.id) {
+      return res.status(403).json({ error: 'غير مصرح لك بالاطلاع على تقييم طالب آخر' });
+    }
+
+    let questionsData: any[] = [];
+    let answersData: any[] = [];
+    let evalReport: any = {};
+
+    try {
+      questionsData = typeof row.questions_data === 'string' ? JSON.parse(row.questions_data) : (row.questions_data || []);
+    } catch (_) {}
+    try {
+      answersData = typeof row.student_answers_data === 'string' ? JSON.parse(row.student_answers_data) : (row.student_answers_data || []);
+    } catch (_) {}
+    try {
+      evalReport = typeof row.evaluation_report === 'string' ? JSON.parse(row.evaluation_report) : (row.evaluation_report || {});
+    } catch (_) {}
+
+    const totalPts = Number(row.total_questions) || (questionsData.length || 1);
+    const score = Number(row.score) || 0;
+    const percentage = Math.round((score / totalPts) * 100);
+
+    const questions = questionsData.map((q: any) => {
+      const studentAns = answersData.find((a: any) => a.question_id === q.id);
+      const selectedOptId = studentAns?.selected_option_id;
+
+      const opts = (q.options || []).map((o: any) => ({
+        id: o.id,
+        option_text: o.text || o.option_text || '',
+        is_correct: o.is_correct === true || o.id === q.correct_option_id
+      }));
+
+      const correctOpt = opts.find((o: any) => o.is_correct);
+      const isCorrect = selectedOptId ? (selectedOptId === correctOpt?.id) : false;
+
+      return {
+        id: q.id,
+        question_text: q.question_text,
+        question_type: q.question_type || 'MULTIPLE_CHOICE',
+        points: 1,
+        points_awarded: isCorrect ? 1 : 0,
+        is_correct: isCorrect,
+        selected_option_id: selectedOptId || null,
+        correct_option_id: correctOpt?.id || null,
+        correct_option_text: correctOpt?.option_text || '',
+        explanation: q.explanation || null,
+        page_reference: q.page_reference || null,
+        options: opts
+      };
+    });
+
+    return res.json({
+      attempt: {
+        id: row.id,
+        exam_id: null,
+        exam_title: `${row.subject_name} - ${row.chapter_title || row.book_title} (تقييم ذكي)`,
+        exam_title_ar: `${row.subject_name} - ${row.chapter_title || row.book_title} (تقييم ذكي)`,
+        student_id: row.student_id,
+        student_name: row.student_name,
+        student_email: row.student_email,
+        student_code: row.student_code || row.student_id.substring(0, 8),
+        school_name: row.school_name,
+        school_type: row.school_type,
+        subject_name: row.subject_name,
+        score,
+        total_points: totalPts,
+        percentage,
+        completed_at: row.created_at,
+        is_ai_evaluation: true,
+        evaluation_report: evalReport
+      },
+      questions
+    });
+  } catch (err: any) {
+    console.error('AI Evaluation review error:', err);
+    return res.status(500).json({ error: 'خطأ في جلب تفاصيل تقييم الذكاء الاصطناعي: ' + err.message });
+  }
+});
+
 export default router;
