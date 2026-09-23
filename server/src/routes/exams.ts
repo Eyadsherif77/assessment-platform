@@ -67,6 +67,26 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
         params.push(req.query.school_type);
         conditions.push(`(e.school_type = $${params.length} OR e.school_type = 'كلاهما')`);
       }
+      // If subject_id is not specified in query, filter teacher exams by their specialization
+      if (!req.query.subject_id) {
+        let spec = (req.teacherProfile?.specialization || '').trim();
+        if (!spec && req.user?.id) {
+          const tRes = await db.query(`SELECT specialization FROM teacher_profiles WHERE user_id = $1`, [req.user.id]);
+          spec = (tRes.rows[0]?.specialization || '').trim();
+        }
+        if (spec) {
+          const specClean = spec.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase();
+          if (specClean.includes('عرب') || specClean.includes('arabic')) {
+            conditions.push(`(s.code = 'ARABIC' OR s.name_ar LIKE '%عرب%' OR LOWER(s.name_en) LIKE '%arabic%')`);
+          } else if (specClean.includes('رياض') || specClean.includes('math')) {
+            conditions.push(`(s.code = 'MATH' OR s.name_ar LIKE '%رياض%' OR LOWER(s.name_en) LIKE '%math%')`);
+          } else if (specClean.includes('علوم') || specClean.includes('science')) {
+            conditions.push(`(s.code = 'SCIENCE' OR s.name_ar LIKE '%علوم%' OR LOWER(s.name_en) LIKE '%science%')`);
+          } else if (specClean.includes('انجليز') || specClean.includes('إنجليز') || specClean.includes('english')) {
+            conditions.push(`(s.code = 'ENGLISH' OR s.name_ar LIKE '%إنجليز%' OR s.name_ar LIKE '%انجليز%' OR LOWER(s.name_en) LIKE '%english%')`);
+          }
+        }
+      }
     }
 
     if (req.query.subject_id) {

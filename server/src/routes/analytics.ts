@@ -238,13 +238,23 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
 
     // 1. Get teacher specialization
     const profileRes = await db.query(`SELECT specialization FROM teacher_profiles WHERE user_id = $1`, [teacherId]);
-    const specialization = (profileRes.rows[0]?.specialization || '').trim();
+    let specialization = (profileRes.rows[0]?.specialization || '').trim();
+    if (!specialization && req.teacherProfile?.specialization) {
+      specialization = req.teacherProfile.specialization.trim();
+    }
 
     // 2. Identify corresponding subject
-    let subjectId: string | null = null;
+    let subjectId: string | null = (req.query.subject_id as string) || null;
     let subjectNameAr = specialization;
     const allSubjects = await db.query(`SELECT id, name_ar, name_en, code FROM subjects`);
-    if (specialization && allSubjects.rows.length > 0) {
+
+    if (subjectId) {
+      const found = allSubjects.rows.find((s: any) => s.id === subjectId);
+      if (found) {
+        subjectNameAr = found.name_ar;
+        if (!specialization) specialization = found.name_ar;
+      }
+    } else if (specialization && allSubjects.rows.length > 0) {
       const specClean = specialization.replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
       const matched = allSubjects.rows.find((s: any) => {
         const ar = (s.name_ar || '').trim().toLowerCase();
@@ -269,20 +279,31 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
     const totalStudentsRes = await db.query(`SELECT COUNT(*) as count FROM student_profiles`);
     const totalStudents = Number(totalStudentsRes.rows[0]?.count) || 0;
 
-    const myExamsRes = await db.query(`SELECT COUNT(*) as count FROM exams WHERE teacher_id = $1`, [teacherId]);
+    let myExamsSql = `SELECT COUNT(*) as count FROM exams WHERE teacher_id = $1`;
+    const myExamsParams: any[] = [teacherId];
+    if (subjectId) {
+      myExamsSql += ` AND subject_id = $2`;
+      myExamsParams.push(subjectId);
+    }
+    const myExamsRes = await db.query(myExamsSql, myExamsParams);
     const totalMyExams = Number(myExamsRes.rows[0]?.count) || 0;
 
-    // 4. Student attempts on teacher exams
-    const examAttemptsRes = await db.query(`
+    // 4. Student attempts on teacher exams in this subject
+    let examAttemptsSql = `
       SELECT ea.id, ea.exam_id, ea.score, ea.total_points, ea.completed_at,
              u.full_name as student_name, e.title_ar as exam_title
       FROM exam_attempts ea
       JOIN exams e ON ea.exam_id = e.id
       JOIN users u ON ea.student_id = u.id
       WHERE e.teacher_id = $1
-      ORDER BY ea.completed_at DESC
-      LIMIT 25
-    `, [teacherId]);
+    `;
+    const examAttemptsParams: any[] = [teacherId];
+    if (subjectId) {
+      examAttemptsSql += ` AND e.subject_id = $2`;
+      examAttemptsParams.push(subjectId);
+    }
+    examAttemptsSql += ` ORDER BY ea.completed_at DESC LIMIT 25`;
+    const examAttemptsRes = await db.query(examAttemptsSql, examAttemptsParams);
 
     // 5. Student AI/Chapter evaluations in this teacher's subject
     let aiAttemptsRes: any = { rows: [] };
@@ -295,10 +316,10 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         JOIN users u ON ae.student_id = u.id
         LEFT JOIN book_chapters bc ON ae.chapter_id = bc.id
         LEFT JOIN books b ON ae.book_id = b.id
-        WHERE ae.subject_id = $1 OR b.teacher_id = $2
+        WHERE ae.subject_id = $1
         ORDER BY ae.created_at DESC
         LIMIT 25
-      `, [subjectId, teacherId]);
+      `, [subjectId]);
     }
 
     // Combine recent student attempts
@@ -347,17 +368,23 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
       avgScore = Math.round(sum / recentAttempts.length);
     }
 
-    // 6. Chapters mastery in teacher's subject
+    // 6. Chapters mastery strictly in teacher's subject
     let chaptersMastery: any[] = [];
     if (subjectId) {
-      const chRes = await db.query(`
+      let chSql = `
         SELECT bc.id, bc.chapter_number, bc.title_ar, bc.title_en,
                b.title_ar as book_title
         FROM book_chapters bc
         JOIN books b ON bc.book_id = b.id
-        WHERE b.subject_id = $1 OR b.teacher_id = $2
-        ORDER BY bc.chapter_number ASC
-      `, [subjectId, teacherId]);
+        WHERE b.subject_id = $1
+      `;
+      const specClean = specialization ? specialization.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase() : '';
+      if (specClean.includes('عرب') || specClean.includes('arabic')) {
+        chSql += ` AND (LOWER(b.title_ar) NOT LIKE '%social%' AND LOWER(b.title_en) NOT LIKE '%social%' AND LOWER(b.title_ar) NOT LIKE '%english%' AND LOWER(b.title_en) NOT LIKE '%english%' AND LOWER(b.title_ar) NOT LIKE '%math%' AND LOWER(b.title_en) NOT LIKE '%math%' AND LOWER(b.title_ar) NOT LIKE '%science%' AND LOWER(b.title_en) NOT LIKE '%science%')`;
+      }
+      chSql += ` ORDER BY bc.chapter_number ASC`;
+
+      const chRes = await db.query(chSql, [subjectId]);
 
       chaptersMastery = chRes.rows.map((ch: any, idx: number) => {
         // Find matching attempts for this chapter if any
