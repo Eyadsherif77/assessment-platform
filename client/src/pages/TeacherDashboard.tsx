@@ -416,11 +416,6 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
       .catch(console.error);
   };
 
-  const handleSelectSubject = (subjId: string) => {
-    setSelectedSubjectId(subjId);
-    loadTeacherData(subjId);
-  };
-
   useEffect(() => {
     loadTeacherData();
   }, [token, user?.profile?.specialization]);
@@ -458,8 +453,10 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
         .then(r => r.json())
         .then(data => {
           if (Array.isArray(data)) {
-            setSubjects(data);
             const target = getMatchedSubject(data);
+            // Strictly isolate subjects array to teacher's own subject ONLY
+            const teacherOnlySubjects = target ? [target] : (data.length > 0 ? [data[0]] : []);
+            setSubjects(teacherOnlySubjects);
             const initialId = target ? target.id : (data.length > 0 ? data[0].id : '');
             if (initialId) {
               setSelectedSubjectId(initialId);
@@ -811,35 +808,33 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   {isAr ? 'التخصص المسجل:' : 'Specialization:'} <strong>{teacherSpecialization || (isAr ? 'معلم مادة' : 'Teacher')}</strong> • {isAr ? 'المدرسة:' : 'School:'} {user?.profile?.school_name || (isAr ? 'مدرسة المتفوقين' : 'Excellence School')}
                 </p>
 
-                {/* Active Subject Selector */}
+                {/* Active Subject (Locked to Teacher's Specialization Only) */}
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.08)', padding: '0.4rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.18)', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.82rem', color: '#CBD5E1', fontWeight: 700 }}>
-                    {isAr ? '📚 المادة المعروضة:' : '📚 Active Subject:'}
+                    {isAr ? '📚 المادة التخصصية:' : '📚 Your Subject:'}
                   </span>
-                  <select
-                    className="form-select"
-                    value={selectedSubjectId}
-                    onChange={e => handleSelectSubject(e.target.value)}
-                    style={{
-                      background: '#0F172A',
-                      color: '#FFFFFF',
-                      border: '1px solid rgba(255,255,255,0.3)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '0.25rem 0.75rem',
-                      fontWeight: 800,
-                      fontSize: '0.85rem',
-                      cursor: 'pointer',
-                      outline: 'none'
-                    }}
-                  >
-                    {subjects.map(s => (
-                      <option key={s.id} value={s.id} style={{ background: '#0F172A', color: '#FFFFFF' }}>
-                        {isAr ? s.name_ar : (s.name_en || s.name_ar)}
-                      </option>
-                    ))}
-                  </select>
+                  <span style={{
+                    background: 'rgba(79, 70, 229, 0.35)',
+                    color: '#FFFFFF',
+                    border: '1px solid rgba(165, 180, 252, 0.45)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '0.25rem 0.75rem',
+                    fontWeight: 800,
+                    fontSize: '0.85rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}>
+                    <span>🔒</span>
+                    <span>
+                      {(() => {
+                        const matched = getMatchedSubject(subjects);
+                        return matched ? (isAr ? matched.name_ar : (matched.name_en || matched.name_ar)) : (teacherSpecialization || (isAr ? 'اللغة العربية' : 'Arabic'));
+                      })()}
+                    </span>
+                  </span>
                   <span className="badge badge-success" style={{ fontSize: '0.7rem', fontWeight: 800 }}>
-                    {isAr ? 'مفلترة بالكامل 🎯' : 'Subject Isolated 🎯'}
+                    {isAr ? 'مثبتة ومفلترة لمادتك حصراً 🎯' : 'Locked to Your Subject 🎯'}
                   </span>
                 </div>
               </div>
