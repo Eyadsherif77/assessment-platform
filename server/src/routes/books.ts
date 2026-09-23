@@ -618,14 +618,18 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
           const specClean = specialization.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase();
           if (specClean.includes('عرب') || specClean.includes('arabic')) {
             conditions.push(`(s.code = 'ARABIC' OR s.name_ar LIKE '%عرب%' OR LOWER(s.name_en) LIKE '%arabic%')`);
+            conditions.push(`(LOWER(b.title_ar) NOT LIKE '%social%' AND LOWER(b.title_en) NOT LIKE '%social%' AND LOWER(b.title_ar) NOT LIKE '%english%' AND LOWER(b.title_en) NOT LIKE '%english%' AND LOWER(b.title_ar) NOT LIKE '%math%' AND LOWER(b.title_en) NOT LIKE '%math%' AND LOWER(b.title_ar) NOT LIKE '%science%' AND LOWER(b.title_en) NOT LIKE '%science%')`);
           } else if (specClean.includes('رياض') || specClean.includes('math')) {
             conditions.push(`(s.code = 'MATH' OR s.name_ar LIKE '%رياض%' OR LOWER(s.name_en) LIKE '%math%')`);
+            conditions.push(`(LOWER(b.title_ar) NOT LIKE '%social%' AND LOWER(b.title_en) NOT LIKE '%social%' AND LOWER(b.title_ar) NOT LIKE '%english%' AND LOWER(b.title_en) NOT LIKE '%english%' AND LOWER(b.title_ar) NOT LIKE '%عرب%' AND LOWER(b.title_en) NOT LIKE '%arabic%' AND LOWER(b.title_ar) NOT LIKE '%science%' AND LOWER(b.title_en) NOT LIKE '%science%')`);
           } else if (specClean.includes('علوم') || specClean.includes('science')) {
             conditions.push(`(s.code = 'SCIENCE' OR s.name_ar LIKE '%علوم%' OR LOWER(s.name_en) LIKE '%science%')`);
+            conditions.push(`(LOWER(b.title_ar) NOT LIKE '%social%' AND LOWER(b.title_en) NOT LIKE '%social%' AND LOWER(b.title_ar) NOT LIKE '%english%' AND LOWER(b.title_en) NOT LIKE '%english%' AND LOWER(b.title_ar) NOT LIKE '%عرب%' AND LOWER(b.title_en) NOT LIKE '%arabic%' AND LOWER(b.title_ar) NOT LIKE '%math%' AND LOWER(b.title_en) NOT LIKE '%math%')`);
           } else if (specClean.includes('انجليز') || specClean.includes('إنجليز') || specClean.includes('english')) {
             conditions.push(`(s.code = 'ENGLISH' OR s.name_ar LIKE '%إنجليز%' OR s.name_ar LIKE '%انجليز%' OR LOWER(s.name_en) LIKE '%english%')`);
+            conditions.push(`(LOWER(b.title_ar) NOT LIKE '%social%' AND LOWER(b.title_en) NOT LIKE '%social%' AND LOWER(b.title_ar) NOT LIKE '%عرب%' AND LOWER(b.title_en) NOT LIKE '%arabic%' AND LOWER(b.title_ar) NOT LIKE '%math%' AND LOWER(b.title_en) NOT LIKE '%math%' AND LOWER(b.title_ar) NOT LIKE '%science%' AND LOWER(b.title_en) NOT LIKE '%science%')`);
           } else if (specClean.includes('دراسات') || specClean.includes('social')) {
-            conditions.push(`(s.code = 'SOCIAL' OR s.name_ar LIKE '%دراسات%' OR LOWER(s.name_en) LIKE '%social%')`);
+            conditions.push(`(s.code = 'SOCIAL' OR s.name_ar LIKE '%دراسات%' OR LOWER(s.name_en) LIKE '%social%' OR LOWER(b.title_ar) LIKE '%social%' OR LOWER(b.title_en) LIKE '%social%')`);
           } else {
             params.push(`%${specClean}%`);
             params.push(`%${specClean}%`);

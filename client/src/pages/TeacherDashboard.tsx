@@ -260,18 +260,49 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
     const titleEn = (book.title_en || '').toLowerCase();
 
     if (specClean.includes('عرب') || specClean.includes('arabic')) {
+      // Exclude books with conflicting titles
+      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
+          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
+          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض') ||
+          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
+        return false;
+      }
       return subjAr.includes('عرب') || subjEn.includes('arabic') || titleAr.includes('عرب') || titleEn.includes('arabic');
     }
     if (specClean.includes('رياض') || specClean.includes('math')) {
+      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
+          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
+          titleAr.includes('عرب') || titleEn.includes('arabic') ||
+          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
+        return false;
+      }
       return subjAr.includes('رياض') || subjEn.includes('math') || titleAr.includes('رياض') || titleEn.includes('math');
     }
     if (specClean.includes('علوم') || specClean.includes('science')) {
+      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
+          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
+          titleAr.includes('عرب') || titleEn.includes('arabic') ||
+          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض')) {
+        return false;
+      }
       return subjAr.includes('علوم') || subjEn.includes('science') || titleAr.includes('علوم') || titleEn.includes('science');
     }
     if (specClean.includes('انجليز') || specClean.includes('إنجليز') || specClean.includes('english')) {
+      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
+          titleAr.includes('عرب') || titleEn.includes('arabic') ||
+          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض') ||
+          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
+        return false;
+      }
       return subjAr.includes('إنجليز') || subjAr.includes('انجليز') || subjEn.includes('english') || titleAr.includes('انجليز') || titleEn.includes('english');
     }
     if (specClean.includes('دراسات') || specClean.includes('social')) {
+      if (titleAr.includes('عرب') || titleEn.includes('arabic') ||
+          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
+          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض') ||
+          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
+        return false;
+      }
       return subjAr.includes('دراسات') || subjEn.includes('social') || titleAr.includes('دراسات') || titleEn.includes('social');
     }
 
