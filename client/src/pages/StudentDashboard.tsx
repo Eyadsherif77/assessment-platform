@@ -1415,7 +1415,7 @@ export const StudentDashboard: React.FC = () => {
                         {isAr ? 'عرض خطة المراجعة وصفحات الكتاب 📖' : 'View Action Plan & Pages 📖'}
                       </button>
                       <button className="btn btn-outline" onClick={() => { setAiStep(1); setAiReport(null); }}>
-                        {isAr ? 'تقييم فصل آخر 🔄' : 'Assess Another Chapter 🔄'}
+                        {isAr ? 'وحدة أخرى 🔄' : 'Another Unit 🔄'}
                       </button>
                       {isDevMode && (
                         <button

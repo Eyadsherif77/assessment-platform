@@ -1292,7 +1292,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                 </div>
 
                 <div className="form-group" style={{ marginTop: '0.75rem' }}>
-                  <label className="form-label">{isAr ? 'نوع المدرسة المستهدفة للاختبار' : 'Target School Type'}</label>
+                  <label className="form-label">{isAr ? 'نوع التعليم' : 'Education Type'}</label>
                   <select className="form-select" value={examSchoolType} onChange={e => setExamSchoolType(e.target.value as any)}>
                     <option value="كلاهما">{isAr ? '🤝 كلاهما (عربي ولغات) — متاح للجميع' : '🤝 Both (Public & Language)'}</option>
                     <option value="عربي">{isAr ? '🏫 مدارس عربي فقط' : '🏫 Arabic Schools Only'}</option>
