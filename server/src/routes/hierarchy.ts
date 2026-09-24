@@ -17,17 +17,20 @@ router.get('/meta', async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
 
-    // 1. Fetch all governorates
+    // 1. Fetch all 27 governorates cleanly grouped by name
     const govRes = await db.query(
-      `SELECT id, name_ar, name_en FROM governorates ORDER BY name_ar ASC`
+      `SELECT MIN(id) as id, name_ar, MIN(name_en) as name_en 
+       FROM governorates 
+       GROUP BY name_ar 
+       ORDER BY name_ar ASC`
     );
 
-    // 2. Fetch distinct subjects (by name_ar)
+    // 2. Fetch distinct subjects (by name_ar) cleanly grouped
     const subRes = await db.query(
-      `SELECT MIN(id) as id, name_ar, name_en, code, MAX(icon) as icon 
+      `SELECT MIN(id) as id, name_ar, MIN(name_en) as name_en, MIN(code) as code, MAX(icon) as icon 
        FROM subjects 
-       GROUP BY name_ar, name_en, code 
-       ORDER BY sort_order ASC, name_ar ASC`
+       GROUP BY name_ar 
+       ORDER BY MIN(sort_order) ASC, name_ar ASC`
     );
 
     // Determine scope

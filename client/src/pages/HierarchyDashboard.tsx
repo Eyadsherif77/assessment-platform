@@ -90,6 +90,43 @@ interface SubordinateUser {
   createdAt: string;
 }
 
+const DEFAULT_EGYPT_GOVERNORATES: Governorate[] = [
+  { id: 'gov-eg-01', name_ar: 'القاهرة', name_en: 'Cairo' },
+  { id: 'gov-eg-02', name_ar: 'الجيزة', name_en: 'Giza' },
+  { id: 'gov-eg-03', name_ar: 'الإسكندرية', name_en: 'Alexandria' },
+  { id: 'gov-eg-04', name_ar: 'الدقهلية', name_en: 'Dakahlia' },
+  { id: 'gov-eg-05', name_ar: 'البحر الأحمر', name_en: 'Red Sea' },
+  { id: 'gov-eg-06', name_ar: 'البحيرة', name_en: 'Beheira' },
+  { id: 'gov-eg-07', name_ar: 'الفيوم', name_en: 'Fayoum' },
+  { id: 'gov-eg-08', name_ar: 'الغربية', name_en: 'Gharbia' },
+  { id: 'gov-eg-09', name_ar: 'الإسماعيلية', name_en: 'Ismailia' },
+  { id: 'gov-eg-10', name_ar: 'المنوفية', name_en: 'Menofia' },
+  { id: 'gov-eg-11', name_ar: 'المنيا', name_en: 'Minya' },
+  { id: 'gov-eg-12', name_ar: 'القليوبية', name_en: 'Qalyubia' },
+  { id: 'gov-eg-13', name_ar: 'الوادي الجديد', name_en: 'New Valley' },
+  { id: 'gov-eg-14', name_ar: 'السويس', name_en: 'Suez' },
+  { id: 'gov-eg-15', name_ar: 'أسوان', name_en: 'Aswan' },
+  { id: 'gov-eg-16', name_ar: 'أسيوط', name_en: 'Assiut' },
+  { id: 'gov-eg-17', name_ar: 'بني سويف', name_en: 'Beni Suef' },
+  { id: 'gov-eg-18', name_ar: 'بورسعيد', name_en: 'Port Said' },
+  { id: 'gov-eg-19', name_ar: 'دمياط', name_en: 'Damietta' },
+  { id: 'gov-eg-20', name_ar: 'الشرقية', name_en: 'Sharqia' },
+  { id: 'gov-eg-21', name_ar: 'جنوب سيناء', name_en: 'South Sinai' },
+  { id: 'gov-eg-22', name_ar: 'كفر الشيخ', name_en: 'Kafr El Sheikh' },
+  { id: 'gov-eg-23', name_ar: 'مطروح', name_en: 'Matrouh' },
+  { id: 'gov-eg-24', name_ar: 'الأقصر', name_en: 'Luxor' },
+  { id: 'gov-eg-25', name_ar: 'قنا', name_en: 'Qena' },
+  { id: 'gov-eg-26', name_ar: 'شمال سيناء', name_en: 'North Sinai' },
+  { id: 'gov-eg-27', name_ar: 'سوهاج', name_en: 'Sohag' }
+];
+
+const DEFAULT_SUBJECTS: Subject[] = [
+  { id: 'sub-arabic', name_ar: 'اللغة العربية', name_en: 'Arabic', code: 'ARA', icon: 'BookOpen' },
+  { id: 'sub-math', name_ar: 'الرياضيات', name_en: 'Mathematics', code: 'MATH', icon: 'BookOpen' },
+  { id: 'sub-science', name_ar: 'العلوم', name_en: 'Science', code: 'SCI', icon: 'BookOpen' },
+  { id: 'sub-english', name_ar: 'اللغة الإنجليزية', name_en: 'English', code: 'ENG', icon: 'BookOpen' }
+];
+
 export const HierarchyDashboard: React.FC = () => {
   const { user, token, impersonateUser } = useAuth();
 
@@ -98,8 +135,8 @@ export const HierarchyDashboard: React.FC = () => {
   );
 
   // Meta & Filters
-  const [governorates, setGovernorates] = useState<Governorate[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [governorates, setGovernorates] = useState<Governorate[]>(DEFAULT_EGYPT_GOVERNORATES);
+  const [subjects, setSubjects] = useState<Subject[]>(DEFAULT_SUBJECTS);
   const [selectedGovId, setSelectedGovId] = useState<string>('ALL');
   const [selectedSubId, setSelectedSubId] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -175,8 +212,12 @@ export const HierarchyDashboard: React.FC = () => {
 
       if (metaRes.ok) {
         const metaData = await metaRes.json();
-        setGovernorates(metaData.governorates || []);
-        setSubjects(metaData.subjects || []);
+        if (metaData.governorates && metaData.governorates.length > 0) {
+          setGovernorates(metaData.governorates);
+        }
+        if (metaData.subjects && metaData.subjects.length > 0) {
+          setSubjects(metaData.subjects);
+        }
 
         if (metaData.scope?.lockedGovernorateId) {
           setSelectedGovId(metaData.scope.lockedGovernorateId);
