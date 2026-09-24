@@ -91,9 +91,11 @@ interface SubordinateUser {
 }
 
 export const HierarchyDashboard: React.FC = () => {
-  const { user, token } = useAuth();
+  const { user, token, impersonateUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'exams' | 'subordinates'>('exams');
+  const [activeTab, setActiveTab] = useState<'exams' | 'subordinates'>(
+    user?.role === 'ADMIN' ? 'subordinates' : 'exams'
+  );
 
   // Meta & Filters
   const [governorates, setGovernorates] = useState<Governorate[]>([]);
@@ -364,6 +366,27 @@ export const HierarchyDashboard: React.FC = () => {
     }
   };
 
+  // Impersonate Subordinate User (Instant Login)
+  const handleImpersonateUser = async (subUser: SubordinateUser) => {
+    try {
+      const res = await fetch(apiUrl(`/api/hierarchy/impersonate/${subUser.id}`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.token && data.user) {
+        impersonateUser(data.token, data.user);
+      } else {
+        alert(data.error || 'تعذر الدخول إلى حساب المستخدم');
+      }
+    } catch (err: any) {
+      alert('حدث خطأ أثناء محاولة الدخول للحساب: ' + err.message);
+    }
+  };
+
   // Helper strings based on role
   const getRoleTitle = () => {
     if (user?.role === 'CENTRAL_ADMIN') return 'الأمين المركزي العام للجمهورية';
@@ -551,6 +574,108 @@ export const HierarchyDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 2.5 Dedicated Admin Callout for Central Admin Provisioning */}
+      {user?.role === 'ADMIN' && (
+        <div style={{
+          background: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
+          border: '2px solid #93C5FD',
+          borderRadius: '1.25rem',
+          padding: '1.5rem 1.75rem',
+          marginBottom: '2rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1.25rem',
+          boxShadow: '0 8px 20px -4px rgba(59, 130, 246, 0.15)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{
+              width: '54px',
+              height: '54px',
+              borderRadius: '14px',
+              background: '#2563EB',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FFFFFF',
+              fontSize: '1.6rem',
+              boxShadow: '0 4px 10px rgba(37, 99, 235, 0.3)'
+            }}>
+              🏛️
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                <span style={{ background: '#2563EB', color: '#fff', fontSize: '0.72rem', fontWeight: 800, padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                  المستوى 1 في التراتبية
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#1E3A8A' }}>
+                  إدارة وتعيين الأمين المركزي العام للجمهورية
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.875rem', color: '#1E40AF', fontWeight: 600, lineHeight: 1.5 }}>
+                بصفتك المدير العام والمالك؛ يمكنك إنشاء حساب الأمين المركزي مباشرة، أو الدخول الفوري لحسابه لتفقد كافة الصلاحيات وإنشاء أمناء المحافظات.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                setActiveTab('subordinates');
+                setCreateSubError(null);
+                setCreateFormData({
+                  fullName: '',
+                  email: '',
+                  username: '',
+                  password: '',
+                  governorateId: '',
+                  subjectId: '',
+                  schoolName: '',
+                  specialization: ''
+                });
+                setCreateSubModalOpen(true);
+              }}
+              style={{
+                background: '#1D4ED8',
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '0.75rem 1.4rem',
+                borderRadius: '0.75rem',
+                fontWeight: 900,
+                fontSize: '0.925rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 12px rgba(29, 78, 216, 0.35)',
+                transition: 'transform 0.15s'
+              }}
+            >
+              <Plus size={18} />
+              <span>➕ إنشاء أمين مركزي جديد</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('subordinates')}
+              style={{
+                background: '#FFFFFF',
+                color: '#1E40AF',
+                border: '1.5px solid #93C5FD',
+                padding: '0.75rem 1.25rem',
+                borderRadius: '0.75rem',
+                fontWeight: 800,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+              }}
+            >
+              عرض قائمة الأمناء المركزيين ({subordinates.length})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 3. Main Navigation Tabs */}
       <div style={{
@@ -1057,7 +1182,29 @@ export const HierarchyDashboard: React.FC = () => {
                       </td>
 
                       <td style={{ padding: '1rem' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => handleImpersonateUser(subUser)}
+                            title="تسجيل دخول فوري لحسابه ومعاينة لوحة تحكمه وصلاحياته"
+                            style={{
+                              background: 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)',
+                              color: '#FFFFFF',
+                              border: 'none',
+                              padding: '0.4rem 0.85rem',
+                              borderRadius: '0.5rem',
+                              fontSize: '0.8rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              boxShadow: '0 2px 5px rgba(79, 70, 229, 0.3)'
+                            }}
+                          >
+                            <Sparkles size={13} />
+                            <span>دخول حسابه 🚀</span>
+                          </button>
+
                           <button
                             onClick={() => setPermissionsModal({ isOpen: true, user: subUser, loading: false })}
                             style={{

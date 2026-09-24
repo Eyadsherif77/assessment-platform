@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
-import { authenticateToken, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
+import { authenticateToken, requireRole, generateToken, AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -632,6 +632,91 @@ router.patch('/subordinates/:id/permissions', async (req: AuthenticatedRequest, 
   } catch (err: any) {
     console.error('Error updating permissions:', err);
     return res.status(500).json({ error: 'خطأ في تحديث الصلاحيات: ' + err.message });
+  }
+});
+
+/**
+ * 8. Impersonate Hierarchy Subordinate
+ * Allows higher supervisory ranks to instantly step into subordinate accounts
+ */
+router.post('/impersonate/:id', async (req: AuthenticatedRequest, res) => {
+  try {
+    const caller = req.user!;
+    const { id } = req.params;
+
+    const userRes = await db.query(
+      `SELECT u.id, u.super_id, u.hybrid_id, u.email, u.username, u.full_name, u.role, 
+              u.permissions, u.is_active, u.governorate_id, u.subject_id, u.created_by,
+              g.name_ar as governorate_name, s.name_ar as subject_name
+       FROM users u
+       LEFT JOIN governorates g ON u.governorate_id = g.id
+       LEFT JOIN subjects s ON u.subject_id = s.id
+       WHERE u.id = $1`,
+      [id]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+
+    const target = userRes.rows[0];
+
+    // Check authority:
+    let authorized = false;
+    if (caller.role === 'ADMIN') authorized = true;
+    if (caller.role === 'CENTRAL_ADMIN' && ['GOVERNORATE_ADMIN', 'SUPERVISOR', 'TEACHER'].includes(target.role)) authorized = true;
+    if (caller.role === 'GOVERNORATE_ADMIN' && ['SUPERVISOR', 'TEACHER'].includes(target.role) && target.governorate_id === caller.governorateId) authorized = true;
+    if (caller.role === 'SUPERVISOR' && target.role === 'TEACHER' && (target.created_by === caller.id || target.governorate_id === caller.governorateId)) authorized = true;
+
+    if (!authorized) {
+      return res.status(403).json({ error: 'غير مصرح لك بالدخول إلى حساب هذا المستخدم وفقاً للهيكل الإداري' });
+    }
+
+    let permissionsObj = null;
+    if (target.permissions) {
+      try {
+        permissionsObj = typeof target.permissions === 'string' ? JSON.parse(target.permissions) : target.permissions;
+      } catch (_) {}
+    }
+
+    let profileData: any = null;
+    if (target.role === 'TEACHER') {
+      const tp = await db.query(`SELECT * FROM teacher_profiles WHERE user_id = $1`, [target.id]);
+      profileData = tp.rows[0] || null;
+    }
+
+    const impersonationToken = generateToken({
+      id: target.id,
+      email: target.email,
+      role: target.role,
+      fullName: target.full_name,
+      governorateId: target.governorate_id || undefined,
+      subjectId: target.subject_id || undefined,
+      permissions: permissionsObj || undefined
+    });
+
+    return res.json({
+      message: `تم الدخول بنجاح إلى حساب: ${target.full_name}`,
+      token: impersonationToken,
+      user: {
+        id: target.id,
+        super_id: target.super_id || null,
+        hybrid_id: target.hybrid_id || null,
+        email: target.email,
+        username: target.username || null,
+        role: target.role,
+        fullName: target.full_name,
+        governorate_id: target.governorate_id || null,
+        governorate_name: target.governorate_name || null,
+        subject_id: target.subject_id || null,
+        subject_name: target.subject_name || null,
+        permissions: permissionsObj,
+        profile: profileData
+      }
+    });
+  } catch (err: any) {
+    console.error('Error impersonating hierarchy user:', err);
+    return res.status(500).json({ error: 'خطأ أثناء محاولة الدخول للحساب: ' + err.message });
   }
 });
 

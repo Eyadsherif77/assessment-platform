@@ -46,8 +46,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
             <span style={{ fontSize: '1rem' }}>👁️</span>
             <span>
               {language === 'ar'
-                ? `وضع معاينة الإدارة: تتصفح حالياً بصفتك (${user?.role === 'TEACHER' ? 'معلم' : 'طالب'}): ${user?.fullName} [${user?.hybrid_id || user?.id}]`
-                : `Admin Impersonation Mode: Browsing as (${user?.role}): ${user?.fullName} [${user?.hybrid_id || user?.id}]`}
+                ? `وضع معاينة الإشراف: تتصفح حالياً بصفتك (${
+                    user?.role === 'CENTRAL_ADMIN' ? 'الأمين المركزي' :
+                    user?.role === 'GOVERNORATE_ADMIN' ? `أمين محافظة ${user?.governorate_name || ''}` :
+                    user?.role === 'SUPERVISOR' ? `موجه مادة ${user?.subject_name || ''}` :
+                    user?.role === 'TEACHER' ? 'معلم' :
+                    user?.role === 'STUDENT' ? 'طالب' : user?.role
+                  }): ${user?.fullName} [${user?.hybrid_id || user?.id}]`
+                : `Supervisory Impersonation Mode: Browsing as (${user?.role}): ${user?.fullName} [${user?.hybrid_id || user?.id}]`}
             </span>
           </div>
           <button
@@ -57,14 +63,15 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
               background: '#FFFFFF',
               color: '#92400E',
               border: 'none',
-              padding: '0.25rem 0.85rem',
-              fontWeight: 800,
-              fontSize: '0.78rem',
+              padding: '0.3rem 1rem',
+              fontWeight: 900,
+              fontSize: '0.8rem',
               borderRadius: 'var(--radius-full)',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+              boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+              cursor: 'pointer'
             }}
           >
-            ⬅️ {language === 'ar' ? 'العودة للوحة الإدارة' : 'Exit to Admin Portal'}
+            🔄 {language === 'ar' ? 'العودة الفورية لحساب المدير العام (Super Admin)' : 'Return to SuperAdmin'}
           </button>
         </div>
       )}
