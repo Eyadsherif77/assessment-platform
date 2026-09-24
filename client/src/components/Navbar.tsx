@@ -52,8 +52,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                     user?.role === 'SUPERVISOR' ? `موجه مادة ${user?.subject_name || ''}` :
                     user?.role === 'TEACHER' ? 'معلم' :
                     user?.role === 'STUDENT' ? 'طالب' : user?.role
-                  }): ${user?.fullName} [${user?.hybrid_id || user?.id}]`
-                : `Supervisory Impersonation Mode: Browsing as (${user?.role}): ${user?.fullName} [${user?.hybrid_id || user?.id}]`}
+                  }): ${user?.fullName}`
+                : `Supervisory Impersonation Mode: Browsing as (${user?.role}): ${user?.fullName}`}
             </span>
           </div>
           <button

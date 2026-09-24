@@ -430,7 +430,7 @@ export const HierarchyDashboard: React.FC = () => {
 
   // Helper strings based on role
   const getRoleTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return 'الأمين المركزي العام للجمهورية';
+    if (user?.role === 'CENTRAL_ADMIN') return 'الأمين المركزي';
     if (user?.role === 'GOVERNORATE_ADMIN') return `أمين محافظة ${user?.governorate_name || ''}`;
     if (user?.role === 'SUPERVISOR') return `الموجه الأول لمادة ${user?.subject_name || ''} - ${user?.governorate_name || ''}`;
     return 'المدير العام للمنصة';
@@ -515,14 +515,9 @@ export const HierarchyDashboard: React.FC = () => {
             )}
           </div>
 
-          <h1 style={{ fontSize: '1.85rem', fontWeight: 900, marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '1.85rem', fontWeight: 900, margin: 0, letterSpacing: '-0.02em' }}>
             {getRoleTitle()}
           </h1>
-          <p style={{ color: '#E0E7FF', fontSize: '0.95rem', margin: 0, maxWidth: '750px', lineHeight: 1.6 }}>
-            {user?.role === 'CENTRAL_ADMIN' && 'متابعة شاملة لجميع محافظات جمهورية مصر العربية، فحص كافة الاختبارات والمناهج بصورة تفاعلية بالكامل، وإدارة وتعيين أمناء المحافظات وتحديد صلاحياتهم.'}
-            {user?.role === 'GOVERNORATE_ADMIN' && `متابعة المنظومة التعليمية والاختبارات على مستوى ${user?.governorate_name || 'المحافظة'}، الإشراف على موجهي المواد وتوزيع الصلاحيات.`}
-            {user?.role === 'SUPERVISOR' && `متابعة اختبارات مادة ${user?.subject_name || ''} بمحافظة ${user?.governorate_name || ''}، الإشراف على المعلمين، وإصدار حساباتهم وتعيين صلاحياتهم.`}
-          </p>
         </div>
       </div>
 
@@ -652,12 +647,9 @@ export const HierarchyDashboard: React.FC = () => {
                   المستوى 1 في التراتبية
                 </span>
                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#1E3A8A' }}>
-                  إدارة وتعيين الأمين المركزي العام للجمهورية
+                  إدارة وتعيين الأمين المركزي
                 </h3>
               </div>
-              <p style={{ margin: 0, fontSize: '0.875rem', color: '#1E40AF', fontWeight: 600, lineHeight: 1.5 }}>
-                بصفتك المدير العام والمالك؛ يمكنك إنشاء حساب الأمين المركزي مباشرة، أو الدخول الفوري لحسابه لتفقد كافة الصلاحيات وإنشاء أمناء المحافظات.
-              </p>
             </div>
           </div>
 
@@ -1077,9 +1069,6 @@ export const HierarchyDashboard: React.FC = () => {
               <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
                 {getSubordinateTabTitle()}
               </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0' }}>
-                يمكنك إنشاء حسابات جديدة مباشرة للمرؤوسين والتحكم بفتح وإغلاق صلاحياتهم وتجميد حساباتهم.
-              </p>
             </div>
 
             <button
@@ -1332,9 +1321,6 @@ export const HierarchyDashboard: React.FC = () => {
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-dark)', margin: 0 }}>
                   معاينة تفاصيل الاختبار ونموذج الأسئلة
                 </h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  كافة بيانات الاختبار ونموذج الإجابة النموذجي
-                </span>
               </div>
               <button
                 onClick={() => setInspectExamModal(prev => ({ ...prev, isOpen: false }))}
@@ -1489,9 +1475,6 @@ export const HierarchyDashboard: React.FC = () => {
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--text-dark)', margin: 0 }}>
                   {getAddSubordinateBtnTitle()}
                 </h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  يتم ربط الحساب تلقائياً بالهيكل التراتبي في قاعدة البيانات
-                </span>
               </div>
               <button
                 onClick={() => setCreateSubModalOpen(false)}
