@@ -723,4 +723,411 @@ router.post('/impersonate/:id', async (req: AuthenticatedRequest, res) => {
   }
 });
 
+/**
+ * 8. Supervisory Analysis: Exams activity and student performance for subordinates
+ * - CENTRAL_ADMIN: Analyzes all 27 governorates / Governorate Admins (monthly & weekly)
+ * - GOVERNORATE_ADMIN: Analyzes Supervisors in his governorate across subjects (monthly & weekly)
+ * - SUPERVISOR: Analyzes Teachers in his subject and governorate (monthly & weekly)
+ */
+router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    const isMaster = user.role === 'ADMIN' || user.role === 'CENTRAL_ADMIN';
+    const isGovAdmin = user.role === 'GOVERNORATE_ADMIN';
+    const isSupervisor = user.role === 'SUPERVISOR';
+
+    const timeframe = (req.query.timeframe as string) === 'weekly' ? 'weekly' : 'monthly';
+    const reqGov = req.query.governorate_id as string;
+    const reqSub = req.query.subject_id as string;
+
+    // Determine effective governorate and subject
+    let effectiveGovId: string | null = null;
+    let effectiveSubId: string | null = null;
+
+    if (isGovAdmin || isSupervisor) {
+      effectiveGovId = user.governorateId || null;
+    } else if (isMaster && reqGov && reqGov !== 'ALL') {
+      effectiveGovId = reqGov;
+    }
+
+    if (isSupervisor) {
+      effectiveSubId = user.subjectId || null;
+    } else if (reqSub && reqSub !== 'ALL') {
+      effectiveSubId = reqSub;
+    }
+
+    // 1. Fetch reference governorates and subjects
+    const govRes = await db.query(
+      `SELECT MIN(id) as id, name_ar, MIN(name_en) as name_en 
+       FROM governorates 
+       GROUP BY name_ar 
+       ORDER BY name_ar ASC`
+    );
+    const subRes = await db.query(
+      `SELECT MIN(id) as id, name_ar, MIN(name_en) as name_en, MIN(code) as code 
+       FROM subjects 
+       GROUP BY name_ar 
+       ORDER BY MIN(sort_order) ASC, name_ar ASC`
+    );
+
+    const allGovs = govRes.rows;
+    const allSubjects = subRes.rows;
+
+    // 2. Fetch all exams with teacher & subject information
+    const examsRes = await db.query(
+      `SELECT 
+        e.id, e.title_ar, e.created_at, e.subject_id, e.teacher_id, e.is_published,
+        COALESCE(e.governorate_id, u.governorate_id) as governorate_id,
+        u.full_name as teacher_name,
+        u.email as teacher_email,
+        s.name_ar as subject_name_ar,
+        g.name_ar as governorate_name
+       FROM exams e
+       JOIN users u ON e.teacher_id = u.id
+       JOIN subjects s ON e.subject_id = s.id
+       LEFT JOIN governorates g ON (e.governorate_id = g.id OR u.governorate_id = g.id)`
+    );
+
+    // 3. Fetch all exam attempts with score and exam_id
+    const attemptsRes = await db.query(
+      `SELECT ea.id, ea.exam_id, ea.score, ea.total_points, ea.status, ea.completed_at, ea.started_at 
+       FROM exam_attempts ea`
+    );
+
+    // Map attempts by exam_id
+    const attemptsByExam: { [examId: string]: any[] } = {};
+    attemptsRes.rows.forEach((att: any) => {
+      if (!attemptsByExam[att.exam_id]) attemptsByExam[att.exam_id] = [];
+      attemptsByExam[att.exam_id].push(att);
+    });
+
+    // 4. Timeframe calculations (Monthly vs Weekly)
+    const now = new Date();
+    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfCurrentWeek = new Date(now);
+    const dayOfWeek = (now.getDay() + 1) % 7; // Saturday as start or standard 7-day window
+    startOfCurrentWeek.setDate(now.getDate() - 7);
+    startOfCurrentWeek.setHours(0, 0, 0, 0);
+
+    const cutoffDate = timeframe === 'weekly' ? startOfCurrentWeek : startOfCurrentMonth;
+
+    // Filter exams within caller's overarching scope and timeframe
+    const scopedExams = examsRes.rows.filter((ex: any) => {
+      // Gov filter
+      if (effectiveGovId && ex.governorate_id !== effectiveGovId) return false;
+      // Subject filter
+      if (effectiveSubId && ex.subject_id !== effectiveSubId) return false;
+      return true;
+    });
+
+    const periodExams = scopedExams.filter((ex: any) => {
+      const d = new Date(ex.created_at || now);
+      return d >= cutoffDate;
+    });
+
+    // Calculate overall KPIs in period
+    let totalAttemptsCount = 0;
+    let totalScoreSum = 0;
+    let passingAttemptsCount = 0;
+
+    periodExams.forEach((ex: any) => {
+      const atts = attemptsByExam[ex.id] || [];
+      atts.forEach((a: any) => {
+        totalAttemptsCount++;
+        const sc = Number(a.score) || 0;
+        totalScoreSum += sc;
+        if (sc >= 50) passingAttemptsCount++;
+      });
+    });
+
+    const averageScore = totalAttemptsCount > 0 ? Math.round((totalScoreSum / totalAttemptsCount) * 10) / 10 : 0;
+    const passRate = totalAttemptsCount > 0 ? Math.round((passingAttemptsCount / totalAttemptsCount) * 100) : 0;
+
+    // 5. Build Subordinates Analysis based on Caller's Role
+    let subordinatesAnalysis: any[] = [];
+
+    if (isMaster) {
+      // Caller is ADMIN or CENTRAL_ADMIN: Analyze each of the 27 Governorates
+      // Fetch governorate admin users
+      const govAdminsRes = await db.query(
+        `SELECT id, full_name, email, governorate_id, is_active FROM users WHERE role = 'GOVERNORATE_ADMIN'`
+      );
+      const govAdminsByGovId: { [govId: string]: any } = {};
+      govAdminsRes.rows.forEach((ga: any) => {
+        if (ga.governorate_id) govAdminsByGovId[ga.governorate_id] = ga;
+      });
+
+      // Filter governorates if a specific one was picked
+      const targetGovs = (effectiveGovId && effectiveGovId !== 'ALL')
+        ? allGovs.filter(g => g.id === effectiveGovId)
+        : allGovs;
+
+      subordinatesAnalysis = targetGovs.map(gov => {
+        const adminUser = govAdminsByGovId[gov.id];
+        // Exams in this governorate
+        const govExams = scopedExams.filter(e => e.governorate_id === gov.id);
+        const govPeriodExams = govExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+
+        let govAttempts = 0;
+        let govScoreSum = 0;
+        let govPassing = 0;
+        const activeTeachersSet = new Set<string>();
+
+        govPeriodExams.forEach(e => {
+          if (e.teacher_id) activeTeachersSet.add(e.teacher_id);
+          const atts = attemptsByExam[e.id] || [];
+          atts.forEach(a => {
+            govAttempts++;
+            const sc = Number(a.score) || 0;
+            govScoreSum += sc;
+            if (sc >= 50) govPassing++;
+          });
+        });
+
+        const govAvgScore = govAttempts > 0 ? Math.round((govScoreSum / govAttempts) * 10) / 10 : 0;
+        const govPassRate = govAttempts > 0 ? Math.round((govPassing / govAttempts) * 100) : 0;
+
+        return {
+          id: gov.id,
+          targetType: 'GOVERNORATE',
+          title: gov.name_ar,
+          titleEn: gov.name_en || gov.name_ar,
+          governorateId: gov.id,
+          governorateName: gov.name_ar,
+          subordinateName: adminUser ? adminUser.full_name : 'لم يتم التعيين بعد',
+          subordinateEmail: adminUser ? adminUser.email : null,
+          subordinateId: adminUser ? adminUser.id : null,
+          hasAssignedUser: Boolean(adminUser),
+          totalExams: govPeriodExams.length,
+          lifetimeExams: govExams.length,
+          totalAttempts: govAttempts,
+          averageScore: govAvgScore,
+          passRate: govPassRate,
+          activeStaffCount: activeTeachersSet.size,
+          status: govAvgScore >= 75 ? 'EXCELLENT' : (govAvgScore >= 50 ? 'GOOD' : 'NEEDS_SUPPORT')
+        };
+      });
+
+    } else if (isGovAdmin) {
+      // Caller is GOVERNORATE_ADMIN: Analyze Supervisors across subjects in his governorate
+      const myGovId = user.governorateId;
+      const supervisorsRes = await db.query(
+        `SELECT id, full_name, email, subject_id, is_active FROM users WHERE role = 'SUPERVISOR' AND governorate_id = $1`,
+        [myGovId]
+      );
+      const supervisorsBySubId: { [subId: string]: any } = {};
+      supervisorsRes.rows.forEach((s: any) => {
+        if (s.subject_id) supervisorsBySubId[s.subject_id] = s;
+      });
+
+      const targetSubjects = (effectiveSubId && effectiveSubId !== 'ALL')
+        ? allSubjects.filter(s => s.id === effectiveSubId)
+        : allSubjects;
+
+      subordinatesAnalysis = targetSubjects.map(sub => {
+        const supervisorUser = supervisorsBySubId[sub.id];
+        const subExams = scopedExams.filter(e => e.subject_id === sub.id && e.governorate_id === myGovId);
+        const subPeriodExams = subExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+
+        let subAttempts = 0;
+        let subScoreSum = 0;
+        let subPassing = 0;
+        const activeTeachersSet = new Set<string>();
+
+        subPeriodExams.forEach(e => {
+          if (e.teacher_id) activeTeachersSet.add(e.teacher_id);
+          const atts = attemptsByExam[e.id] || [];
+          atts.forEach(a => {
+            subAttempts++;
+            const sc = Number(a.score) || 0;
+            subScoreSum += sc;
+            if (sc >= 50) subPassing++;
+          });
+        });
+
+        const subAvgScore = subAttempts > 0 ? Math.round((subScoreSum / subAttempts) * 10) / 10 : 0;
+        const subPassRate = subAttempts > 0 ? Math.round((subPassing / subAttempts) * 100) : 0;
+
+        return {
+          id: sub.id,
+          targetType: 'SUBJECT_SUPERVISOR',
+          title: `مادة ${sub.name_ar}`,
+          titleEn: sub.name_en || sub.name_ar,
+          subjectId: sub.id,
+          subjectName: sub.name_ar,
+          governorateId: myGovId,
+          governorateName: allGovs.find((g: any) => g.id === myGovId)?.name_ar || 'المحافظة',
+          subordinateName: supervisorUser ? supervisorUser.full_name : 'لم يتم التعيين بعد',
+          subordinateEmail: supervisorUser ? supervisorUser.email : null,
+          subordinateId: supervisorUser ? supervisorUser.id : null,
+          hasAssignedUser: Boolean(supervisorUser),
+          totalExams: subPeriodExams.length,
+          lifetimeExams: subExams.length,
+          totalAttempts: subAttempts,
+          averageScore: subAvgScore,
+          passRate: subPassRate,
+          activeStaffCount: activeTeachersSet.size,
+          status: subAvgScore >= 75 ? 'EXCELLENT' : (subAvgScore >= 50 ? 'GOOD' : 'NEEDS_SUPPORT')
+        };
+      });
+
+    } else if (isSupervisor) {
+      // Caller is SUPERVISOR: Analyze Teachers in his subject and governorate
+      const myGovId = user.governorateId;
+      const mySubId = user.subjectId;
+
+      const teachersRes = await db.query(
+        `SELECT u.id, u.full_name, u.email, tp.school_name 
+         FROM users u
+         LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+         WHERE u.role = 'TEACHER' AND u.governorate_id = $1 AND (u.subject_id = $2 OR u.created_by = $3)`,
+        [myGovId, mySubId, user.id]
+      );
+
+      subordinatesAnalysis = teachersRes.rows.map(teacher => {
+        const teacherExams = scopedExams.filter(e => e.teacher_id === teacher.id);
+        const teacherPeriodExams = teacherExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+
+        let tAttempts = 0;
+        let tScoreSum = 0;
+        let tPassing = 0;
+
+        teacherPeriodExams.forEach(e => {
+          const atts = attemptsByExam[e.id] || [];
+          atts.forEach(a => {
+            tAttempts++;
+            const sc = Number(a.score) || 0;
+            tScoreSum += sc;
+            if (sc >= 50) tPassing++;
+          });
+        });
+
+        const tAvgScore = tAttempts > 0 ? Math.round((tScoreSum / tAttempts) * 10) / 10 : 0;
+        const tPassRate = tAttempts > 0 ? Math.round((tPassing / tAttempts) * 100) : 0;
+
+        return {
+          id: teacher.id,
+          targetType: 'TEACHER',
+          title: teacher.full_name,
+          titleEn: teacher.full_name,
+          subjectId: mySubId,
+          subjectName: allSubjects.find((s: any) => s.id === mySubId)?.name_ar || 'المادة التخصصية',
+          governorateId: myGovId,
+          governorateName: allGovs.find((g: any) => g.id === myGovId)?.name_ar || 'المحافظة',
+          subordinateName: teacher.full_name,
+          subordinateEmail: teacher.email,
+          subordinateId: teacher.id,
+          schoolName: teacher.school_name || 'المدرسة المسجلة',
+          hasAssignedUser: true,
+          totalExams: teacherPeriodExams.length,
+          lifetimeExams: teacherExams.length,
+          totalAttempts: tAttempts,
+          averageScore: tAvgScore,
+          passRate: tPassRate,
+          activeStaffCount: 1,
+          status: tAvgScore >= 75 ? 'EXCELLENT' : (tAvgScore >= 50 ? 'GOOD' : 'NEEDS_SUPPORT')
+        };
+      });
+    }
+
+    // 6. Trend Breakdown (4 slots for Monthly or 4 Weeks for Weekly)
+    const trendList: any[] = [];
+    if (timeframe === 'weekly') {
+      for (let i = 3; i >= 0; i--) {
+        const wEnd = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+        const wStart = new Date(wEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const labelAr = i === 0 ? 'الأسبوع الحالي' : `منذ ${i} أسبوع`;
+        const labelEn = i === 0 ? 'Current Week' : `${i}w ago`;
+
+        const wExams = scopedExams.filter(e => {
+          const d = new Date(e.created_at || now);
+          return d >= wStart && d <= wEnd;
+        });
+
+        let wAtts = 0;
+        let wScore = 0;
+        wExams.forEach(e => {
+          const atts = attemptsByExam[e.id] || [];
+          atts.forEach(a => {
+            wAtts++;
+            wScore += Number(a.score) || 0;
+          });
+        });
+
+        trendList.push({
+          label: labelAr,
+          labelEn,
+          examsCount: wExams.length,
+          attemptsCount: wAtts,
+          avgScore: wAtts > 0 ? Math.round((wScore / wAtts) * 10) / 10 : 0
+        });
+      }
+    } else {
+      // Monthly trend for last 4 months
+      const monthNamesAr = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+      const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+      for (let i = 3; i >= 0; i--) {
+        const targetDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const mStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+        const mEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0, 23, 59, 59);
+
+        const mLabelAr = monthNamesAr[targetDate.getMonth()];
+        const mLabelEn = monthNamesEn[targetDate.getMonth()];
+
+        const mExams = scopedExams.filter(e => {
+          const d = new Date(e.created_at || now);
+          return d >= mStart && d <= mEnd;
+        });
+
+        let mAtts = 0;
+        let mScore = 0;
+        mExams.forEach(e => {
+          const atts = attemptsByExam[e.id] || [];
+          atts.forEach(a => {
+            mAtts++;
+            mScore += Number(a.score) || 0;
+          });
+        });
+
+        trendList.push({
+          label: mLabelAr,
+          labelEn: mLabelEn,
+          examsCount: mExams.length,
+          attemptsCount: mAtts,
+          avgScore: mAtts > 0 ? Math.round((mScore / mAtts) * 10) / 10 : 0
+        });
+      }
+    }
+
+    // 7. Active Subordinates Count in Period
+    const activeSubordinatesCount = subordinatesAnalysis.filter(s => s.totalExams > 0).length;
+
+    return res.json({
+      role: user.role,
+      scope: {
+        canFilterGovernorate: isMaster,
+        canFilterSubject: isMaster || isGovAdmin,
+        effectiveGovId,
+        effectiveSubId,
+        timeframe
+      },
+      kpis: {
+        totalExams: periodExams.length,
+        lifetimeExams: scopedExams.length,
+        totalAttempts: totalAttemptsCount,
+        averageScore,
+        passRate,
+        activeSubordinatesCount,
+        totalSubordinatesCount: subordinatesAnalysis.length
+      },
+      subordinatesAnalysis,
+      timelineTrend: trendList
+    });
+  } catch (err: any) {
+    console.error('Error in supervisory analysis:', err);
+    return res.status(500).json({ error: 'خطأ في جلب تحليلات الرقابة الإشرافية: ' + err.message });
+  }
+});
+
 export default router;

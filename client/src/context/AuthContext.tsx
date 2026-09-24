@@ -49,6 +49,7 @@ interface AuthContextType {
   language: Language;
   t: typeof translations['ar'];
   isImpersonating: boolean;
+  previousUser: UserProfile | null;
   setLanguage: (lang: Language) => void;
   login: (token: string, user: UserProfile) => void;
   logout: () => void;
@@ -67,12 +68,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : null;
   });
   const [isImpersonating, setIsImpersonating] = useState<boolean>(() => {
+    const stackStr = localStorage.getItem('edu_impersonation_stack');
+    if (stackStr) {
+      try {
+        const stack = JSON.parse(stackStr);
+        if (Array.isArray(stack) && stack.length > 0) return true;
+      } catch (_) {}
+    }
     return Boolean(localStorage.getItem('edu_admin_backup_token'));
   });
   const [language, setLanguageState] = useState<Language>(() => {
     return (localStorage.getItem('edu_lang') as Language) || 'ar';
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const getPreviousUser = (): UserProfile | null => {
+    try {
+      const stackStr = localStorage.getItem('edu_impersonation_stack');
+      if (stackStr) {
+        const stack = JSON.parse(stackStr);
+        if (Array.isArray(stack) && stack.length > 0) {
+          return stack[stack.length - 1].user;
+        }
+      }
+    } catch (_) {}
+    const backupUserStr = localStorage.getItem('edu_admin_backup_user');
+    if (backupUserStr) {
+      try { return JSON.parse(backupUserStr); } catch (_) {}
+    }
+    return null;
+  };
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
@@ -101,8 +126,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(data.user);
           localStorage.setItem('edu_auth_user', JSON.stringify(data.user));
         } else {
-          // If token invalid and we are in impersonation, try to restore admin
-          if (localStorage.getItem('edu_admin_backup_token')) {
+          // If token invalid, step back or logout
+          const stackStr = localStorage.getItem('edu_impersonation_stack');
+          if (stackStr || localStorage.getItem('edu_admin_backup_token')) {
             exitImpersonation();
           } else {
             logout();
@@ -120,8 +146,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = (newToken: string, newUser: UserProfile) => {
     setToken(newToken);
     setUser(newUser);
+    setIsImpersonating(false);
     localStorage.setItem('edu_auth_token', newToken);
     localStorage.setItem('edu_auth_user', JSON.stringify(newUser));
+    localStorage.removeItem('edu_impersonation_stack');
+    localStorage.removeItem('edu_admin_backup_token');
+    localStorage.removeItem('edu_admin_backup_user');
   };
 
   const logout = () => {
@@ -130,16 +160,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsImpersonating(false);
     localStorage.removeItem('edu_auth_token');
     localStorage.removeItem('edu_auth_user');
+    localStorage.removeItem('edu_impersonation_stack');
     localStorage.removeItem('edu_admin_backup_token');
     localStorage.removeItem('edu_admin_backup_user');
   };
 
   const impersonateUser = (impersonationToken: string, impersonatedUser: UserProfile) => {
-    // Backup current admin credentials
-    if (!localStorage.getItem('edu_admin_backup_token') && token && user) {
-      localStorage.setItem('edu_admin_backup_token', token);
-      localStorage.setItem('edu_admin_backup_user', JSON.stringify(user));
+    if (token && user) {
+      let stack: Array<{ token: string; user: UserProfile }> = [];
+      try {
+        const stackStr = localStorage.getItem('edu_impersonation_stack');
+        stack = stackStr ? JSON.parse(stackStr) : [];
+        if (!Array.isArray(stack)) stack = [];
+      } catch {
+        stack = [];
+      }
+      stack.push({ token, user });
+      localStorage.setItem('edu_impersonation_stack', JSON.stringify(stack));
+
+      if (!localStorage.getItem('edu_admin_backup_token')) {
+        localStorage.setItem('edu_admin_backup_token', token);
+        localStorage.setItem('edu_admin_backup_user', JSON.stringify(user));
+      }
     }
+
     setToken(impersonationToken);
     setUser(impersonatedUser);
     setIsImpersonating(true);
@@ -148,19 +192,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const exitImpersonation = () => {
-    const backupToken = localStorage.getItem('edu_admin_backup_token');
-    const backupUserStr = localStorage.getItem('edu_admin_backup_user');
-    if (backupToken && backupUserStr) {
-      const backupUser = JSON.parse(backupUserStr);
-      setToken(backupToken);
-      setUser(backupUser);
-      setIsImpersonating(false);
-      localStorage.setItem('edu_auth_token', backupToken);
-      localStorage.setItem('edu_auth_user', backupUserStr);
-      localStorage.removeItem('edu_admin_backup_token');
-      localStorage.removeItem('edu_admin_backup_user');
+    let stack: Array<{ token: string; user: UserProfile }> = [];
+    try {
+      const stackStr = localStorage.getItem('edu_impersonation_stack');
+      stack = stackStr ? JSON.parse(stackStr) : [];
+      if (!Array.isArray(stack)) stack = [];
+    } catch {
+      stack = [];
+    }
+
+    if (stack.length > 0) {
+      const prev = stack.pop()!;
+      localStorage.setItem('edu_impersonation_stack', JSON.stringify(stack));
+      setToken(prev.token);
+      setUser(prev.user);
+      setIsImpersonating(stack.length > 0);
+      localStorage.setItem('edu_auth_token', prev.token);
+      localStorage.setItem('edu_auth_user', JSON.stringify(prev.user));
+      if (stack.length === 0) {
+        localStorage.removeItem('edu_admin_backup_token');
+        localStorage.removeItem('edu_admin_backup_user');
+      }
     } else {
-      logout();
+      const backupToken = localStorage.getItem('edu_admin_backup_token');
+      const backupUserStr = localStorage.getItem('edu_admin_backup_user');
+      if (backupToken && backupUserStr) {
+        const backupUser = JSON.parse(backupUserStr);
+        setToken(backupToken);
+        setUser(backupUser);
+        setIsImpersonating(false);
+        localStorage.setItem('edu_auth_token', backupToken);
+        localStorage.setItem('edu_auth_user', backupUserStr);
+        localStorage.removeItem('edu_admin_backup_token');
+        localStorage.removeItem('edu_admin_backup_user');
+      } else {
+        logout();
+      }
     }
   };
 
@@ -181,6 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         language,
         t,
         isImpersonating,
+        previousUser: getPreviousUser(),
         setLanguage,
         login,
         logout,

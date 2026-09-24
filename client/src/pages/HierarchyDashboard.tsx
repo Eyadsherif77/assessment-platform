@@ -15,7 +15,10 @@ import {
   Award, 
   HelpCircle,
   X,
-  Sparkles
+  Sparkles,
+  BarChart2,
+  TrendingUp,
+  Calendar
 } from 'lucide-react';
 
 interface Governorate {
@@ -131,9 +134,14 @@ export const HierarchyDashboard: React.FC = () => {
   const { user, token, language, impersonateUser } = useAuth();
   const isAr = language === 'ar';
 
-  const [activeTab, setActiveTab] = useState<'exams' | 'subordinates'>(
-    user?.role === 'ADMIN' ? 'subordinates' : 'exams'
-  );
+  const [activeTab, setActiveTab] = useState<'analysis' | 'exams' | 'subordinates'>('analysis');
+
+  // Supervisory Analysis State
+  const [analysisTimeframe, setAnalysisTimeframe] = useState<'monthly' | 'weekly'>('monthly');
+  const [analysisGovId, setAnalysisGovId] = useState<string>('ALL');
+  const [analysisSubId, setAnalysisSubId] = useState<string>('ALL');
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState<boolean>(false);
 
   // Meta & Filters
   const [governorates, setGovernorates] = useState<Governorate[]>(DEFAULT_EGYPT_GOVERNORATES);
@@ -190,14 +198,16 @@ export const HierarchyDashboard: React.FC = () => {
     fetchMetaAndStats();
   }, [token]);
 
-  // Load Exams or Subordinates when tab or filters change
+  // Load appropriate data when tab or filters change
   useEffect(() => {
-    if (activeTab === 'exams') {
+    if (activeTab === 'analysis') {
+      fetchSupervisoryAnalysis();
+    } else if (activeTab === 'exams') {
       fetchExams();
     } else {
       fetchSubordinates();
     }
-  }, [activeTab, selectedGovId, selectedSubId, searchQuery, token]);
+  }, [activeTab, selectedGovId, selectedSubId, searchQuery, analysisTimeframe, analysisGovId, analysisSubId, token]);
 
   const fetchMetaAndStats = async () => {
     if (!token) return;
@@ -234,6 +244,43 @@ export const HierarchyDashboard: React.FC = () => {
       }
     } catch (e: any) {
       console.error('Error fetching meta:', e);
+    }
+  };
+
+  const fetchSupervisoryAnalysis = async () => {
+    if (!token) return;
+    setIsAnalysisLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('timeframe', analysisTimeframe);
+      if (analysisGovId !== 'ALL') params.append('governorate_id', analysisGovId);
+      if (analysisSubId !== 'ALL') params.append('subject_id', analysisSubId);
+
+      const res = await fetch(apiUrl(`/api/hierarchy/supervisory-analysis?${params.toString()}`), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalysisData(data);
+      }
+    } catch (e: any) {
+      console.error('Error fetching supervisory analysis:', e);
+    } finally {
+      setIsAnalysisLoading(false);
+    }
+  };
+
+  const handleImpersonateById = async (userId: string) => {
+    try {
+      const res = await fetch(apiUrl(`/api/hierarchy/impersonate/${userId}`), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to impersonate user');
+      impersonateUser(data.token, data.user);
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -458,22 +505,23 @@ export const HierarchyDashboard: React.FC = () => {
       padding: '1.5rem 1rem 4rem',
       direction: isAr ? 'rtl' : 'ltr'
     }}>
-      {/* 1. Header Banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #1E3A8A 100%)',
+      {/* 1. Header Banner (Bright Theme) */}
+      <div className="card" style={{
+        background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 50%, #EEF2FF 100%)',
         borderRadius: '1.25rem',
         padding: '2rem 1.75rem',
-        color: '#FFFFFF',
+        color: 'var(--text-title)',
         marginBottom: '2rem',
-        boxShadow: '0 10px 25px -5px rgba(30, 27, 75, 0.35)',
+        boxShadow: '0 10px 30px -10px rgba(79, 70, 229, 0.08)',
+        border: '1.5px solid #E0E7FF',
         position: 'relative',
         overflow: 'hidden'
       }}>
         <div style={{ position: 'relative', zIndex: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
             <span style={{
-              background: 'rgba(255, 255, 255, 0.15)',
-              backdropFilter: 'blur(8px)',
+              background: '#EEF2FF',
+              color: '#4F46E5',
               padding: '0.35rem 0.85rem',
               borderRadius: '999px',
               fontSize: '0.825rem',
@@ -481,17 +529,17 @@ export const HierarchyDashboard: React.FC = () => {
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.4rem',
-              border: '1px solid rgba(255, 255, 255, 0.2)'
+              border: '1px solid #C7D2FE'
             }}>
-              <ShieldCheck size={14} color="#60A5FA" />
+              <ShieldCheck size={14} color="#4F46E5" />
               <span>{isAr ? 'نظام الرقابة والإشراف التراتبي المباشر' : 'Direct Hierarchical Governance & Supervision System'}</span>
             </span>
 
             {user?.governorate_name && (
               <span style={{
-                background: 'rgba(245, 158, 11, 0.2)',
-                color: '#FDE68A',
-                border: '1px solid rgba(245, 158, 11, 0.4)',
+                background: '#FEF3C7',
+                color: '#92400E',
+                border: '1px solid #FDE68A',
                 padding: '0.35rem 0.85rem',
                 borderRadius: '999px',
                 fontSize: '0.825rem',
@@ -503,9 +551,9 @@ export const HierarchyDashboard: React.FC = () => {
 
             {user?.subject_name && (
               <span style={{
-                background: 'rgba(16, 185, 129, 0.2)',
-                color: '#A7F3D0',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
+                background: '#ECFDF5',
+                color: '#065F46',
+                border: '1px solid #A7F3D0',
                 padding: '0.35rem 0.85rem',
                 borderRadius: '999px',
                 fontSize: '0.825rem',
@@ -516,7 +564,7 @@ export const HierarchyDashboard: React.FC = () => {
             )}
           </div>
 
-          <h1 style={{ fontSize: '1.85rem', fontWeight: 900, margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '1.85rem', fontWeight: 900, margin: 0, color: 'var(--text-title)', letterSpacing: '-0.02em' }}>
             {getRoleTitle()}
           </h1>
         </div>
@@ -729,6 +777,35 @@ export const HierarchyDashboard: React.FC = () => {
         marginBottom: '1.5rem'
       }}>
         <button
+          onClick={() => setActiveTab('analysis')}
+          style={{
+            padding: '0.75rem 1.5rem',
+            fontWeight: 800,
+            fontSize: '0.95rem',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            borderBottom: activeTab === 'analysis' ? '3px solid #4F46E5' : '3px solid transparent',
+            color: activeTab === 'analysis' ? '#4F46E5' : 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+        >
+          <BarChart2 size={18} />
+          <span>{isAr ? 'التحليلات والمتابعة الإشرافية' : 'Supervisory Analytics'}</span>
+          <span style={{
+            background: activeTab === 'analysis' ? '#EEF2FF' : '#F3F4F6',
+            color: activeTab === 'analysis' ? '#4F46E5' : 'var(--text-muted)',
+            padding: '0.15rem 0.5rem',
+            borderRadius: '999px',
+            fontSize: '0.75rem'
+          }}>
+            {analysisData?.kpis?.totalExams ?? '📊'}
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('exams')}
           style={{
             padding: '0.75rem 1.5rem',
@@ -787,7 +864,628 @@ export const HierarchyDashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* 4. Tab Content: EXAMS */}
+      {/* 4. Tab Content: SUPERVISORY ANALYSIS */}
+      {activeTab === 'analysis' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Analysis Filter Bar */}
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '1rem',
+            padding: '1.25rem 1.5rem',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+            border: '1px solid var(--border-light)',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem'
+          }}>
+            {/* Timeframe selector (Monthly / Weekly) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Calendar size={16} />
+                {isAr ? 'نطاق المتابعة:' : 'Timeframe:'}
+              </span>
+              <div style={{
+                display: 'inline-flex',
+                background: '#F1F5F9',
+                borderRadius: '0.75rem',
+                padding: '0.25rem',
+                gap: '0.25rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisTimeframe('monthly')}
+                  style={{
+                    padding: '0.45rem 1rem',
+                    borderRadius: '0.5rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: analysisTimeframe === 'monthly' ? '#4F46E5' : 'transparent',
+                    color: analysisTimeframe === 'monthly' ? '#FFFFFF' : '#64748B',
+                    boxShadow: analysisTimeframe === 'monthly' ? '0 1px 3px rgba(79, 70, 229, 0.3)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isAr ? '📅 شهرياً (Monthly)' : '📅 Monthly'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisTimeframe('weekly')}
+                  style={{
+                    padding: '0.45rem 1rem',
+                    borderRadius: '0.5rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: analysisTimeframe === 'weekly' ? '#4F46E5' : 'transparent',
+                    color: analysisTimeframe === 'weekly' ? '#FFFFFF' : '#64748B',
+                    boxShadow: analysisTimeframe === 'weekly' ? '0 1px 3px rgba(79, 70, 229, 0.3)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isAr ? '📆 أسبوعياً (Weekly)' : '📆 Weekly'}
+                </button>
+              </div>
+            </div>
+
+            {/* Scope Selectors (Governorate & Subject) */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
+              {/* Governorate Dropdown (27 governorates for Central Admin & Admin) */}
+              {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN') ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <MapPin size={16} color="#6366F1" />
+                  <select
+                    value={analysisGovId}
+                    onChange={(e) => setAnalysisGovId(e.target.value)}
+                    style={{
+                      padding: '0.5rem 0.875rem',
+                      borderRadius: '0.625rem',
+                      border: '1px solid var(--border-light)',
+                      background: '#F8FAFC',
+                      fontSize: '0.875rem',
+                      fontWeight: 700,
+                      color: 'var(--text-main)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="ALL">{isAr ? '🌐 كل المحافظات (27 محافظة)' : '🌐 All Governorates (27)'}</option>
+                    {governorates.map(gov => (
+                      <option key={gov.id} value={gov.id}>
+                        {isAr ? gov.name_ar : gov.name_en}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.45rem 0.85rem',
+                  background: '#EEF2FF',
+                  color: '#4F46E5',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.825rem',
+                  fontWeight: 700
+                }}>
+                  <MapPin size={14} />
+                  <span>{user?.governorate_name || (isAr ? 'المحافظة التابع لها' : 'Assigned Governorate')}</span>
+                </div>
+              )}
+
+              {/* Subject Dropdown */}
+              {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN' || user?.role === 'GOVERNORATE_ADMIN') ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <BookOpen size={16} color="#6366F1" />
+                  <select
+                    value={analysisSubId}
+                    onChange={(e) => setAnalysisSubId(e.target.value)}
+                    style={{
+                      padding: '0.5rem 0.875rem',
+                      borderRadius: '0.625rem',
+                      border: '1px solid var(--border-light)',
+                      background: '#F8FAFC',
+                      fontSize: '0.875rem',
+                      fontWeight: 700,
+                      color: 'var(--text-main)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="ALL">{isAr ? '📚 كل المواد الدراسية' : '📚 All Subjects'}</option>
+                    {subjects.map(sub => (
+                      <option key={sub.id} value={sub.id}>
+                        {isAr ? sub.name_ar : sub.name_en}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.45rem 0.85rem',
+                  background: '#FDF2F8',
+                  color: '#DB2777',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.825rem',
+                  fontWeight: 700
+                }}>
+                  <BookOpen size={14} />
+                  <span>{user?.subject_name || (isAr ? 'المادة التخصصية' : 'Assigned Subject')}</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={fetchSupervisoryAnalysis}
+                disabled={isAnalysisLoading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.625rem',
+                  border: '1px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  color: '#475569',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                }}
+              >
+                <span>🔄</span>
+                <span>{isAnalysisLoading ? (isAr ? 'جاري التحميل...' : 'Loading...') : (isAr ? 'تحديث' : 'Refresh')}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* KPI Stat Cards (5 metrics) */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '1rem'
+          }}>
+            {/* 1. Exams in period */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '1rem',
+              padding: '1.25rem',
+              border: '1px solid #E0E7FF',
+              boxShadow: '0 2px 4px rgba(79, 70, 229, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {analysisTimeframe === 'monthly' ? (isAr ? 'اختبارات هذا الشهر' : 'Exams this Month') : (isAr ? 'اختبارات هذا الأسبوع' : 'Exams this Week')}
+                </span>
+                <span style={{ padding: '0.35rem', background: '#EEF2FF', borderRadius: '0.5rem', color: '#4F46E5' }}>
+                  <FileText size={18} />
+                </span>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#1E293B' }}>
+                {analysisData?.kpis?.totalExams ?? 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? `إجمالي تراكمي: ${analysisData?.kpis?.lifetimeExams ?? 0} اختبار` : `Lifetime: ${analysisData?.kpis?.lifetimeExams ?? 0} exams`}
+              </div>
+            </div>
+
+            {/* 2. Total Attempts */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '1rem',
+              padding: '1.25rem',
+              border: '1px solid #DCFCE7',
+              boxShadow: '0 2px 4px rgba(5, 150, 105, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'محاولات ونتائج الطلاب' : 'Student Submissions'}
+                </span>
+                <span style={{ padding: '0.35rem', background: '#ECFDF5', borderRadius: '0.5rem', color: '#059669' }}>
+                  <CheckCircle2 size={18} />
+                </span>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#059669' }}>
+                {analysisData?.kpis?.totalAttempts ?? 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? 'تم تصحيحها وتسجيلها في النظام' : 'Graded & logged in system'}
+              </div>
+            </div>
+
+            {/* 3. Average Score */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '1rem',
+              padding: '1.25rem',
+              border: '1px solid #FEF3C7',
+              boxShadow: '0 2px 4px rgba(217, 119, 6, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'متوسط درجات الطلاب' : 'Average Student Score'}
+                </span>
+                <span style={{ padding: '0.35rem', background: '#FFFBEB', borderRadius: '0.5rem', color: '#D97706' }}>
+                  <Award size={18} />
+                </span>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#D97706' }}>
+                {analysisData?.kpis?.averageScore ?? 0}%
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+                {analysisData?.kpis?.averageScore >= 75 ? (isAr ? '🌟 أداء ممتاز ومرتفع' : '🌟 High Performance') : (isAr ? '📈 أداء مستقر وقيد المتابعة' : '📈 Stable performance')}
+              </div>
+            </div>
+
+            {/* 4. Pass Rate */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '1rem',
+              padding: '1.25rem',
+              border: '1px solid #E0F2FE',
+              boxShadow: '0 2px 4px rgba(2, 132, 199, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'نسبة اجتياز الطلاب' : 'Student Pass Rate'}
+                </span>
+                <span style={{ padding: '0.35rem', background: '#F0F9FF', borderRadius: '0.5rem', color: '#0284C7' }}>
+                  <TrendingUp size={18} />
+                </span>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#0284C7' }}>
+                {analysisData?.kpis?.passRate ?? 0}%
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? 'الدرجات أعلى من 50%' : 'Scores above 50% passing'}
+              </div>
+            </div>
+
+            {/* 5. Active Staff Under Supervision */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '1rem',
+              padding: '1.25rem',
+              border: '1px solid #FCE7F3',
+              boxShadow: '0 2px 4px rgba(219, 39, 119, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {isAr ? 'الكوادر الفعالة تحتي' : 'Active Subordinates'}
+                </span>
+                <span style={{ padding: '0.35rem', background: '#FDF2F8', borderRadius: '0.5rem', color: '#DB2777' }}>
+                  <Users size={18} />
+                </span>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#DB2777' }}>
+                {analysisData?.kpis?.activeSubordinatesCount ?? 0}
+                <span style={{ fontSize: '1rem', fontWeight: 600, color: '#94A3B8', marginInlineStart: '0.35rem' }}>
+                  / {analysisData?.kpis?.totalSubordinatesCount ?? 0}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? 'أنشأوا اختبارات ونشطوا بالفترة' : 'Created tests in period'}
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline Trend Breakdown */}
+          {analysisData?.timelineTrend && analysisData.timelineTrend.length > 0 && (
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '1rem',
+              padding: '1.5rem',
+              border: '1px solid var(--border-light)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+            }}>
+              <h3 style={{
+                margin: '0 0 1.25rem 0',
+                fontSize: '1.05rem',
+                fontWeight: 800,
+                color: '#1E293B',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <TrendingUp size={20} color="#4F46E5" />
+                <span>
+                  {analysisTimeframe === 'monthly'
+                    ? (isAr ? 'مقارنة تطور الأداء والامتحانات (آخر 4 شهور)' : 'Performance & Exam Progression (Last 4 Months)')
+                    : (isAr ? 'مقارنة تطور الأداء والامتحانات (آخر 4 أسابيع)' : 'Performance & Exam Progression (Last 4 Weeks)')}
+                </span>
+              </h3>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem'
+              }}>
+                {analysisData.timelineTrend.map((slot: any, idx: number) => (
+                  <div key={idx} style={{
+                    padding: '1rem',
+                    background: '#F8FAFC',
+                    borderRadius: '0.75rem',
+                    border: '1px solid #E2E8F0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.65rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#334155' }}>
+                        {isAr ? slot.label : slot.labelEn}
+                      </span>
+                      <span style={{
+                        background: '#EEF2FF',
+                        color: '#4F46E5',
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 700
+                      }}>
+                        {slot.examsCount} {isAr ? 'اختبار' : 'exams'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#64748B' }}>
+                      <span>{isAr ? 'المحاولات:' : 'Attempts:'} <strong>{slot.attemptsCount}</strong></span>
+                      <span>{isAr ? 'المتوسط:' : 'Avg:'} <strong style={{ color: slot.avgScore >= 50 ? '#059669' : '#D97706' }}>{slot.avgScore}%</strong></span>
+                    </div>
+
+                    {/* Progress visual */}
+                    <div style={{
+                      width: '100%',
+                      height: '6px',
+                      background: '#E2E8F0',
+                      borderRadius: '999px',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        width: `${Math.min(slot.avgScore, 100)}%`,
+                        height: '100%',
+                        background: slot.avgScore >= 75 ? '#059669' : (slot.avgScore >= 50 ? '#4F46E5' : '#D97706'),
+                        borderRadius: '999px',
+                        transition: 'width 0.4s ease'
+                      }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Subordinates Under Me Performance Cards */}
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '1rem',
+            padding: '1.5rem',
+            border: '1px solid var(--border-light)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+          }}>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1.25rem',
+              gap: '0.75rem'
+            }}>
+              <div>
+                <h3 style={{
+                  margin: 0,
+                  fontSize: '1.1rem',
+                  fontWeight: 800,
+                  color: '#1E293B',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <Users size={20} color="#4F46E5" />
+                  <span>
+                    {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN')
+                      ? (isAr ? 'تحليل ومتابعة المحافظات وأمنائها التابعين لي' : 'Governorates & Governorate Admins Analysis')
+                      : (user?.role === 'GOVERNORATE_ADMIN')
+                        ? (isAr ? 'تحليل ومتابعة المواد والموجهين في محافظتي' : 'Subjects & Supervisors in My Governorate')
+                        : (isAr ? 'تحليل ومتابعة المعلمين تحت إشرافي وتخصصي' : 'Teachers Under My Supervision')}
+                  </span>
+                </h3>
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.825rem', color: '#64748B' }}>
+                  {isAr
+                    ? 'فحص شامل لمعدلات إنشاء الامتحانات ومحاولات ودرجات الطلاب لكل مرؤوس مع إمكانية الدخول المباشر لحسابه'
+                    : 'Comprehensive review of exam creation, student attempts and scores with direct account access'}
+                </p>
+              </div>
+
+              <span style={{
+                background: '#F1F5F9',
+                color: '#475569',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '0.5rem',
+                fontSize: '0.8rem',
+                fontWeight: 700
+              }}>
+                {isAr ? `العدد: ${analysisData?.subordinatesAnalysis?.length || 0}` : `Total: ${analysisData?.subordinatesAnalysis?.length || 0}`}
+              </span>
+            </div>
+
+            {isAnalysisLoading ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
+                <p style={{ margin: 0, fontWeight: 700 }}>{isAr ? 'جاري تحميل التحليلات الإشرافية...' : 'Loading supervisory analysis...'}</p>
+              </div>
+            ) : !analysisData?.subordinatesAnalysis || analysisData.subordinatesAnalysis.length === 0 ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#94A3B8' }}>
+                <p style={{ margin: 0, fontWeight: 700 }}>{isAr ? 'لا توجد بيانات مطابقة لهذا النطاق حالياً' : 'No subordinate data found for this scope'}</p>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                gap: '1rem'
+              }}>
+                {analysisData.subordinatesAnalysis.map((item: any, idx: number) => {
+                  const statusBg = item.status === 'EXCELLENT' ? '#ECFDF5' : (item.status === 'GOOD' ? '#EEF2FF' : '#FFFBEB');
+                  const statusColor = item.status === 'EXCELLENT' ? '#059669' : (item.status === 'GOOD' ? '#4F46E5' : '#D97706');
+                  const statusText = item.status === 'EXCELLENT'
+                    ? (isAr ? 'ممتاز 🌟' : 'Excellent')
+                    : (item.status === 'GOOD' ? (isAr ? 'مستقر 📈' : 'Good') : (isAr ? 'بحاجة لمتابعة ⚠️' : 'Needs Support'));
+
+                  return (
+                    <div
+                      key={item.id || idx}
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '0.875rem',
+                        padding: '1.25rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                      }}
+                    >
+                      <div>
+                        {/* Header: Title & Status */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0F172A' }}>
+                              {item.title}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '0.15rem' }}>
+                              {item.subordinateName} {item.schoolName ? `• ${item.schoolName}` : ''}
+                            </div>
+                          </div>
+                          <span style={{
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '999px',
+                            background: statusBg,
+                            color: statusColor,
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {statusText}
+                          </span>
+                        </div>
+
+                        {/* Metrics Grid */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(3, 1fr)',
+                          gap: '0.5rem',
+                          background: '#F8FAFC',
+                          borderRadius: '0.625rem',
+                          padding: '0.75rem',
+                          textAlign: 'center'
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                              {isAr ? 'الاختبارات' : 'Exams'}
+                            </div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1E293B', marginTop: '0.15rem' }}>
+                              {item.totalExams}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                              {isAr ? 'المحاولات' : 'Attempts'}
+                            </div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1E293B', marginTop: '0.15rem' }}>
+                              {item.totalAttempts}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                              {isAr ? 'المتوسط' : 'Avg Score'}
+                            </div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: statusColor, marginTop: '0.15rem' }}>
+                              {item.averageScore}%
+                            </div>
+                          </div>
+                        </div>
+
+                        {item.subordinateEmail && (
+                          <div style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: '0.5rem', direction: 'ltr', textAlign: isAr ? 'right' : 'left' }}>
+                            ✉️ {item.subordinateEmail}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer Actions */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingTop: '0.75rem',
+                        borderTop: '1px solid #F1F5F9'
+                      }}>
+                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                          {isAr ? `نسبة الاجتياز: ${item.passRate}%` : `Pass: ${item.passRate}%`}
+                        </span>
+
+                        {item.subordinateId ? (
+                          <button
+                            type="button"
+                            onClick={() => handleImpersonateById(item.subordinateId)}
+                            style={{
+                              padding: '0.45rem 0.85rem',
+                              background: '#4F46E5',
+                              color: '#FFFFFF',
+                              borderRadius: '0.5rem',
+                              border: 'none',
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)',
+                              transition: 'background 0.15s ease'
+                            }}
+                          >
+                            <Eye size={14} />
+                            <span>{isAr ? 'معاينة ودخول الحساب' : 'Access Account'}</span>
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                            {isAr ? 'غير معيّن بعد' : 'Not assigned'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Tab Content: EXAMS */}
       {activeTab === 'exams' && (
         <div>
           {/* Dropdown Filters Bar strictly per user requirements */}

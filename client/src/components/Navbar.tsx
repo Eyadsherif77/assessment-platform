@@ -9,7 +9,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => {
-  const { user, logout, language, setLanguage, t, isImpersonating, exitImpersonation } = useAuth();
+  const { user, logout, language, setLanguage, t, isImpersonating, exitImpersonation, previousUser } = useAuth();
 
   const toggleLanguage = () => {
     setLanguage(language === 'ar' ? 'en' : 'ar');
@@ -63,15 +63,32 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
               background: '#FFFFFF',
               color: '#92400E',
               border: 'none',
-              padding: '0.3rem 1rem',
+              padding: '0.35rem 1.15rem',
               fontWeight: 900,
-              fontSize: '0.8rem',
+              fontSize: '0.825rem',
               borderRadius: 'var(--radius-full)',
               boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem'
             }}
           >
-            🔄 {language === 'ar' ? 'العودة الفورية لحساب المدير العام (Super Admin)' : 'Return to SuperAdmin'}
+            <span>↩</span>
+            <span>
+              {language === 'ar'
+                ? (previousUser 
+                    ? `الرجوع إلى: ${previousUser.fullName} (${
+                        previousUser.role === 'ADMIN' ? 'المدير العام' :
+                        previousUser.role === 'CENTRAL_ADMIN' ? 'الأمين المركزي' :
+                        previousUser.role === 'GOVERNORATE_ADMIN' ? 'أمين المحافظة' :
+                        previousUser.role === 'SUPERVISOR' ? 'الموجه' : previousUser.role
+                      })`
+                    : 'الرجوع للحساب السابق')
+                : (previousUser 
+                    ? `Back to: ${previousUser.fullName}`
+                    : 'Back to previous account')}
+            </span>
           </button>
         </div>
       )}

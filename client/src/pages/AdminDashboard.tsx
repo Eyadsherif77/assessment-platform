@@ -356,22 +356,22 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Header Banner with Modernized Admin Stats Cards */}
       <div className="card" style={{
-        background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-        color: '#FFFFFF',
+        background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 50%, #EFF6FF 100%)',
+        color: 'var(--text-title)',
         padding: '2.25rem 2rem',
         borderRadius: 'var(--radius-xl)',
         marginBottom: '2rem',
-        boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.25)',
+        boxShadow: '0 10px 30px -10px rgba(37, 99, 235, 0.08)',
         position: 'relative',
         overflow: 'hidden',
-        border: '1px solid rgba(255, 255, 255, 0.1)'
+        border: '1.5px solid var(--primary-100)'
       }}>
         <div style={{ position: 'relative', zIndex: 2 }}>
           {/* Top Badges */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             <span style={{
-              background: '#F59E0B',
-              color: '#78350F',
+              background: '#FEF3C7',
+              color: '#92400E',
               fontSize: '0.8rem',
               fontWeight: 800,
               padding: '0.35rem 0.85rem',
@@ -379,13 +379,14 @@ export const AdminDashboard: React.FC = () => {
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.35rem',
-              boxShadow: '0 2px 6px rgba(245, 158, 11, 0.3)'
+              border: '1px solid #FDE68A',
+              boxShadow: '0 2px 6px rgba(245, 158, 11, 0.15)'
             }}>
               👑 {language === 'ar' ? 'صلاحيات المالك الرئيسي (SuperAdmin)' : 'Owner / SuperAdmin'}
             </span>
             <span style={{
-              background: 'rgba(255, 255, 255, 0.12)',
-              color: '#E2E8F0',
+              background: 'var(--primary-50)',
+              color: 'var(--primary-700)',
               fontSize: '0.78rem',
               fontWeight: 700,
               padding: '0.35rem 0.85rem',
@@ -393,23 +394,23 @@ export const AdminDashboard: React.FC = () => {
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.35rem',
-              border: '1px solid rgba(255, 255, 255, 0.15)'
+              border: '1px solid var(--primary-200)'
             }}>
               <Database size={13} />
               superid: {user?.super_id || 'SUPER-ADMIN-001'}
             </span>
           </div>
 
-          <h1 style={{ fontSize: '1.9rem', fontWeight: 800, margin: 0, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
+          <h1 style={{ fontSize: '1.9rem', fontWeight: 800, margin: 0, color: 'var(--text-title)', letterSpacing: '-0.01em' }}>
             {language === 'ar' ? 'بوابة الرقابة والإدارة المركزية' : 'Central Platform Administration'}
           </h1>
-          <p style={{ color: '#94A3B8', marginTop: '0.5rem', maxWidth: '750px', lineHeight: 1.6, fontSize: '0.925rem' }}>
+          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem', maxWidth: '750px', lineHeight: 1.6, fontSize: '0.925rem' }}>
             {language === 'ar'
               ? 'إدارة شاملة لكافة حسابات المعلمين والطلاب، فحص المحتوى المنشور، التحكم الدقيق في صلاحيات المعلمين، والدخول الفوري لحساب أي مستخدم.'
               : 'Master dashboard for managing teacher accounts, inspecting student learning diagnostics, granting granular permissions, and instant account impersonation.'}
           </p>
 
-          {/* Quick Metrics Bar (Redesigned Admin Stats Cards) */}
+          {/* Quick Metrics Bar (Bright Light Stats Cards) */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
@@ -418,125 +419,125 @@ export const AdminDashboard: React.FC = () => {
           }}>
             {/* Stat 1: Students */}
             <div style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              backdropFilter: 'blur(8px)',
+              background: '#FFFFFF',
               padding: '1.15rem 1.25rem',
               borderRadius: 'var(--radius-lg)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
+              border: '1px solid var(--border-light)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
               transition: 'transform var(--t-fast), border-color var(--t-fast)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>
                   {language === 'ar' ? 'إجمالي الطلاب' : 'Total Students'}
                 </span>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <GraduationCap size={17} color="#38BDF8" />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <GraduationCap size={17} color="#0284C7" />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#38BDF8', lineHeight: 1 }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#0284C7', lineHeight: 1 }}>
                 {stats.totalStudents}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                 {language === 'ar' ? 'مسجلون بالمنظومة' : 'Active accounts'}
               </div>
             </div>
 
             {/* Stat 2: Teachers */}
             <div style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              backdropFilter: 'blur(8px)',
+              background: '#FFFFFF',
               padding: '1.15rem 1.25rem',
               borderRadius: 'var(--radius-lg)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
+              border: '1px solid var(--border-light)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
               transition: 'transform var(--t-fast), border-color var(--t-fast)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>
                   {language === 'ar' ? 'حسابات المعلمين' : 'Total Teachers'}
                 </span>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(167, 139, 250, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Users size={17} color="#A78BFA" />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#F3E8FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={17} color="#7C3AED" />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#A78BFA', lineHeight: 1 }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#7C3AED', lineHeight: 1 }}>
                 {stats.totalTeachers}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                 {language === 'ar' ? 'بمعرّفات هجينة' : 'Hybrid ID verified'}
               </div>
             </div>
 
             {/* Stat 3: Curriculum Books */}
             <div style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              backdropFilter: 'blur(8px)',
+              background: '#FFFFFF',
               padding: '1.15rem 1.25rem',
               borderRadius: 'var(--radius-lg)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
+              border: '1px solid var(--border-light)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
               transition: 'transform var(--t-fast), border-color var(--t-fast)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>
                   {language === 'ar' ? 'الكتب والمناهج' : 'Curriculum Books'}
                 </span>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(52, 211, 153, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <BookOpen size={17} color="#34D399" />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <BookOpen size={17} color="#059669" />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#34D399', lineHeight: 1 }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#059669', lineHeight: 1 }}>
                 {stats.totalBooks}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                 {language === 'ar' ? 'مفهرسة بالكامل' : 'AI vector indexed'}
               </div>
             </div>
 
             {/* Stat 4: Active Exams */}
             <div style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              backdropFilter: 'blur(8px)',
+              background: '#FFFFFF',
               padding: '1.15rem 1.25rem',
               borderRadius: 'var(--radius-lg)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
+              border: '1px solid var(--border-light)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
               transition: 'transform var(--t-fast), border-color var(--t-fast)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>
                   {language === 'ar' ? 'الاختبارات المنشورة' : 'Active Exams'}
                 </span>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FileText size={17} color="#FBBF24" />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FileText size={17} color="#D97706" />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#FBBF24', lineHeight: 1 }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#D97706', lineHeight: 1 }}>
                 {stats.totalExams}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                 {language === 'ar' ? 'بمؤقت زمني وتصحيح' : 'Live timed quizzes'}
               </div>
             </div>
 
             {/* Stat 5: Exam Attempts */}
             <div style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              backdropFilter: 'blur(8px)',
+              background: '#FFFFFF',
               padding: '1.15rem 1.25rem',
               borderRadius: 'var(--radius-lg)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
+              border: '1px solid var(--border-light)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
               transition: 'transform var(--t-fast), border-color var(--t-fast)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 700 }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700 }}>
                   {language === 'ar' ? 'محاولات التقييم' : 'Student Attempts'}
                 </span>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(244, 114, 182, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <TrendingUp size={17} color="#F472B6" />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#FCE7F3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={17} color="#DB2777" />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#F472B6', lineHeight: 1 }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#DB2777', lineHeight: 1 }}>
                 {stats.totalExamAttempts}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.35rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                 {language === 'ar' ? 'بتشخيص تربوي فوري' : 'Automated evaluations'}
               </div>
             </div>
