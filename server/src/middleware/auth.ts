@@ -4,11 +4,16 @@ import { db } from '../db/db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_assessment_platform_jwt_key_2026';
 
+export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'CENTRAL_ADMIN' | 'GOVERNORATE_ADMIN' | 'SUPERVISOR';
+
 export interface AuthUser {
   id: string;
   email: string;
-  role: 'STUDENT' | 'TEACHER' | 'ADMIN';
+  role: UserRole;
   fullName: string;
+  governorateId?: string;
+  subjectId?: string;
+  permissions?: Record<string, any>;
 }
 
 export interface StudentProfileInfo {
@@ -23,6 +28,8 @@ export interface StudentProfileInfo {
 export interface TeacherProfileInfo {
   specialization: string;
   schoolName?: string;
+  governorateId?: string;
+  subjectId?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -47,6 +54,25 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
     req.user = decoded;
 
+    // Attach user profile / hierarchy metadata
+    const userMeta = await db.query(
+      `SELECT governorate_id, subject_id, permissions, is_active FROM users WHERE id = $1`,
+      [decoded.id]
+    );
+    if (userMeta.rows.length > 0) {
+      const uRow = userMeta.rows[0];
+      if (uRow.is_active === 0) {
+        return res.status(403).json({ error: 'تم تجميد هذا الحساب من قِبل الإدارة.' });
+      }
+      req.user.governorateId = uRow.governorate_id || decoded.governorateId;
+      req.user.subjectId = uRow.subject_id || decoded.subjectId;
+      if (uRow.permissions) {
+        try {
+          req.user.permissions = typeof uRow.permissions === 'string' ? JSON.parse(uRow.permissions) : uRow.permissions;
+        } catch (_) {}
+      }
+    }
+
     // If student, attach their verified grade, stage & school_type
     if (decoded.role === 'STUDENT') {
       const profile = await db.query(
@@ -66,13 +92,15 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
       }
     } else if (decoded.role === 'TEACHER') {
       const tProfile = await db.query(
-        `SELECT specialization, school_name FROM teacher_profiles WHERE user_id = $1`,
+        `SELECT specialization, school_name, governorate_id, subject_id FROM teacher_profiles WHERE user_id = $1`,
         [decoded.id]
       );
       if (tProfile.rows.length > 0) {
         req.teacherProfile = {
           specialization: (tProfile.rows[0].specialization || '').trim(),
-          schoolName: tProfile.rows[0].school_name || ''
+          schoolName: tProfile.rows[0].school_name || '',
+          governorateId: tProfile.rows[0].governorate_id,
+          subjectId: tProfile.rows[0].subject_id
         };
       }
     }
@@ -83,7 +111,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
   }
 }
 
-export function requireRole(allowedRoles: ('STUDENT' | 'TEACHER' | 'ADMIN')[]) {
+export function requireRole(allowedRoles: UserRole[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user || !allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ error: 'ليس لديك صلاحية للوصول إلى هذا المورد' });

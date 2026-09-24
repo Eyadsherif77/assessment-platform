@@ -6,6 +6,7 @@ import { StudentDashboard } from './pages/StudentDashboard';
 import { TeacherDashboard } from './pages/TeacherDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { AdminTeacherPortal } from './pages/AdminTeacherPortal';
+import { HierarchyDashboard } from './pages/HierarchyDashboard';
 import { AuthModal } from './pages/AuthModal';
 import { useScreenDetector } from './utils/useScreenDetector';
 
@@ -92,6 +93,7 @@ const PlatformApp: React.FC = () => {
         {isAdminPortalRoute ? (
           <>
             {user?.role === 'ADMIN' && <AdminDashboard />}
+            {(user?.role === 'CENTRAL_ADMIN' || user?.role === 'GOVERNORATE_ADMIN' || user?.role === 'SUPERVISOR') && <HierarchyDashboard />}
             {user?.role === 'TEACHER' && <TeacherDashboard />}
             {user?.role === 'STUDENT' && (
               <div style={{ textAlign: 'center', padding: '4rem 1.5rem', maxWidth: '600px', margin: '0 auto' }}>
@@ -121,6 +123,7 @@ const PlatformApp: React.FC = () => {
             {user?.role === 'STUDENT' && <StudentDashboard />}
             {user?.role === 'TEACHER' && <TeacherDashboard />}
             {user?.role === 'ADMIN' && <AdminDashboard />}
+            {(user?.role === 'CENTRAL_ADMIN' || user?.role === 'GOVERNORATE_ADMIN' || user?.role === 'SUPERVISOR') && <HierarchyDashboard />}
             {!user && (
               <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                 <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>

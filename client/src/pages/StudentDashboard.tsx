@@ -54,6 +54,7 @@ export const StudentDashboard: React.FC = () => {
 
   // Dedicated Completed Exams History Modal State
   const [showExamsHistoryModal, setShowExamsHistoryModal] = useState<boolean>(false);
+  const [selectedSubjectForWeeklyModal, setSelectedSubjectForWeeklyModal] = useState<any | null>(null);
 
   // Books Data & PDF Reader
   const [books, setBooks] = useState<any[]>([]);
@@ -114,7 +115,7 @@ export const StudentDashboard: React.FC = () => {
 
   // Keyboard shortcut (Escape) & Lock body overflow when PDF is open or modal is active
   useEffect(() => {
-    if (selectedPdfBook || showExamsHistoryModal) {
+    if (selectedPdfBook || showExamsHistoryModal || selectedSubjectForWeeklyModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -123,6 +124,7 @@ export const StudentDashboard: React.FC = () => {
       if (e.key === 'Escape') {
         if (selectedPdfBook) handleClosePdf();
         if (showExamsHistoryModal) setShowExamsHistoryModal(false);
+        if (selectedSubjectForWeeklyModal) setSelectedSubjectForWeeklyModal(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -130,7 +132,7 @@ export const StudentDashboard: React.FC = () => {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [selectedPdfBook, pdfBlobUrl, showExamsHistoryModal]);
+  }, [selectedPdfBook, pdfBlobUrl, showExamsHistoryModal, selectedSubjectForWeeklyModal]);
 
   // Exams Data
   const [exams, setExams] = useState<any[]>([]);
@@ -304,6 +306,85 @@ export const StudentDashboard: React.FC = () => {
 
     return { monthlyGroups, weeklyGroups, activePeriodGroup, filteredExams, currentAvgRate, availableSubjects };
   }, [analytics?.completed_exams, periodType, selectedPeriodKey, selectedSubjectFilter, calculatedMastery]);
+
+  // Dynamic Weekly Subject Level Performance Analytics
+  const weeklySubjectAnalytics = useMemo(() => {
+    const allExams: any[] = analytics?.completed_exams || [];
+    if (allExams.length === 0) return [];
+
+    // Current week boundary: Saturday 00:00:00 to Friday 23:59:59
+    const now = new Date();
+    const currentDay = now.getDay(); // 0: Sun, 6: Sat
+    const offset = (currentDay + 1) % 7; // Sat is 0, Sun is 1, etc.
+    const currentWeekStart = new Date(now);
+    currentWeekStart.setDate(now.getDate() - offset);
+    currentWeekStart.setHours(0, 0, 0, 0);
+
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
+    currentWeekEnd.setHours(23, 59, 59, 999);
+
+    const subjectMap = new Map<string, {
+      subjectId: string;
+      subjectNameAr: string;
+      subjectNameEn: string;
+      allExams: any[];
+      weekExams: any[];
+    }>();
+
+    allExams.forEach(e => {
+      if (!e) return;
+      const sKey = e.subject_name_ar || e.subject_id || 'unknown';
+      if (!subjectMap.has(sKey)) {
+        subjectMap.set(sKey, {
+          subjectId: e.subject_id || sKey,
+          subjectNameAr: e.subject_name_ar || 'المادة الدراسية',
+          subjectNameEn: e.subject_name_en || e.subject_name_ar || 'Subject',
+          allExams: [],
+          weekExams: []
+        });
+      }
+      const item = subjectMap.get(sKey)!;
+      item.allExams.push(e);
+
+      if (e.created_at) {
+        const d = new Date(e.created_at);
+        if (d >= currentWeekStart && d <= currentWeekEnd) {
+          item.weekExams.push(e);
+        }
+      }
+    });
+
+    return Array.from(subjectMap.values()).map(sub => {
+      const isCurrentWeekActive = sub.weekExams.length > 0;
+      const targetExams = isCurrentWeekActive ? sub.weekExams : sub.allExams;
+
+      const totalScore = Math.round(targetExams.reduce((sum, e) => sum + (Number(e.score) || 0), 0) * 10) / 10;
+      const totalPoints = Math.round(targetExams.reduce((sum, e) => sum + (Number(e.total) || 1), 0) * 10) / 10;
+      const percentages = targetExams.map(e => e.percentage ?? Math.round(((Number(e.score) || 0) / (Number(e.total) || 1)) * 100));
+
+      const avgPercentage = percentages.length > 0
+        ? Math.round(percentages.reduce((a, b) => a + b, 0) / percentages.length)
+        : 0;
+
+      const highestScore = percentages.length > 0 ? Math.max(...percentages) : 0;
+      const lowestScore = percentages.length > 0 ? Math.min(...percentages) : 0;
+      const masteredCount = targetExams.filter(e => (e.percentage ?? 0) >= 80).length;
+
+      return {
+        ...sub,
+        isCurrentWeekActive,
+        targetExams,
+        avgPercentage,
+        highestScore,
+        lowestScore,
+        masteredCount,
+        totalScore,
+        totalPoints,
+        examsCount: targetExams.length
+      };
+    }).sort((a, b) => b.examsCount - a.examsCount);
+  }, [analytics?.completed_exams]);
 
   // Profile edit modal state
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -789,38 +870,6 @@ export const StudentDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* "Continue Where You Left Off" Action Card */}
-            <div className="continue-card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ width: '48px', height: '48px', borderRadius: 'var(--radius-lg)', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary-700)', flexShrink: 0, boxShadow: 'var(--shadow-sm)' }}>
-                  <BookOpen size={24} />
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary-700)' }}>
-                    {isAr ? 'استكمل من حيث توقفت' : 'Continue Where You Left Off'}
-                  </span>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--primary-950)', margin: '0.2rem 0' }}>
-                    {isAr ? (books[0]?.title_ar || 'كتاب العلوم - الصف الثالث الإعدادي') : (books[0]?.title_en || 'Science Book - Prep 3')}
-                  </h3>
-                  <div style={{ fontSize: '0.825rem', color: 'var(--text-body)' }}>
-                    {isAr ? 'الوحدة الأولى: المادة وخواصها • جاهز للتقييم الفوري' : 'Unit 1: Matter & Properties • Ready for quiz'}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                className="btn btn-primary continue-action-btn"
-                onClick={() => {
-                  if (books.length > 0) handleSelectAiBook(books[0]);
-                  setActiveTab('ai');
-                  setAiStep(3);
-                }}
-                style={{ fontWeight: 800, padding: '0.65rem 1.5rem', borderRadius: 'var(--radius-full)' }}
-              >
-                <span>{isAr ? 'خوض التقييم التشخيصي' : 'Take Diagnostic Quiz'}</span>
-                <ArrowIcon size={16} />
-              </button>
-            </div>
 
             {/* Milestones & Badges Showcase */}
             <div className="card" style={{ padding: '1.5rem' }}>
@@ -872,39 +921,131 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
 
-            {/* Recent Completed Assessments on Home */}
-            {analytics?.completed_exams && analytics.completed_exams.length > 0 && (
+            {/* Weekly Subject Performance Average on Home */}
+            {weeklySubjectAnalytics && weeklySubjectAnalytics.length > 0 && (
               <div className="card" style={{ padding: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '1.2rem' }}>📊</span>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>
-                      {isAr ? 'آخر الاختبارات والتقييمات المنجزة' : 'Recent Completed Assessments'}
-                    </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <span style={{ fontSize: '1.35rem' }}>📈</span>
+                    <div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 900, margin: 0, color: 'var(--text-title)' }}>
+                        {isAr ? 'متوسط معدل المستوى الأسبوعي' : 'Weekly Average Level Rate'}
+                      </h3>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                        {isAr 
+                          ? 'متوسط الأداء الأسبوعي للمادة • يتجدد أسبوعياً وفق نتائج التقييمات' 
+                          : 'Weekly performance average per subject • Refreshes weekly'}
+                      </div>
+                    </div>
                   </div>
                   <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab('analytics')}>
-                    {isAr ? 'عرض تحليلات النتائج ⬅️' : 'View Results Analytics ➡️'}
+                    {isAr ? 'عرض كافة التحليلات ⬅️' : 'View Full Analytics ➡️'}
                   </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
-                  {analytics.completed_exams.slice(0, 3).map((exam: any, i: number) => {
-                    const pct = exam.percentage ?? Math.round(((exam.score || 0) / (exam.total || 1)) * 100);
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                  {weeklySubjectAnalytics.map((sub: any, i: number) => {
+                    const pct = sub.avgPercentage;
                     const isMastered = pct >= 80;
                     const isProficient = pct >= 60 && pct < 80;
-                    const badgeColor = isMastered ? '#16A34A' : isProficient ? '#2563EB' : '#D97706';
+                    const statusColor = isMastered ? '#16A34A' : isProficient ? '#2563EB' : '#D97706';
+                    const statusBg = isMastered ? '#F0FDF4' : isProficient ? '#EFF6FF' : '#FFFBEB';
+                    const statusBorder = isMastered ? '#BBF7D0' : isProficient ? '#BFDBFE' : '#FDE68A';
+                    const statusText = isMastered
+                      ? (isAr ? 'مستوى متقن' : 'Mastered')
+                      : isProficient
+                      ? (isAr ? 'مستوى متقدم' : 'Proficient')
+                      : (isAr ? 'بحاجة لدعم' : 'Needs Support');
+
                     return (
-                      <div key={exam.id || i} style={{ padding: '0.85rem 1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>
-                            {isAr ? (exam.chapter_title_ar || exam.title_ar) : (exam.chapter_title_en || exam.title_en)}
+                      <div
+                        key={sub.subjectId || i}
+                        onClick={() => setSelectedSubjectForWeeklyModal(sub)}
+                        style={{
+                          padding: '1.15rem 1.25rem',
+                          background: 'var(--bg-subtle)',
+                          borderRadius: 'var(--radius-lg)',
+                          border: '1.5px solid var(--border-light)',
+                          cursor: 'pointer',
+                          transition: 'all 0.22s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.85rem',
+                          position: 'relative'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--primary-500)';
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(37, 99, 235, 0.12)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--border-light)';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '';
+                        }}
+                        title={isAr ? 'اضغط لعرض اختبارات المادة وتفاصيل احتساب هذه النسبة' : 'Click to inspect exams and score explanation'}
+                      >
+                        {/* Top row: Subject name & Week badge */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          <div>
+                            <div style={{ fontWeight: 900, fontSize: '1rem', color: 'var(--text-title)' }}>
+                              {isAr ? sub.subjectNameAr : sub.subjectNameEn}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                              {sub.isCurrentWeekActive
+                                ? (isAr ? '📅 الأسبوع الحالي' : '📅 Current Week')
+                                : (isAr ? '🔄 متوسط تراكمي للمادة' : '🔄 Cumulative Subject Avg')}
+                              {' • '}{sub.examsCount} {isAr ? 'اختبارات' : 'exams'}
+                            </div>
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)} • {exam.score}/{exam.total} {isAr ? 'درجات' : 'pts'}
+                          <span style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: 'var(--radius-full)',
+                            background: statusBg,
+                            color: statusColor,
+                            border: `1px solid ${statusBorder}`
+                          }}>
+                            {statusText}
+                          </span>
+                        </div>
+
+                        {/* Middle row: Big percentage & Progress Bar */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.35rem' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                              {isAr ? 'متوسط الأداء الأسبوعي للمادة:' : 'Weekly Subject Avg:'}
+                            </span>
+                            <span style={{ fontWeight: 900, color: statusColor, fontSize: '1.45rem' }}>
+                              {pct}%
+                            </span>
+                          </div>
+                          <div style={{ width: '100%', height: '7px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${Math.min(100, Math.max(5, pct))}%`,
+                              height: '100%',
+                              background: statusColor,
+                              borderRadius: '999px',
+                              transition: 'width 0.4s ease'
+                            }} />
                           </div>
                         </div>
-                        <span style={{ fontWeight: 900, color: badgeColor, fontSize: '1rem' }}>
-                          {pct}%
-                        </span>
+
+                        {/* Bottom CTA hint */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingTop: '0.5rem',
+                          borderTop: '1px dashed var(--border-light)',
+                          fontSize: '0.75rem',
+                          color: 'var(--primary-700)',
+                          fontWeight: 700
+                        }}>
+                          <span>{isAr ? '🔍 تفاصيل النسبة والاختبارات' : '🔍 Exams & Breakdown'}</span>
+                          <span>{isAr ? 'عرض ⬅️' : 'View ➡️'}</span>
+                        </div>
                       </div>
                     );
                   })}
@@ -930,7 +1071,7 @@ export const StudentDashboard: React.FC = () => {
                 {isAr ? '2. اختيار الفصل' : '2. Chapter'}
               </span>
               <span className={`step-pill ${aiStep === 3 ? 'active' : (aiStep > 3 ? 'completed' : '')}`}>
-                {isAr ? '3. توليد الأسئلة' : '3. Questions'}
+                {isAr ? '3. بدأ الاسئلة' : '3. Start Questions'}
               </span>
               <span className={`step-pill ${aiStep === 4 ? 'active' : (aiStep > 4 ? 'completed' : '')}`}>
                 {isAr ? '4. الحل التفاعلي' : '4. Interactive'}
@@ -3734,6 +3875,329 @@ export const StudentDashboard: React.FC = () => {
               <button
                 className="btn btn-primary"
                 onClick={() => setShowExamsHistoryModal(false)}
+                style={{ fontWeight: 800, padding: '0.5rem 1.5rem' }}
+              >
+                {isAr ? 'إغلاق' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Subject Weekly Level Rate Breakdown Modal via Portal */}
+      {selectedSubjectForWeeklyModal && createPortal(
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.72)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 999999,
+          padding: '1.25rem',
+          boxSizing: 'border-box'
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setSelectedSubjectForWeeklyModal(null);
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            color: 'var(--text-body)',
+            width: '100%',
+            maxWidth: '740px',
+            maxHeight: '90vh',
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--border-light)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--border-light)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              background: 'var(--bg-subtle)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--primary-100)',
+                  color: 'var(--primary-800)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.3rem',
+                  fontWeight: 900
+                }}>
+                  📚
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 900, margin: 0, color: 'var(--text-title)' }}>
+                    {isAr ? selectedSubjectForWeeklyModal.subjectNameAr : selectedSubjectForWeeklyModal.subjectNameEn}
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'تفاصيل المستوى الأسبوعي واختبارات المادة' : 'Weekly Level Rate & Exam Breakdown'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedSubjectForWeeklyModal(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  padding: '0.4rem',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title={isAr ? 'إغلاق (Esc)' : 'Close (Esc)'}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+              {/* WHY THIS PERCENTAGE SECTION (لماذا هذه النسبة؟) */}
+              <div style={{
+                background: 'linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%)',
+                border: '1.5px solid var(--primary-200)',
+                borderRadius: 'var(--radius-xl)',
+                padding: '1.35rem 1.5rem'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>💡</span>
+                    <h4 style={{ margin: 0, fontWeight: 900, fontSize: '1.05rem', color: 'var(--primary-900)' }}>
+                      {isAr ? 'لماذا هذه النسبة؟ (تفسير التقييم الأسبوعي)' : 'Why This Percentage? (Assessment Breakdown)'}
+                    </h4>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '0.4rem',
+                    background: '#FFFFFF',
+                    padding: '0.35rem 0.85rem',
+                    borderRadius: 'var(--radius-full)',
+                    border: '1px solid var(--primary-200)',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+                  }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      {isAr ? 'متوسط الأداء:' : 'Average Score:'}
+                    </span>
+                    <span style={{
+                      fontSize: '1.35rem',
+                      fontWeight: 900,
+                      color: selectedSubjectForWeeklyModal.avgPercentage >= 80 ? '#16A34A' : (selectedSubjectForWeeklyModal.avgPercentage >= 60 ? '#2563EB' : '#D97706')
+                    }}>
+                      {selectedSubjectForWeeklyModal.avgPercentage}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Explanation text */}
+                <p style={{
+                  fontSize: '0.88rem',
+                  color: 'var(--text-body)',
+                  lineHeight: 1.65,
+                  margin: '0 0 1rem',
+                  background: 'rgba(255,255,255,0.7)',
+                  padding: '0.85rem 1rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid rgba(226, 232, 240, 0.8)'
+                }}>
+                  {isAr ? (
+                    <>
+                      تم احتساب نسبة <strong>{selectedSubjectForWeeklyModal.avgPercentage}%</strong> كمتوسط حسابي دقيق لنتائجك في{' '}
+                      <strong>{selectedSubjectForWeeklyModal.examsCount}</strong> {selectedSubjectForWeeklyModal.examsCount === 1 ? 'اختبار' : 'اختبارات'} مسجلة{' '}
+                      {selectedSubjectForWeeklyModal.isCurrentWeekActive ? 'خلال هذا الأسبوع' : 'في سجل المادة'}.
+                      حيث حققت مجموع <strong>{selectedSubjectForWeeklyModal.totalScore}</strong> درجة من إجمالي <strong>{selectedSubjectForWeeklyModal.totalPoints}</strong> نقطة ممكنة.
+                    </>
+                  ) : (
+                    <>
+                      The <strong>{selectedSubjectForWeeklyModal.avgPercentage}%</strong> rate was computed as the exact arithmetic average across your{' '}
+                      <strong>{selectedSubjectForWeeklyModal.examsCount}</strong> completed assessments{' '}
+                      {selectedSubjectForWeeklyModal.isCurrentWeekActive ? 'this week' : 'overall'}.
+                      You scored <strong>{selectedSubjectForWeeklyModal.totalScore}</strong> out of <strong>{selectedSubjectForWeeklyModal.totalPoints}</strong> total possible points.
+                    </>
+                  )}
+                </p>
+
+                {/* Pedagogical Diagnostic Feedback */}
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  borderRadius: 'var(--radius-md)',
+                  background: selectedSubjectForWeeklyModal.avgPercentage >= 80 ? '#F0FDF4' : (selectedSubjectForWeeklyModal.avgPercentage >= 60 ? '#EFF6FF' : '#FFFBEB'),
+                  border: `1px solid ${selectedSubjectForWeeklyModal.avgPercentage >= 80 ? '#BBF7D0' : (selectedSubjectForWeeklyModal.avgPercentage >= 60 ? '#BFDBFE' : '#FDE68A')}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem'
+                }}>
+                  <span style={{ fontSize: '1.1rem' }}>
+                    {selectedSubjectForWeeklyModal.avgPercentage >= 80 ? '🌟' : (selectedSubjectForWeeklyModal.avgPercentage >= 60 ? '📘' : '⚠️')}
+                  </span>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: selectedSubjectForWeeklyModal.avgPercentage >= 80 ? '#166534' : (selectedSubjectForWeeklyModal.avgPercentage >= 60 ? '#1E40AF' : '#92400E'), lineHeight: 1.5 }}>
+                    {selectedSubjectForWeeklyModal.avgPercentage >= 80
+                      ? (isAr ? 'مستوى استيعاب ممتاز! الطالب يظهر تمكناً عالياً وإتقاناً لأسئلة ومفاهيم المادة.' : 'Excellent mastery! Demonstrates high comprehension and solid grasp of the subject concepts.')
+                      : selectedSubjectForWeeklyModal.avgPercentage >= 60
+                      ? (isAr ? 'مستوى استيعاب متقدم وجيد جداً! يُنصح بمراجعة النقاط البسيطة في صفحات الكتاب لرفع النسبة إلى مرحلة الإتقان التام.' : 'Very good progress! Recommended to review minor highlighted points in the book to reach full mastery.')
+                      : (isAr ? 'المستوى بحاجة إلى مراجعة ودعم إضافي. استعن بخطة المراجعة الذكية وصفحات الكتاب المحددة في كل تقييم.' : 'Needs additional study and support. Use the AI action plan and textbook references to boost mastery.')}
+                  </div>
+                </div>
+
+                {/* 3 Metric Pills */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '0.75rem',
+                  marginTop: '0.85rem'
+                }}>
+                  <div style={{ padding: '0.65rem', background: '#FFFFFF', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      {isAr ? 'إجمالي الاختبارات' : 'Total Exams'}
+                    </div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--text-title)', marginTop: '0.15rem' }}>
+                      {selectedSubjectForWeeklyModal.examsCount}
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.65rem', background: '#FFFFFF', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      {isAr ? 'أعلى نتيجة محققة' : 'Highest Score'}
+                    </div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#16A34A', marginTop: '0.15rem' }}>
+                      {selectedSubjectForWeeklyModal.highestScore}%
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.65rem', background: '#FFFFFF', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      {isAr ? 'الاختبارات المتقنة' : 'Mastered Assessments'}
+                    </div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--primary-700)', marginTop: '0.15rem' }}>
+                      {selectedSubjectForWeeklyModal.masteredCount} {isAr ? 'من' : 'of'} {selectedSubjectForWeeklyModal.examsCount}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* LIST OF EXAMS CONTRIBUTING TO THIS SUBJECT */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h4 style={{ margin: 0, fontWeight: 900, fontSize: '1rem', color: 'var(--text-title)' }}>
+                    {isAr ? `اختبارات وتقييمات المادة (${selectedSubjectForWeeklyModal.targetExams.length})` : `Subject Exams (${selectedSubjectForWeeklyModal.targetExams.length})`}
+                  </h4>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {selectedSubjectForWeeklyModal.isCurrentWeekActive
+                      ? (isAr ? 'تتجدد تلقائياً كل أسبوع' : 'Refreshes automatically each week')
+                      : (isAr ? 'سجل تقييمات المادة' : 'Subject Assessment History')}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  {selectedSubjectForWeeklyModal.targetExams.map((exam: any, idx: number) => {
+                    const pct = exam.percentage ?? Math.round(((exam.score || 0) / (exam.total || 1)) * 100);
+                    const isMastered = pct >= 80;
+                    const isProficient = pct >= 60 && pct < 80;
+                    const bColor = isMastered ? '#16A34A' : isProficient ? '#2563EB' : '#D97706';
+                    const bBg = isMastered ? '#F0FDF4' : isProficient ? '#EFF6FF' : '#FFFBEB';
+                    const bBorder = isMastered ? '#BBF7D0' : isProficient ? '#BFDBFE' : '#FDE68A';
+
+                    const formattedDate = exam.created_at
+                      ? new Date(exam.created_at).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : '';
+
+                    return (
+                      <div
+                        key={exam.id || idx}
+                        style={{
+                          padding: '0.9rem 1.1rem',
+                          background: 'var(--bg-subtle)',
+                          borderRadius: 'var(--radius-lg)',
+                          border: '1px solid var(--border-light)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-title)' }}>
+                            {isAr ? (exam.chapter_title_ar || exam.title_ar) : (exam.chapter_title_en || exam.title_en)}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                            {formattedDate && `${formattedDate} • `}
+                            {exam.score}/{exam.total} {isAr ? 'درجات' : 'pts'}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <span style={{
+                            fontSize: '0.85rem',
+                            fontWeight: 900,
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: 'var(--radius-full)',
+                            background: bBg,
+                            color: bColor,
+                            border: `1px solid ${bBorder}`
+                          }}>
+                            {pct}%
+                          </span>
+
+                          {exam.report && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => {
+                                setSelectedSubjectForWeeklyModal(null);
+                                setAiReport(exam.report);
+                                setAiStep(6);
+                                setActiveTab('ai');
+                              }}
+                              style={{ fontWeight: 700, fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                            >
+                              {isAr ? 'خطة المراجعة 📖' : 'Study Plan 📖'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '0.85rem 1.5rem',
+              borderTop: '1px solid var(--border-light)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              background: 'var(--bg-subtle)'
+            }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setSelectedSubjectForWeeklyModal(null)}
                 style={{ fontWeight: 800, padding: '0.5rem 1.5rem' }}
               >
                 {isAr ? 'إغلاق' : 'Close'}

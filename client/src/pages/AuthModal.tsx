@@ -398,7 +398,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {/* 3. الفصل الدراسى (الاول / التانى) */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
-                    {isAr ? 'الفصل الدراسى (grades)' : 'Academic Term (Grades)'}
+                    {isAr ? 'الفصل الدراسى' : 'Academic Term'}
                   </label>
                   <select
                     className="form-select"
@@ -407,6 +407,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   >
                     <option value="الاول">{isAr ? 'الاول' : 'First Term'}</option>
                     <option value="التانى">{isAr ? 'التانى' : 'Second Term'}</option>
+                  </select>
+                </div>
+
+                {/* 3b. الصف الدراسى – full grade dropdown (locked to Prep 3 only) */}
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 800 }}>
+                    <GraduationCap size={15} style={{ display: 'inline', marginInlineEnd: '4px' }} />
+                    {isAr ? 'الصف الدراسى' : 'School Grade'}
+                  </label>
+                  <select
+                    className="form-select"
+                    value="prep3"
+                    onChange={() => {}}
+                    style={{
+                      fontWeight: 700,
+                      color: 'var(--primary-700)',
+                      border: '2px solid var(--primary-300)'
+                    }}
+                  >
+                    {/* ── ابتدائي ── */}
+                    <option value="primary1" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الأول الابتدائي' : 'Primary Grade 1'}</option>
+                    <option value="primary2" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثاني الابتدائي' : 'Primary Grade 2'}</option>
+                    <option value="primary3" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثالث الابتدائي' : 'Primary Grade 3'}</option>
+                    <option value="primary4" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الرابع الابتدائي' : 'Primary Grade 4'}</option>
+                    <option value="primary5" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الخامس الابتدائي' : 'Primary Grade 5'}</option>
+                    <option value="primary6" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف السادس الابتدائي' : 'Primary Grade 6'}</option>
+                    {/* ── إعدادي ── */}
+                    <option value="prep1" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الأول الإعدادي' : 'Prep Grade 1'}</option>
+                    <option value="prep2" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثاني الإعدادي' : 'Prep Grade 2'}</option>
+                    <option value="prep3" style={{ fontWeight: 800, color: 'var(--primary-800)' }}>✅ {isAr ? 'الصف الثالث الإعدادي' : 'Prep Grade 3'}</option>
+                    {/* ── ثانوي ── */}
+                    <option value="sec1" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الأول الثانوي' : 'Secondary Grade 1'}</option>
+                    <option value="sec2" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثاني الثانوي' : 'Secondary Grade 2'}</option>
+                    <option value="sec3" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثالث الثانوي' : 'Secondary Grade 3'}</option>
                   </select>
                 </div>
 

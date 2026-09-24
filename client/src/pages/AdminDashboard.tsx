@@ -15,8 +15,10 @@ import {
   Database,
   TrendingUp,
   X,
-  School
+  School,
+  ShieldCheck
 } from 'lucide-react';
+import { HierarchyDashboard } from './HierarchyDashboard';
 
 interface TeacherItem {
   id: string;
@@ -58,7 +60,7 @@ interface StudentItem {
 export const AdminDashboard: React.FC = () => {
   const { user, token, language, impersonateUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'teachers' | 'students' | 'architecture'>('teachers');
+  const [activeTab, setActiveTab] = useState<'hierarchy' | 'teachers' | 'students' | 'architecture'>('hierarchy');
 
   // Overview stats
   const [stats, setStats] = useState<any>({
@@ -551,6 +553,15 @@ export const AdminDashboard: React.FC = () => {
         flexWrap: 'wrap'
       }}>
         <button
+          className={`tab-btn ${activeTab === 'hierarchy' ? 'active' : ''}`}
+          onClick={() => setActiveTab('hierarchy')}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', padding: '0.75rem 1.25rem', fontWeight: 700 }}
+        >
+          <ShieldCheck size={17} />
+          <span>{language === 'ar' ? 'الهيكل الرقابي والجمهوري (الأمين المركزي والمحافظات)' : 'Supervisory Hierarchy'}</span>
+        </button>
+
+        <button
           className={`tab-btn ${activeTab === 'teachers' ? 'active' : ''}`}
           onClick={() => setActiveTab('teachers')}
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', padding: '0.75rem 1.25rem', fontWeight: 700 }}
@@ -577,6 +588,11 @@ export const AdminDashboard: React.FC = () => {
           <span>{language === 'ar' ? 'معمارية المعرّفات (superid / hybrid_id / id)' : 'ID Architecture'}</span>
         </button>
       </div>
+
+      {/* TAB 0: HIERARCHY MANAGEMENT */}
+      {activeTab === 'hierarchy' && (
+        <HierarchyDashboard />
+      )}
 
       {/* TAB 1: TEACHERS MANAGEMENT */}
       {activeTab === 'teachers' && (

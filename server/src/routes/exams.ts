@@ -106,8 +106,8 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
   }
 });
 
-// Create exam (Teachers only)
-router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (req: AuthenticatedRequest, res) => {
+// Create exam (Teachers & Supervisors)
+router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN']), async (req: AuthenticatedRequest, res) => {
   try {
     const {
       title_ar,
@@ -120,6 +120,7 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
       duration_minutes = 30,
       is_published = false,
       school_type = 'كلاهما',
+      governorate_id,
       questions
     } = req.body;
 
@@ -130,12 +131,13 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
     const prepStageId = '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
     const prep3GradeId = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
 
+    const creatorGovId = governorate_id || req.user?.governorateId || null;
     const examId = uuidv4();
     await db.query(
       `INSERT INTO exams (
          id, title_ar, title_en, teacher_id, academic_stage_id, grade_id, subject_id,
-         book_id, chapter_id, duration_minutes, is_published, school_type
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+         book_id, chapter_id, duration_minutes, is_published, school_type, governorate_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         examId,
         title_ar.trim(),
@@ -148,7 +150,8 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN']), async (re
         chapter_id || null,
         duration_minutes,
         is_published ? 1 : 0,
-        school_type || 'كلاهما'
+        school_type || 'كلاهما',
+        creatorGovId
       ]
     );
 

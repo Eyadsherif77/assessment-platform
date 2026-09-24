@@ -17,6 +17,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
 
   const getDashboardLabel = () => {
     if (user?.role === 'ADMIN') return language === 'ar' ? 'لوحة الإدارة' : 'Admin Portal';
+    if (user?.role === 'CENTRAL_ADMIN') return language === 'ar' ? 'لوحة الأمين المركزي' : 'Central Secretary';
+    if (user?.role === 'GOVERNORATE_ADMIN') return language === 'ar' ? 'لوحة أمين المحافظة' : 'Governorate Portal';
+    if (user?.role === 'SUPERVISOR') return language === 'ar' ? 'لوحة الموجه' : 'Supervisor Portal';
     if (user?.role === 'STUDENT') return t.studentDashboard;
     return t.teacherDashboard;
   };
@@ -144,7 +147,31 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                     <>
                       <span>👑</span>
                       <span className="badge-text">
-                        {language === 'ar' ? `المالك (${user.super_id || 'SUPER-ADMIN-001'})` : `Owner (${user.super_id || 'SUPER-ADMIN-001'})`}
+                        {language === 'ar' ? `المدير العام (${user.super_id || 'SUPER-ADMIN-001'})` : `Admin (${user.super_id || 'SUPER-ADMIN-001'})`}
+                      </span>
+                    </>
+                  )}
+                  {user.role === 'CENTRAL_ADMIN' && (
+                    <>
+                      <span>🏛️</span>
+                      <span className="badge-text">
+                        {language === 'ar' ? 'الأمين المركزي' : 'Central Secretary'}
+                      </span>
+                    </>
+                  )}
+                  {user.role === 'GOVERNORATE_ADMIN' && (
+                    <>
+                      <span>🏢</span>
+                      <span className="badge-text">
+                        {language === 'ar' ? `أمين المحافظة (${user.governorate_name || 'المحافظة'})` : `Gov Admin (${user.governorate_name || 'Gov'})`}
+                      </span>
+                    </>
+                  )}
+                  {user.role === 'SUPERVISOR' && (
+                    <>
+                      <span>📐</span>
+                      <span className="badge-text">
+                        {language === 'ar' ? `الموجه (${user.subject_name || 'المادة'})` : `Supervisor (${user.subject_name || 'Subject'})`}
                       </span>
                     </>
                   )}

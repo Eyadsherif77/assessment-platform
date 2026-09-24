@@ -2,20 +2,32 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations, type Language } from '../i18n/translations';
 import { apiUrl } from '../utils/api';
 
+export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'CENTRAL_ADMIN' | 'GOVERNORATE_ADMIN' | 'SUPERVISOR';
+
 export interface UserProfile {
   id: string;
   super_id?: string | null;
   hybrid_id?: string | null;
   email: string;
-  role: 'STUDENT' | 'TEACHER' | 'ADMIN';
+  username?: string | null;
+  role: UserRole;
   fullName: string;
+  governorate_id?: string | null;
+  governorate_name?: string | null;
+  subject_id?: string | null;
+  subject_name?: string | null;
+  created_by?: string | null;
   permissions?: {
     can_upload_books?: boolean;
     can_create_exams?: boolean;
     can_delete_content?: boolean;
     can_view_analytics?: boolean;
+    can_view_exams?: boolean;
+    can_create_subordinates?: boolean;
+    can_edit_permissions?: boolean;
     is_active?: boolean;
     is_owner?: boolean;
+    [key: string]: any;
   } | null;
   profile?: {
     academic_stage_id?: string;

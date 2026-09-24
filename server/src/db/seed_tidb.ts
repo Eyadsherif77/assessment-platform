@@ -164,6 +164,59 @@ export async function seedTiDB(): Promise<void> {
       console.log('👩‍🏫 Teacher seeded: teacher@edu.eg');
     }
 
+    // 8. Seed Hierarchy Accounts in TiDB
+    const [cairoGovRows]: any = await pool.query("SELECT id FROM governorates WHERE name_ar LIKE '%قاهرة%' OR name_en LIKE '%Cairo%' LIMIT 1");
+    const cairoGovId = cairoGovRows[0]?.id || 'gov-eg-01';
+
+    const [arabicSubRows]: any = await pool.query("SELECT id FROM subjects WHERE code = 'ARABIC' OR name_ar LIKE '%عرب%' LIMIT 1");
+    const arabicSubId = arabicSubRows[0]?.id || null;
+
+    // Central Admin
+    const [centralRows]: any = await pool.query('SELECT id FROM users WHERE email = ?', ['central@edu.eg']);
+    let centralAdminId = centralRows[0]?.id;
+    if (!centralAdminId) {
+      centralAdminId = uuidv4();
+      await pool.query(
+        'INSERT INTO users (id, super_id, email, password_hash, role, full_name, permissions) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [centralAdminId, 'SUPER-CENTRAL-001', 'central@edu.eg', passwordHash, 'CENTRAL_ADMIN', 'الأمين المركزي العام للجمهورية', '{"can_view_all_governorates":true,"can_manage_gov_admins":true,"can_view_exams":true}']
+      );
+      console.log('🏛️ Central Admin seeded in TiDB: central@edu.eg');
+    }
+
+    // Cairo Governorate Admin
+    const [gRows2]: any = await pool.query('SELECT id FROM users WHERE email = ?', ['gov.cairo@edu.eg']);
+    let govAdminId = gRows2[0]?.id;
+    if (!govAdminId) {
+      govAdminId = uuidv4();
+      await pool.query(
+        'INSERT INTO users (id, super_id, email, password_hash, role, full_name, governorate_id, created_by, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [govAdminId, 'SUPER-GOV-CAI-01', 'gov.cairo@edu.eg', passwordHash, 'GOVERNORATE_ADMIN', 'أمين محافظة القاهرة (التعليم العام)', cairoGovId, centralAdminId, '{"can_view_gov_exams":true,"can_manage_supervisors":true}']
+      );
+      console.log('🏢 Governorate Admin seeded in TiDB: gov.cairo@edu.eg');
+    }
+
+    // Cairo Arabic Supervisor
+    const [supRows]: any = await pool.query('SELECT id FROM users WHERE email = ?', ['sup.arabic.cairo@edu.eg']);
+    let supId = supRows[0]?.id;
+    if (!supId) {
+      supId = uuidv4();
+      await pool.query(
+        'INSERT INTO users (id, super_id, email, password_hash, role, full_name, governorate_id, subject_id, created_by, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [supId, 'HYB-SUP-ARA-01', 'sup.arabic.cairo@edu.eg', passwordHash, 'SUPERVISOR', 'الموجه الأول للغة العربية - القاهرة', cairoGovId, arabicSubId, govAdminId, '{"can_view_subject_exams":true,"can_manage_teachers":true}']
+      );
+      console.log('📐 Arabic Supervisor seeded in TiDB: sup.arabic.cairo@edu.eg');
+    }
+
+    // Link teacher and exams to Cairo
+    await pool.query(
+      'UPDATE users SET governorate_id = ?, subject_id = ?, created_by = ? WHERE email = ? AND (governorate_id IS NULL OR governorate_id = "")',
+      [cairoGovId, arabicSubId, supId, 'teacher@edu.eg']
+    );
+    await pool.query(
+      'UPDATE exams SET governorate_id = ? WHERE governorate_id IS NULL OR governorate_id = ""',
+      [cairoGovId]
+    );
+
     // Demo Students
     const studentList = [
       { email: 'prep1@edu.eg', name: 'زياد محمد الشريف', gradeCode: 'PREP_1' },

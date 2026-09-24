@@ -209,6 +209,22 @@ class DatabaseManager {
             }
           }
 
+          // Hierarchy migrations for users, exams, and teacher_profiles
+          const hierarchyUserCols = [
+            'ALTER TABLE users ADD COLUMN governorate_id VARCHAR(64) NULL',
+            'ALTER TABLE users ADD COLUMN subject_id VARCHAR(64) NULL',
+            'ALTER TABLE users ADD COLUMN created_by VARCHAR(64) NULL',
+            'ALTER TABLE exams ADD COLUMN governorate_id VARCHAR(64) NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN governorate_id VARCHAR(64) NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN subject_id VARCHAR(64) NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN supervisor_id VARCHAR(64) NULL'
+          ];
+          for (const colSql of hierarchyUserCols) {
+            try {
+              await this.tidbConn.execute(colSql);
+            } catch (_) {}
+          }
+
           // Ensure chunked uploads storage table
           try {
             await this.tidbConn.execute(`
@@ -246,8 +262,11 @@ class DatabaseManager {
           try {
             await this.tidbConn.execute(`CREATE INDEX idx_book_chunks_lookup ON book_chunks (academic_stage_id, grade_id, subject_id, book_id, chapter_id)`);
           } catch (_) {}
+          try {
+            await this.tidbConn.execute(`CREATE INDEX idx_exams_gov_sub ON exams (governorate_id, subject_id)`);
+          } catch (_) {}
 
-          console.log('✅ TiDB Cloud schema verified and active.');
+          console.log('✅ TiDB Cloud schema verified and active with 4-tier hierarchy support.');
         }
         return;
       }
@@ -287,7 +306,25 @@ class DatabaseManager {
           await this.query(`ALTER TABLE users ADD COLUMN hybrid_id TEXT`);
         } catch (_) {}
         try {
-          await this.query(`ALTER TABLE users ADD COLUMN permissions TEXT`);
+          await this.query(`ALTER TABLE users ADD COLUMN governorate_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE users ADD COLUMN subject_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE users ADD COLUMN created_by TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE exams ADD COLUMN governorate_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE teacher_profiles ADD COLUMN governorate_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE teacher_profiles ADD COLUMN subject_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE teacher_profiles ADD COLUMN supervisor_id TEXT`);
         } catch (_) {}
 
         // Ensure no NULL school_type values exist in database

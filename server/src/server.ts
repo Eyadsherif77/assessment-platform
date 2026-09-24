@@ -15,6 +15,7 @@ import examsRoutes from './routes/exams.js';
 import aiRoutes from './routes/ai.js';
 import analyticsRoutes from './routes/analytics.js';
 import adminRoutes from './routes/admin.js';
+import hierarchyRoutes from './routes/hierarchy.js';
 
 dotenv.config();
 
@@ -68,6 +69,7 @@ app.use('/api/exams', examsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/hierarchy', hierarchyRoutes);
 
 // Root welcome & API status
 app.get('/', (req, res) => {

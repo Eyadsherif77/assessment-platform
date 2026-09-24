@@ -299,7 +299,7 @@ router.post('/login', async (req, res) => {
 
     const cleanIdent = email.toLowerCase().trim();
     const userRes = await db.query(
-      `SELECT id, super_id, hybrid_id, email, username, password_hash, role, full_name, permissions, is_active 
+      `SELECT id, super_id, hybrid_id, email, username, password_hash, role, full_name, permissions, is_active, governorate_id, subject_id, created_by 
        FROM users 
        WHERE LOWER(email) = $1 OR LOWER(username) = $2`,
       [cleanIdent, cleanIdent]
@@ -318,6 +318,18 @@ router.post('/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ error: 'البريد الإلكتروني أو اسم المستخدم أو كلمة المرور غير صحيحة' });
+    }
+
+    // Lookup governorate name & subject name if available
+    let govName = null;
+    let subName = null;
+    if (user.governorate_id) {
+      const gRes = await db.query('SELECT name_ar FROM governorates WHERE id = $1 LIMIT 1', [user.governorate_id]);
+      govName = gRes.rows[0]?.name_ar || null;
+    }
+    if (user.subject_id) {
+      const sRes = await db.query('SELECT name_ar FROM subjects WHERE id = $1 LIMIT 1', [user.subject_id]);
+      subName = sRes.rows[0]?.name_ar || null;
     }
 
     let profileData: any = null;
@@ -350,7 +362,10 @@ router.post('/login', async (req, res) => {
       id: user.id,
       email: user.email,
       role: user.role,
-      fullName: user.full_name
+      fullName: user.full_name,
+      governorateId: user.governorate_id || undefined,
+      subjectId: user.subject_id || undefined,
+      permissions: permissionsObj || undefined
     });
 
     return res.json({
@@ -364,6 +379,11 @@ router.post('/login', async (req, res) => {
         username: user.username || null,
         role: user.role,
         fullName: user.full_name,
+        governorate_id: user.governorate_id || null,
+        governorate_name: govName,
+        subject_id: user.subject_id || null,
+        subject_name: subName,
+        created_by: user.created_by || null,
         permissions: permissionsObj,
         profile: profileData
       }
@@ -379,10 +399,21 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
     const userQuery = await db.query(
-      `SELECT super_id, hybrid_id, username, permissions, is_active FROM users WHERE id = $1`,
+      `SELECT super_id, hybrid_id, username, permissions, is_active, governorate_id, subject_id, created_by FROM users WHERE id = $1`,
       [user.id]
     );
     const userRow = userQuery.rows[0] || {};
+
+    let govName = null;
+    let subName = null;
+    if (userRow.governorate_id) {
+      const gRes = await db.query('SELECT name_ar FROM governorates WHERE id = $1 LIMIT 1', [userRow.governorate_id]);
+      govName = gRes.rows[0]?.name_ar || null;
+    }
+    if (userRow.subject_id) {
+      const sRes = await db.query('SELECT name_ar FROM subjects WHERE id = $1 LIMIT 1', [userRow.subject_id]);
+      subName = sRes.rows[0]?.name_ar || null;
+    }
 
     let profileData: any = null;
     if (user.role === 'STUDENT') {
@@ -419,6 +450,11 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
         username: userRow.username || null,
         role: user.role,
         fullName: user.fullName,
+        governorate_id: userRow.governorate_id || null,
+        governorate_name: govName,
+        subject_id: userRow.subject_id || null,
+        subject_name: subName,
+        created_by: userRow.created_by || null,
         permissions: permissionsObj,
         profile: profileData
       }

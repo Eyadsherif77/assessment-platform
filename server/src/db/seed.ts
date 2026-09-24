@@ -39,8 +39,76 @@ export async function seedDatabase(): Promise<void> {
         );
         console.log('👑 Admin user initialized: admin@edu.eg (superid: SUPER-ADMIN-001)');
       } else {
-        await db.query(`UPDATE users SET super_id = 'SUPER-ADMIN-001' WHERE email = 'admin@edu.eg'`);
+        await db.query(`UPDATE users SET super_id = 'SUPER-ADMIN-001', role = 'ADMIN' WHERE email = 'admin@edu.eg'`);
       }
+
+      // Find Cairo Governorate ID
+      let cairoGovId = 'gov-eg-01';
+      const cairoRes = await db.query(`SELECT id FROM governorates WHERE name_ar LIKE '%قاهرة%' OR name_en LIKE '%Cairo%' LIMIT 1`);
+      if (cairoRes.rows.length > 0) {
+        cairoGovId = cairoRes.rows[0].id;
+      }
+
+      // Find Arabic Subject ID
+      let arabicSubId: string | null = null;
+      const arabicRes = await db.query(`SELECT id FROM subjects WHERE code = 'ARABIC' OR name_ar LIKE '%عرب%' LIMIT 1`);
+      if (arabicRes.rows.length > 0) {
+        arabicSubId = arabicRes.rows[0].id;
+      }
+
+      // 1. Seed Central Admin (الأمين المركزي)
+      const centralCheck = await db.query(`SELECT id FROM users WHERE email = 'central@edu.eg'`);
+      let centralAdminId = centralCheck.rows[0]?.id;
+      if (!centralAdminId) {
+        centralAdminId = uuidv4();
+        await db.query(
+          `INSERT INTO users (id, super_id, email, password_hash, role, full_name, permissions) 
+           VALUES ($1, 'SUPER-CENTRAL-001', 'central@edu.eg', $2, 'CENTRAL_ADMIN', 'الأمين المركزي العام للجمهورية', '{"can_view_all_governorates":true,"can_manage_gov_admins":true,"can_view_exams":true}')`,
+          [centralAdminId, passwordHash]
+        );
+        console.log('🏛️ Central Admin seeded: central@edu.eg');
+      }
+
+      // 2. Seed Governorate Admin for Cairo (أمين محافظة القاهرة)
+      const govAdminCheck = await db.query(`SELECT id FROM users WHERE email = 'gov.cairo@edu.eg'`);
+      let govAdminId = govAdminCheck.rows[0]?.id;
+      if (!govAdminId) {
+        govAdminId = uuidv4();
+        await db.query(
+          `INSERT INTO users (id, super_id, email, password_hash, role, full_name, governorate_id, created_by, permissions) 
+           VALUES ($1, 'SUPER-GOV-CAI-01', 'gov.cairo@edu.eg', $2, 'GOVERNORATE_ADMIN', 'أمين محافظة القاهرة (التعليم العام)', $3, $4, '{"can_view_gov_exams":true,"can_manage_supervisors":true}')`,
+          [govAdminId, passwordHash, cairoGovId, centralAdminId]
+        );
+        console.log('🏢 Governorate Admin seeded: gov.cairo@edu.eg');
+      }
+
+      // 3. Seed Supervisor for Arabic in Cairo (موجه اللغة العربية - القاهرة)
+      const supCheck = await db.query(`SELECT id FROM users WHERE email = 'sup.arabic.cairo@edu.eg'`);
+      let supId = supCheck.rows[0]?.id;
+      if (!supId) {
+        supId = uuidv4();
+        await db.query(
+          `INSERT INTO users (id, super_id, email, password_hash, role, full_name, governorate_id, subject_id, created_by, permissions) 
+           VALUES ($1, 'HYB-SUP-ARA-01', 'sup.arabic.cairo@edu.eg', $2, 'SUPERVISOR', 'الموجه الأول للغة العربية - القاهرة', $3, $4, $5, '{"can_view_subject_exams":true,"can_manage_teachers":true}')`,
+          [supId, passwordHash, cairoGovId, arabicSubId, govAdminId]
+        );
+        console.log('📐 Arabic Supervisor seeded: sup.arabic.cairo@edu.eg');
+      }
+
+      // Link existing Teacher to Cairo and Supervisor
+      await db.query(
+        `UPDATE users SET governorate_id = $1, subject_id = $2, created_by = $3 
+         WHERE email = 'teacher@edu.eg' AND (governorate_id IS NULL OR governorate_id = '')`,
+        [cairoGovId, arabicSubId, supId]
+      );
+      await db.query(
+        `UPDATE teacher_profiles SET governorate_id = $1, subject_id = $2, supervisor_id = $3 
+         WHERE user_id = (SELECT id FROM users WHERE email = 'teacher@edu.eg') AND (governorate_id IS NULL OR governorate_id = '')`,
+        [cairoGovId, arabicSubId, supId]
+      );
+
+      // Backfill exams without governorate_id to Cairo so they appear immediately in views
+      await db.query(`UPDATE exams SET governorate_id = $1 WHERE governorate_id IS NULL OR governorate_id = ''`, [cairoGovId]);
 
       // Always ensure Teacher hybrid_id and permissions are populated
       const defaultTeacherPerms = JSON.stringify({
