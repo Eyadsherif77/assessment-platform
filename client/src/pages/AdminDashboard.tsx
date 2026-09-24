@@ -60,7 +60,7 @@ interface StudentItem {
 export const AdminDashboard: React.FC = () => {
   const { user, token, language, impersonateUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'hierarchy' | 'teachers' | 'students' | 'architecture'>('hierarchy');
+  const [activeTab, setActiveTab] = useState<'hierarchy' | 'teachers' | 'students'>('hierarchy');
 
   // Overview stats
   const [stats, setStats] = useState<any>({
@@ -579,15 +579,6 @@ export const AdminDashboard: React.FC = () => {
           <GraduationCap size={17} />
           <span>{language === 'ar' ? `إدارة ومتابعة الطلاب (${students.length})` : `Students (${students.length})`}</span>
         </button>
-
-        <button
-          className={`tab-btn ${activeTab === 'architecture' ? 'active' : ''}`}
-          onClick={() => setActiveTab('architecture')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', padding: '0.75rem 1.25rem', fontWeight: 700 }}
-        >
-          <Database size={17} />
-          <span>{language === 'ar' ? 'معمارية المعرّفات (superid / hybrid_id / id)' : 'ID Architecture'}</span>
-        </button>
       </div>
 
       {/* TAB 0: HIERARCHY MANAGEMENT */}
@@ -849,62 +840,6 @@ export const AdminDashboard: React.FC = () => {
               </table>
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB 3: ID ARCHITECTURE & DB SCHEMA DOCUMENTATION */}
-      {activeTab === 'architecture' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div className="card" style={{ padding: '2rem 1.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-              <Database size={22} color="var(--primary-600)" />
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: 'var(--text-title)' }}>
-                {language === 'ar' ? 'معمارية المعرّفات تمهيداً لقاعدة البيانات السحابية' : 'Future Database ID Architecture'}
-              </h2>
-            </div>
-
-            <p style={{ color: 'var(--text-body)', lineHeight: 1.7, fontSize: '0.925rem' }}>
-              وفقاً للتصميم المعتمد، تم ضبط بنية المعرّفات في النظام للتوافق التام مع الترحيل المستقبلي لقاعدة البيانات الإنتاجية السحابية:
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginTop: '1.25rem' }}>
-              {/* Owner */}
-              <div style={{ border: '1.5px solid #FCD34D', borderRadius: 'var(--radius-lg)', padding: '1.35rem', background: '#FFFDF5' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#B45309', fontWeight: 800, fontSize: '1.05rem' }}>
-                  <span>👑 المالك والمدير العام (Owner / SuperAdmin)</span>
-                </div>
-                <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#78350F', lineHeight: 1.6 }}>
-                  • <strong>صيغة المعرف:</strong> <code>superid</code> (مثل <code>SUPER-ADMIN-001</code>)
-                  <br />
-                  • <strong>الوظيفة:</strong> معرّف فائق يمتلك صلاحية الرقابة المطلقة، تعديل صلاحيات المعلمين، والدخول في أي حساب ("go inside it").
-                </div>
-              </div>
-
-              {/* Teacher */}
-              <div style={{ border: '1.5px solid #C7D2FE', borderRadius: 'var(--radius-lg)', padding: '1.35rem', background: '#F5F7FF' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#4338CA', fontWeight: 800, fontSize: '1.05rem' }}>
-                  <span>👩‍🏫 المعلم (Teacher)</span>
-                </div>
-                <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#312E81', lineHeight: 1.6 }}>
-                  • <strong>صيغة المعرف:</strong> <code>hybrid_id</code> (مثل <code>HYBRID-TEA-SCI-01</code>)
-                  <br />
-                  • <strong>الوظيفة:</strong> معرّف هجين مركب يربط كود المعلم وتخصصه ومدرسته، ويخضع للتحكم في الصلاحيات بواسطة الإدارة.
-                </div>
-              </div>
-
-              {/* Student */}
-              <div style={{ border: '1.5px solid #A7F3D0', borderRadius: 'var(--radius-lg)', padding: '1.35rem', background: '#F0FDF4' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#065F46', fontWeight: 800, fontSize: '1.05rem' }}>
-                  <span>👨‍🎓 الطالب (Student)</span>
-                </div>
-                <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#064E3B', lineHeight: 1.6 }}>
-                  • <strong>صيغة المعرف:</strong> <code>id</code> فقط (UUID قياسي بسيط)
-                  <br />
-                  • <strong>الوظيفة:</strong> معرّف بسيط ومباشر دون تركيب هجين، لضمان السرعة والعزل الصارم حسب الصف والمرحلة.
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
