@@ -128,7 +128,8 @@ const DEFAULT_SUBJECTS: Subject[] = [
 ];
 
 export const HierarchyDashboard: React.FC = () => {
-  const { user, token, impersonateUser } = useAuth();
+  const { user, token, language, impersonateUser } = useAuth();
+  const isAr = language === 'ar';
 
   const [activeTab, setActiveTab] = useState<'exams' | 'subordinates'>(
     user?.role === 'ADMIN' ? 'subordinates' : 'exams'
@@ -253,10 +254,10 @@ export const HierarchyDashboard: React.FC = () => {
       if (res.ok) {
         setExams(data.exams || []);
       } else {
-        setErrorMsg(data.error || 'تعذر تحميل الاختبارات');
+        setErrorMsg(data.error || (isAr ? 'فشل تحميل الاختبارات' : 'Failed to load exams'));
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'خطأ في الاتصال بالخادم');
+      setErrorMsg(err.message || (isAr ? 'خطأ في الاتصال بالخادم' : 'Server connection error'));
     } finally {
       setIsLoading(false);
     }
@@ -274,16 +275,16 @@ export const HierarchyDashboard: React.FC = () => {
       if (res.ok) {
         setSubordinates(data.subordinates || []);
       } else {
-        setErrorMsg(data.error || 'تعذر تحميل بيانات المرؤوسين');
+        setErrorMsg(data.error || (isAr ? 'فشل تحميل قائمة المرؤوسين' : 'Failed to load subordinates list'));
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'خطأ في الاتصال بالخادم');
+      setErrorMsg(err.message || (isAr ? 'خطأ في الاتصال بالخادم' : 'Server connection error'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Inspect Exam Clickable Handler
+  // Inspect Exam Detail Modal
   const handleInspectExam = async (examId: string) => {
     setInspectExamModal({ isOpen: true, exam: null, questions: [], loading: true });
     try {
@@ -299,11 +300,11 @@ export const HierarchyDashboard: React.FC = () => {
           loading: false
         });
       } else {
-        alert(data.error || 'تعذر جلب تفاصيل الاختبار');
+        alert(data.error || (isAr ? 'تعذر جلب تفاصيل الاختبار' : 'Failed to fetch exam details'));
         setInspectExamModal(prev => ({ ...prev, isOpen: false, loading: false }));
       }
     } catch (err) {
-      alert('خطأ في جلب تفاصيل الاختبار');
+      alert(isAr ? 'خطأ في تحميل تفاصيل الاختبار' : 'Error loading exam details');
       setInspectExamModal(prev => ({ ...prev, isOpen: false, loading: false }));
     }
   };
@@ -325,7 +326,7 @@ export const HierarchyDashboard: React.FC = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(data.message || 'تم إنشاء الحساب بنجاح');
+        alert(data.message || (isAr ? 'تم إنشاء الحساب بنجاح' : 'Account created successfully'));
         setCreateSubModalOpen(false);
         setCreateFormData({
           fullName: '',
@@ -340,10 +341,10 @@ export const HierarchyDashboard: React.FC = () => {
         fetchSubordinates();
         fetchMetaAndStats();
       } else {
-        setCreateSubError(data.error || 'فشل في إنشاء الحساب');
+        setCreateSubError(data.error || (isAr ? 'فشل في إنشاء الحساب' : 'Failed to create account'));
       }
     } catch (err: any) {
-      setCreateSubError(err.message || 'خطأ في الاتصال بالخادم');
+      setCreateSubError(err.message || (isAr ? 'خطأ في الاتصال بالخادم' : 'Server connection error'));
     } finally {
       setCreateSubLoading(false);
     }
@@ -371,10 +372,10 @@ export const HierarchyDashboard: React.FC = () => {
           }));
         }
       } else {
-        alert(data.error || 'تعذر تعديل الحالة');
+        alert(data.error || (isAr ? 'تعذر تعديل الحالة' : 'Failed to update status'));
       }
     } catch (err) {
-      alert('خطأ في تحديث الصلاحيات');
+      alert(isAr ? 'خطأ في تحديث الصلاحيات' : 'Error updating permissions');
     }
   };
 
@@ -400,10 +401,10 @@ export const HierarchyDashboard: React.FC = () => {
         }));
         setSubordinates(prev => prev.map(u => u.id === permissionsModal.user?.id ? { ...u, permissions: updatedPerms } : u));
       } else {
-        alert(data.error || 'تعذر تعديل الصلاحية');
+        alert(data.error || (isAr ? 'تعذر تعديل الصلاحية' : 'Failed to modify permission'));
       }
     } catch (err) {
-      alert('خطأ في حفظ التعديل');
+      alert(isAr ? 'خطأ في حفظ التعديل' : 'Error saving modification');
     }
   };
 
@@ -421,33 +422,33 @@ export const HierarchyDashboard: React.FC = () => {
       if (res.ok && data.token && data.user) {
         impersonateUser(data.token, data.user);
       } else {
-        alert(data.error || 'تعذر الدخول إلى حساب المستخدم');
+        alert(data.error || (isAr ? 'تعذر الدخول إلى حساب المستخدم' : 'Failed to enter user account'));
       }
     } catch (err: any) {
-      alert('حدث خطأ أثناء محاولة الدخول للحساب: ' + err.message);
+      alert((isAr ? 'حدث خطأ أثناء محاولة الدخول للحساب: ' : 'Error entering account: ') + err.message);
     }
   };
 
   // Helper strings based on role
   const getRoleTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return 'الأمين المركزي';
-    if (user?.role === 'GOVERNORATE_ADMIN') return `أمين محافظة ${user?.governorate_name || ''}`;
-    if (user?.role === 'SUPERVISOR') return `الموجه الأول لمادة ${user?.subject_name || ''} - ${user?.governorate_name || ''}`;
-    return 'المدير العام للمنصة';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? 'الأمين المركزي' : 'Central Secretary';
+    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? `أمين محافظة ${user?.governorate_name || ''}` : `Governorate Admin - ${user?.governorate_name || ''}`;
+    if (user?.role === 'SUPERVISOR') return isAr ? `الموجه الأول لمادة ${user?.subject_name || ''} - ${user?.governorate_name || ''}` : `Head Supervisor - ${user?.subject_name || ''} (${user?.governorate_name || ''})`;
+    return isAr ? 'المدير العام للمنصة' : 'General Platform Administrator';
   };
 
   const getSubordinateTabTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return '🏢 أمناء المحافظات (27 محافظة)';
-    if (user?.role === 'GOVERNORATE_ADMIN') return '📐 موجهو المواد بالمحافظة';
-    if (user?.role === 'SUPERVISOR') return '👨‍🏫 معلمو المادة التابعون لي';
-    return '🏛️ الأمناء المركزيون';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '🏢 أمناء المحافظات (27 محافظة)' : '🏢 Governorate Admins (27 Governorates)';
+    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '📐 موجهو المواد بالمحافظة' : '📐 Subject Supervisors in Governorate';
+    if (user?.role === 'SUPERVISOR') return isAr ? '👨‍🏫 معلمو المادة التابعون لي' : '👨‍🏫 Subordinate Subject Teachers';
+    return isAr ? '🏛️ الأمناء المركزيون' : '🏛️ Central Secretaries';
   };
 
   const getAddSubordinateBtnTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return '➕ إضافة أمين محافظة جديد';
-    if (user?.role === 'GOVERNORATE_ADMIN') return '➕ إضافة موجه مادة جديد';
-    if (user?.role === 'SUPERVISOR') return '➕ إضافة معلم جديد';
-    return '➕ إضافة أمين مركزي';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '➕ إضافة أمين محافظة جديد' : '➕ Add New Governorate Admin';
+    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '➕ إضافة موجه مادة جديد' : '➕ Add New Subject Supervisor';
+    if (user?.role === 'SUPERVISOR') return isAr ? '➕ إضافة معلم جديد' : '➕ Add New Teacher';
+    return isAr ? '➕ إضافة أمين مركزي' : '➕ Add Central Secretary';
   };
 
   return (
@@ -455,7 +456,7 @@ export const HierarchyDashboard: React.FC = () => {
       maxWidth: '1360px',
       margin: '0 auto',
       padding: '1.5rem 1rem 4rem',
-      direction: 'rtl'
+      direction: isAr ? 'rtl' : 'ltr'
     }}>
       {/* 1. Header Banner */}
       <div style={{
@@ -483,7 +484,7 @@ export const HierarchyDashboard: React.FC = () => {
               border: '1px solid rgba(255, 255, 255, 0.2)'
             }}>
               <ShieldCheck size={14} color="#60A5FA" />
-              <span>نظام الرقابة والإشراف التراتبي المباشر</span>
+              <span>{isAr ? 'نظام الرقابة والإشراف التراتبي المباشر' : 'Direct Hierarchical Governance & Supervision System'}</span>
             </span>
 
             {user?.governorate_name && (
@@ -510,7 +511,7 @@ export const HierarchyDashboard: React.FC = () => {
                 fontSize: '0.825rem',
                 fontWeight: 700
               }}>
-                📚 مادة {user.subject_name}
+                📚 {isAr ? `مادة ${user.subject_name}` : `Subject: ${user.subject_name}`}
               </span>
             )}
           </div>
@@ -542,7 +543,9 @@ export const HierarchyDashboard: React.FC = () => {
             <FileText size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>إجمالي الاختبارات المتاحة</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {isAr ? 'إجمالي الاختبارات المتاحة' : 'Total Available Exams'}
+            </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--primary-900)' }}>{stats.examsCount}</div>
           </div>
         </div>
@@ -561,7 +564,9 @@ export const HierarchyDashboard: React.FC = () => {
             <Users size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>المعلمون في النطاق</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {isAr ? 'المعلمون في النطاق' : 'Teachers in Scope'}
+            </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#15803D' }}>{stats.teachersCount}</div>
           </div>
         </div>
@@ -582,7 +587,9 @@ export const HierarchyDashboard: React.FC = () => {
             </div>
             <div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                {user?.role === 'CENTRAL_ADMIN' || user?.role === 'ADMIN' ? 'أمناء المحافظات والموجهون' : 'الموجهون بالمحافظة'}
+                {user?.role === 'CENTRAL_ADMIN' || user?.role === 'ADMIN'
+                  ? (isAr ? 'أمناء المحافظات والموجهون' : 'Gov Admins & Supervisors')
+                  : (isAr ? 'الموجهون بالمحافظة' : 'Governorate Supervisors')}
               </div>
               <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#B45309' }}>
                 {stats.govAdminsCount + stats.supervisorsCount}
@@ -605,8 +612,12 @@ export const HierarchyDashboard: React.FC = () => {
             <Sparkles size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>حالة الرقابة والربط</div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#6D28D9' }}>متصل 100% بالخادم</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {isAr ? 'حالة الرقابة والربط' : 'Supervisory Connection'}
+            </div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#6D28D9' }}>
+              {isAr ? 'متصل 100% بالخادم' : '100% Cloud Connected'}
+            </div>
           </div>
         </div>
       </div>
@@ -637,17 +648,17 @@ export const HierarchyDashboard: React.FC = () => {
               justifyContent: 'center',
               color: '#FFFFFF',
               fontSize: '1.6rem',
-              boxShadow: '0 4px 10px rgba(37, 99, 235, 0.3)'
+              boxShadow: '0 4px 10px rgba(37, 99, 255, 0.3)'
             }}>
               🏛️
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                 <span style={{ background: '#2563EB', color: '#fff', fontSize: '0.72rem', fontWeight: 800, padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
-                  المستوى 1 في التراتبية
+                  {isAr ? 'المستوى 1 في التراتبية' : 'Hierarchy Level 1'}
                 </span>
                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#1E3A8A' }}>
-                  إدارة وتعيين الأمين المركزي
+                  {isAr ? 'إدارة وتعيين الأمين المركزي' : 'Manage & Assign Central Secretary'}
                 </h3>
               </div>
             </div>
@@ -687,7 +698,7 @@ export const HierarchyDashboard: React.FC = () => {
               }}
             >
               <Plus size={18} />
-              <span>➕ إنشاء أمين مركزي جديد</span>
+              <span>{isAr ? '➕ إنشاء أمين مركزي جديد' : '➕ Create Central Secretary'}</span>
             </button>
 
             <button
@@ -704,7 +715,7 @@ export const HierarchyDashboard: React.FC = () => {
                 boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
               }}
             >
-              عرض قائمة الأمناء المركزيين ({subordinates.length})
+              {isAr ? `عرض قائمة الأمناء المركزيين (${subordinates.length})` : `View Central Secretaries (${subordinates.length})`}
             </button>
           </div>
         </div>
@@ -734,7 +745,7 @@ export const HierarchyDashboard: React.FC = () => {
           }}
         >
           <FileText size={18} />
-          <span>مستكشف الاختبارات التفاعلي (قابل للنقر بالكامل)</span>
+          <span>{isAr ? 'مستكشف الاختبارات التفاعلي' : 'Interactive Exams Explorer'}</span>
           <span style={{
             background: activeTab === 'exams' ? '#EEF2FF' : '#F3F4F6',
             color: activeTab === 'exams' ? '#4F46E5' : 'var(--text-muted)',
@@ -795,7 +806,7 @@ export const HierarchyDashboard: React.FC = () => {
             {/* 1. Governorate Dropdown */}
             <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                🌍 المحافظة:
+                {isAr ? '🌍 المحافظة:' : '🌍 Governorate:'}
               </label>
               {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN') ? (
                 <select
@@ -813,9 +824,11 @@ export const HierarchyDashboard: React.FC = () => {
                     outline: 'none'
                   }}
                 >
-                  <option value="ALL">🇪🇬 جميع محافظات مصر (27 محافظة)</option>
+                  <option value="ALL">{isAr ? '🇪🇬 جميع محافظات مصر (27 محافظة)' : '🇪🇬 All Egypt Governorates (27)'}</option>
                   {governorates.map(g => (
-                    <option key={g.id} value={g.id}>{g.name_ar}</option>
+                    <option key={g.id} value={g.id}>
+                      {isAr ? g.name_ar : (g.name_en || g.name_ar)}
+                    </option>
                   ))}
                 </select>
               ) : (
@@ -831,7 +844,11 @@ export const HierarchyDashboard: React.FC = () => {
                   gap: '0.4rem'
                 }}>
                   <MapPin size={16} />
-                  <span>محافظة {user?.governorate_name || 'المحددة'} (مقيد بنطاقك)</span>
+                  <span>
+                    {isAr 
+                      ? `محافظة ${user?.governorate_name || 'المحددة'} (مقيد بنطاقك)` 
+                      : `${user?.governorate_name || 'Assigned'} Governorate (Scoped)`}
+                  </span>
                 </div>
               )}
             </div>
@@ -839,7 +856,7 @@ export const HierarchyDashboard: React.FC = () => {
             {/* 2. Subject Dropdown */}
             <div style={{ flex: '1 1 220px', minWidth: '200px' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                📚 المادة الدراسية:
+                {isAr ? '📚 المادة الدراسية:' : '📚 Subject:'}
               </label>
               {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN' || user?.role === 'GOVERNORATE_ADMIN') ? (
                 <select
@@ -857,9 +874,11 @@ export const HierarchyDashboard: React.FC = () => {
                     outline: 'none'
                   }}
                 >
-                  <option value="ALL">📖 جميع المواد الدراسية</option>
+                  <option value="ALL">{isAr ? '📖 جميع المواد الدراسية' : '📖 All Academic Subjects'}</option>
                   {subjects.map(s => (
-                    <option key={s.id} value={s.id}>{s.name_ar}</option>
+                    <option key={s.id} value={s.id}>
+                      {isAr ? s.name_ar : (s.name_en || s.name_ar)}
+                    </option>
                   ))}
                 </select>
               ) : (
@@ -875,7 +894,11 @@ export const HierarchyDashboard: React.FC = () => {
                   gap: '0.4rem'
                 }}>
                   <BookOpen size={16} />
-                  <span>مادة {user?.subject_name || 'المحددة'} (مقيد بتخصصك)</span>
+                  <span>
+                    {isAr 
+                      ? `مادة ${user?.subject_name || 'المحددة'} (مقيد بتخصصك)` 
+                      : `${user?.subject_name || 'Assigned'} Subject (Scoped)`}
+                  </span>
                 </div>
               )}
             </div>
@@ -883,24 +906,30 @@ export const HierarchyDashboard: React.FC = () => {
             {/* 3. Search Bar */}
             <div style={{ flex: '2 1 280px', minWidth: '240px' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                🔍 بحث سريع:
+                {isAr ? '🔍 بحث سريع:' : '🔍 Quick Search:'}
               </label>
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
-                  placeholder="ابحث بعنوان الاختبار أو اسم المعلم..."
+                  placeholder={isAr ? 'ابحث بعنوان الاختبار أو اسم المعلم...' : 'Search by exam title or teacher name...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '0.6rem 2.2rem 0.6rem 0.85rem',
+                    padding: isAr ? '0.6rem 2.2rem 0.6rem 0.85rem' : '0.6rem 0.85rem 0.6rem 2.2rem',
                     borderRadius: '0.5rem',
                     border: '1.5px solid var(--border-light)',
                     fontSize: '0.9rem',
                     outline: 'none'
                   }}
                 />
-                <Search size={16} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <Search size={16} style={{ 
+                  position: 'absolute', 
+                  [isAr ? 'right' : 'left']: '0.75rem', 
+                  top: '50%', 
+                  transform: 'translateY(-50%)', 
+                  color: 'var(--text-muted)' 
+                }} />
               </div>
             </div>
           </div>
@@ -908,7 +937,7 @@ export const HierarchyDashboard: React.FC = () => {
           {/* Exam Cards Grid - Everything Clickable */}
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-              جاري تحميل الاختبارات المرتبطة...
+              {isAr ? 'جاري تحميل الاختبارات المرتبطة...' : 'Loading associated exams...'}
             </div>
           ) : errorMsg ? (
             <div style={{ padding: '1.5rem', background: '#FEE2E2', color: '#991B1B', borderRadius: '0.75rem' }}>
@@ -924,10 +953,10 @@ export const HierarchyDashboard: React.FC = () => {
             }}>
               <FileText size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
               <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
-                لا توجد اختبارات تطابق الفلتر الحالي
+                {isAr ? 'لا توجد اختبارات تطابق الفلتر الحالي' : 'No exams matching current filter'}
               </h3>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                حاول اختيار محافظة أو مادة أخرى أو تفقد الحسابات التابعة.
+                {isAr ? 'حاول اختيار محافظة أو مادة أخرى أو تفقد الحسابات التابعة.' : 'Try selecting another governorate or subject, or check subordinate accounts.'}
               </p>
             </div>
           ) : (
@@ -981,7 +1010,9 @@ export const HierarchyDashboard: React.FC = () => {
                       fontSize: '0.75rem',
                       fontWeight: 700
                     }}>
-                      {exam.is_published ? 'منشور للطلاب' : 'مسودة قيد المراجعة'}
+                      {exam.is_published 
+                        ? (isAr ? 'منشور للطلاب' : 'Published') 
+                        : (isAr ? 'مسودة قيد المراجعة' : 'Draft')}
                     </span>
                   </div>
 
@@ -992,13 +1023,13 @@ export const HierarchyDashboard: React.FC = () => {
                   <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <MapPin size={14} color="#6366F1" />
-                      <span>{exam.governorate_name || 'محافظة القاهرة'}</span>
+                      <span>{exam.governorate_name || (isAr ? 'محافظة القاهرة' : 'Cairo')}</span>
                       <span style={{ color: '#CBD5E1' }}>•</span>
                       <span>{exam.grade_name_ar}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <Users size={14} color="#10B981" />
-                      <span>المعلم: {exam.teacher_name}</span>
+                      <span>{isAr ? `المعلم: ${exam.teacher_name}` : `Teacher: ${exam.teacher_name}`}</span>
                     </div>
                   </div>
 
@@ -1014,11 +1045,11 @@ export const HierarchyDashboard: React.FC = () => {
                   }}>
                     <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <Clock size={14} />
-                      {exam.duration_minutes} دقيقة
+                      {exam.duration_minutes} {isAr ? 'دقيقة' : 'min'}
                     </span>
                     <span style={{ color: '#4F46E5', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <HelpCircle size={14} />
-                      {exam.questions_count} أسئلة
+                      {exam.questions_count} {isAr ? 'أسئلة' : 'Questions'}
                     </span>
                     <span style={{
                       background: '#F1F5F9',
@@ -1026,7 +1057,7 @@ export const HierarchyDashboard: React.FC = () => {
                       borderRadius: '0.35rem',
                       color: '#334155'
                     }}>
-                      {exam.submissions_count} إجابة
+                      {exam.submissions_count} {isAr ? 'إجابة' : 'Submissions'}
                     </span>
                   </div>
 
@@ -1045,7 +1076,7 @@ export const HierarchyDashboard: React.FC = () => {
                     gap: '0.35rem'
                   }}>
                     <Eye size={14} />
-                    <span>انقر لمعاينة أسئلة الاختبار ونموذج الإجابة 🔍</span>
+                    <span>{isAr ? 'انقر لمعاينة أسئلة الاختبار ونموذج الإجابة 🔍' : 'Click to inspect exam questions & answers 🔍'}</span>
                   </div>
                 </div>
               ))}
@@ -1108,7 +1139,7 @@ export const HierarchyDashboard: React.FC = () => {
 
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-              جاري تحميل المرؤوسين...
+              {isAr ? 'جاري تحميل المرؤوسين...' : 'Loading subordinates...'}
             </div>
           ) : subordinates.length === 0 ? (
             <div style={{
@@ -1120,10 +1151,10 @@ export const HierarchyDashboard: React.FC = () => {
             }}>
               <Users size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
               <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
-                لا يوجد مستخدمون مسجلون في هذه الرتبة حالياً
+                {isAr ? 'لا يوجد مستخدمون مسجلون في هذه الرتبة حالياً' : 'No staff currently registered at this rank'}
               </h3>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
-                اضغط على زر الإضافة بالأعلى لإنشاء أول حساب تابع لك.
+                {isAr ? 'اضغط على زر الإضافة بالأعلى لإنشاء أول حساب تابع لك.' : 'Click Add above to create your first subordinate account.'}
               </p>
             </div>
           ) : (
@@ -1134,15 +1165,27 @@ export const HierarchyDashboard: React.FC = () => {
               overflowX: 'auto',
               boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
             }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
                 <thead>
                   <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid var(--border-light)' }}>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>الاسم الكامل والمستخدم</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>الدور / الرتبة</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>المحافظة / المادة</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>إحصائيات النشاط</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>حالة الحساب</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>إجراءات الصلاحيات</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                      {isAr ? 'الاسم الكامل والمستخدم' : 'Full Name & Email'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                      {isAr ? 'الدور / الرتبة' : 'Role / Rank'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                      {isAr ? 'المحافظة / المادة' : 'Governorate / Subject'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                      {isAr ? 'إحصائيات النشاط' : 'Activity Stats'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                      {isAr ? 'حالة الحساب' : 'Account Status'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                      {isAr ? 'إجراءات الصلاحيات' : 'Actions & Permissions'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1162,10 +1205,10 @@ export const HierarchyDashboard: React.FC = () => {
                           fontSize: '0.75rem',
                           fontWeight: 800
                         }}>
-                          {subUser.role === 'CENTRAL_ADMIN' && 'الأمين المركزي'}
-                          {subUser.role === 'GOVERNORATE_ADMIN' && 'أمين المحافظة'}
-                          {subUser.role === 'SUPERVISOR' && 'موجه مادة'}
-                          {subUser.role === 'TEACHER' && 'معلم'}
+                          {subUser.role === 'CENTRAL_ADMIN' && (isAr ? 'الأمين المركزي' : 'Central Secretary')}
+                          {subUser.role === 'GOVERNORATE_ADMIN' && (isAr ? 'أمين المحافظة' : 'Gov Admin')}
+                          {subUser.role === 'SUPERVISOR' && (isAr ? 'موجه مادة' : 'Subject Supervisor')}
+                          {subUser.role === 'TEACHER' && (isAr ? 'معلم' : 'Teacher')}
                         </span>
                       </td>
 
@@ -1190,10 +1233,12 @@ export const HierarchyDashboard: React.FC = () => {
                       </td>
 
                       <td style={{ padding: '1rem', fontSize: '0.85rem' }}>
-                        <div style={{ fontWeight: 700 }}>{subUser.examsCount} اختبار تم إنشاؤه</div>
+                        <div style={{ fontWeight: 700 }}>
+                          {subUser.examsCount} {isAr ? 'اختبار تم إنشاؤه' : 'exams created'}
+                        </div>
                         {subUser.subordinatesCount > 0 && (
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {subUser.subordinatesCount} كادر تحت إشرافه
+                            {subUser.subordinatesCount} {isAr ? 'كادر تحت إشرافه' : 'subordinates'}
                           </div>
                         )}
                       </td>
@@ -1207,7 +1252,9 @@ export const HierarchyDashboard: React.FC = () => {
                           fontSize: '0.75rem',
                           fontWeight: 800
                         }}>
-                          {subUser.isActive ? '● نشط ومفعل' : '● مجمّد معطل'}
+                          {subUser.isActive 
+                            ? (isAr ? '● نشط ومفعل' : '● Active') 
+                            : (isAr ? '● مجمّد معطل' : '● Suspended')}
                         </span>
                       </td>
 
@@ -1215,7 +1262,7 @@ export const HierarchyDashboard: React.FC = () => {
                         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                           <button
                             onClick={() => handleImpersonateUser(subUser)}
-                            title="تسجيل دخول فوري لحسابه ومعاينة لوحة تحكمه وصلاحياته"
+                            title={isAr ? 'تسجيل دخول فوري لحسابه ومعاينة لوحة تحكمه وصلاحياته' : 'Login directly into their account'}
                             style={{
                               background: 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)',
                               color: '#FFFFFF',
@@ -1232,7 +1279,7 @@ export const HierarchyDashboard: React.FC = () => {
                             }}
                           >
                             <Sparkles size={13} />
-                            <span>دخول حسابه 🚀</span>
+                            <span>{isAr ? 'دخول حسابه 🚀' : 'Enter Account 🚀'}</span>
                           </button>
 
                           <button
@@ -1251,7 +1298,7 @@ export const HierarchyDashboard: React.FC = () => {
                             }}
                           >
                             <ShieldCheck size={14} color="#4F46E5" />
-                            <span>الصلاحيات</span>
+                            <span>{isAr ? 'الصلاحيات' : 'Permissions'}</span>
                           </button>
 
                           <button
@@ -1267,7 +1314,9 @@ export const HierarchyDashboard: React.FC = () => {
                               cursor: 'pointer'
                             }}
                           >
-                            {subUser.isActive ? 'تجميد' : 'تفعيل'}
+                            {subUser.isActive 
+                              ? (isAr ? 'تجميد' : 'Freeze') 
+                              : (isAr ? 'تفعيل' : 'Activate')}
                           </button>
                         </div>
                       </td>
@@ -1306,7 +1355,7 @@ export const HierarchyDashboard: React.FC = () => {
             flexDirection: 'column',
             overflow: 'hidden',
             boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            direction: 'rtl'
+            direction: isAr ? 'rtl' : 'ltr'
           }}>
             {/* Modal Header */}
             <div style={{
@@ -1319,7 +1368,7 @@ export const HierarchyDashboard: React.FC = () => {
             }}>
               <div>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-dark)', margin: 0 }}>
-                  معاينة تفاصيل الاختبار ونموذج الأسئلة
+                  {isAr ? 'معاينة تفاصيل الاختبار ونموذج الأسئلة' : 'Inspect Exam Details & Questions'}
                 </h3>
               </div>
               <button
@@ -1334,7 +1383,7 @@ export const HierarchyDashboard: React.FC = () => {
             <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
               {inspectExamModal.loading ? (
                 <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                  جاري جلب تفاصيل الاختبار...
+                  {isAr ? 'جاري جلب تفاصيل الاختبار...' : 'Fetching exam details...'}
                 </div>
               ) : inspectExamModal.exam ? (
                 <div>
@@ -1349,25 +1398,25 @@ export const HierarchyDashboard: React.FC = () => {
                     gap: '0.75rem',
                     fontSize: '0.85rem'
                   }}>
-                    <div><strong>عنوان الاختبار:</strong> {inspectExamModal.exam.title_ar}</div>
-                    <div><strong>المادة:</strong> {inspectExamModal.exam.subject_name_ar}</div>
-                    <div><strong>المحافظة:</strong> {inspectExamModal.exam.governorate_name || 'غير محددة'}</div>
-                    <div><strong>المعلم:</strong> {inspectExamModal.exam.teacher_name}</div>
-                    <div><strong>مدة الاختبار:</strong> {inspectExamModal.exam.duration_minutes} دقيقة</div>
-                    <div><strong>حالة النشر:</strong> {inspectExamModal.exam.is_published ? 'منشور للطلاب' : 'مسودة'}</div>
-                    <div><strong>عدد الطلاب الممتحنين:</strong> {inspectExamModal.exam.submissions_count} طالب</div>
-                    <div><strong>متوسط الدرجات:</strong> {inspectExamModal.exam.avg_score !== null ? `${inspectExamModal.exam.avg_score}%` : 'لا يوجد'}</div>
+                    <div><strong>{isAr ? 'عنوان الاختبار:' : 'Exam Title:'}</strong> {inspectExamModal.exam.title_ar}</div>
+                    <div><strong>{isAr ? 'المادة:' : 'Subject:'}</strong> {inspectExamModal.exam.subject_name_ar}</div>
+                    <div><strong>{isAr ? 'المحافظة:' : 'Governorate:'}</strong> {inspectExamModal.exam.governorate_name || (isAr ? 'غير محددة' : 'Not specified')}</div>
+                    <div><strong>{isAr ? 'المعلم:' : 'Teacher:'}</strong> {inspectExamModal.exam.teacher_name}</div>
+                    <div><strong>{isAr ? 'مدة الاختبار:' : 'Duration:'}</strong> {inspectExamModal.exam.duration_minutes} {isAr ? 'دقيقة' : 'min'}</div>
+                    <div><strong>{isAr ? 'حالة النشر:' : 'Status:'}</strong> {inspectExamModal.exam.is_published ? (isAr ? 'منشور للطلاب' : 'Published') : (isAr ? 'مسودة' : 'Draft')}</div>
+                    <div><strong>{isAr ? 'عدد الطلاب الممتحنين:' : 'Students Examined:'}</strong> {inspectExamModal.exam.submissions_count}</div>
+                    <div><strong>{isAr ? 'متوسط الدرجات:' : 'Average Score:'}</strong> {inspectExamModal.exam.avg_score !== null ? `${inspectExamModal.exam.avg_score}%` : (isAr ? 'لا يوجد' : 'N/A')}</div>
                   </div>
 
                   {/* Questions Section */}
                   <h4 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <HelpCircle size={18} color="#4F46E5" />
-                    <span>أسئلة الاختبار ونموذج الحل ({inspectExamModal.questions.length} أسئلة)</span>
+                    <span>{isAr ? `أسئلة الاختبار ونموذج الحل (${inspectExamModal.questions.length} أسئلة)` : `Exam Questions & Answer Key (${inspectExamModal.questions.length} questions)`}</span>
                   </h4>
 
                   {inspectExamModal.questions.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                      لا توجد أسئلة مسجلة في هذا الاختبار.
+                      {isAr ? 'لا توجد أسئلة مسجلة في هذا الاختبار.' : 'No questions recorded in this exam.'}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1384,7 +1433,7 @@ export const HierarchyDashboard: React.FC = () => {
                               <span>{q.question_text}</span>
                             </div>
                             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', background: '#F1F5F9', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
-                              {q.points} درجات
+                              {q.points} {isAr ? 'درجات' : 'pts'}
                             </span>
                           </div>
 
@@ -1414,7 +1463,7 @@ export const HierarchyDashboard: React.FC = () => {
 
                           {q.explanation && (
                             <div style={{ fontSize: '0.78rem', color: '#0369A1', background: '#F0F9FF', padding: '0.45rem 0.75rem', borderRadius: '0.4rem', marginTop: '0.5rem' }}>
-                              💡 <strong>التفسير والشرح:</strong> {q.explanation}
+                              💡 <strong>{isAr ? 'التفسير والشرح:' : 'Explanation:'}</strong> {q.explanation}
                             </div>
                           )}
                         </div>
@@ -1426,12 +1475,12 @@ export const HierarchyDashboard: React.FC = () => {
             </div>
 
             {/* Modal Footer */}
-            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-light)', background: '#F8FAFC', textAlign: 'left' }}>
+            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-light)', background: '#F8FAFC', textAlign: isAr ? 'left' : 'right' }}>
               <button
                 className="btn btn-outline"
                 onClick={() => setInspectExamModal(prev => ({ ...prev, isOpen: false }))}
               >
-                إغلاق المعاينة
+                {isAr ? 'إغلاق المعاينة' : 'Close Inspection'}
               </button>
             </div>
           </div>
@@ -1460,7 +1509,7 @@ export const HierarchyDashboard: React.FC = () => {
             width: '100%',
             maxWidth: '560px',
             boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            direction: 'rtl',
+            direction: isAr ? 'rtl' : 'ltr',
             overflow: 'hidden'
           }}>
             <div style={{
@@ -1494,12 +1543,12 @@ export const HierarchyDashboard: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                    الاسم الكامل: *
+                    {isAr ? 'الاسم الكامل: *' : 'Full Name: *'}
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="مثال: أستاذ محمود السيد"
+                    placeholder={isAr ? 'مثال: أستاذ محمود السيد' : 'e.g. Mahmoud Elsayed'}
                     value={createFormData.fullName}
                     onChange={(e) => setCreateFormData(prev => ({ ...prev, fullName: e.target.value }))}
                     style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
@@ -1509,7 +1558,7 @@ export const HierarchyDashboard: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      البريد الإلكتروني: *
+                      {isAr ? 'البريد الإلكتروني: *' : 'Email Address: *'}
                     </label>
                     <input
                       type="email"
@@ -1523,7 +1572,7 @@ export const HierarchyDashboard: React.FC = () => {
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      كلمة المرور: *
+                      {isAr ? 'كلمة المرور: *' : 'Password: *'}
                     </label>
                     <input
                       type="password"
@@ -1540,7 +1589,7 @@ export const HierarchyDashboard: React.FC = () => {
                 {user?.role === 'CENTRAL_ADMIN' && (
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      المحافظة المسندة لأمين المحافظة: *
+                      {isAr ? 'المحافظة المسندة لأمين المحافظة: *' : 'Assigned Governorate: *'}
                     </label>
                     <select
                       required
@@ -1548,9 +1597,11 @@ export const HierarchyDashboard: React.FC = () => {
                       onChange={(e) => setCreateFormData(prev => ({ ...prev, governorateId: e.target.value }))}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
                     >
-                      <option value="">اختر المحافظة...</option>
+                      <option value="">{isAr ? 'اختر المحافظة...' : 'Select Governorate...'}</option>
                       {governorates.map(g => (
-                        <option key={g.id} value={g.id}>{g.name_ar}</option>
+                        <option key={g.id} value={g.id}>
+                          {isAr ? g.name_ar : (g.name_en || g.name_ar)}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1560,7 +1611,7 @@ export const HierarchyDashboard: React.FC = () => {
                 {user?.role === 'GOVERNORATE_ADMIN' && (
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      المادة المسندة للموجه في محافظة {user.governorate_name || ''}: *
+                      {isAr ? `المادة المسندة للموجه في محافظة ${user.governorate_name || ''}: *` : `Assigned Subject for Supervisor in ${user.governorate_name || ''}: *`}
                     </label>
                     <select
                       required
@@ -1568,9 +1619,11 @@ export const HierarchyDashboard: React.FC = () => {
                       onChange={(e) => setCreateFormData(prev => ({ ...prev, subjectId: e.target.value }))}
                       style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
                     >
-                      <option value="">اختر المادة الدراسية...</option>
+                      <option value="">{isAr ? 'اختر المادة الدراسية...' : 'Select Academic Subject...'}</option>
                       {subjects.map(s => (
-                        <option key={s.id} value={s.id}>{s.name_ar}</option>
+                        <option key={s.id} value={s.id}>
+                          {isAr ? s.name_ar : (s.name_en || s.name_ar)}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1580,15 +1633,17 @@ export const HierarchyDashboard: React.FC = () => {
                 {user?.role === 'SUPERVISOR' && (
                   <>
                     <div style={{ padding: '0.65rem', background: '#F0FDF4', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#15803D', fontWeight: 700 }}>
-                      ✓ سيتم قفل هذا المعلم تلقائياً على مادة {user.subject_name} في محافظة {user.governorate_name}.
+                      {isAr 
+                        ? `✓ سيتم قفل هذا المعلم تلقائياً على مادة ${user.subject_name} في محافظة ${user.governorate_name}.` 
+                        : `✓ This teacher will be locked to ${user.subject_name} in ${user.governorate_name}.`}
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                        اسم المدرسة:
+                        {isAr ? 'اسم المدرسة:' : 'School Name:'}
                       </label>
                       <input
                         type="text"
-                        placeholder="مثال: مدرسة السعيدية الثانوية"
+                        placeholder={isAr ? 'مثال: مدرسة السعيدية الثانوية' : 'e.g. Al-Saadia School'}
                         value={createFormData.schoolName}
                         onChange={(e) => setCreateFormData(prev => ({ ...prev, schoolName: e.target.value }))}
                         style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
@@ -1604,7 +1659,7 @@ export const HierarchyDashboard: React.FC = () => {
                   className="btn btn-outline"
                   onClick={() => setCreateSubModalOpen(false)}
                 >
-                  إلغاء
+                  {isAr ? 'إلغاء' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
@@ -1619,7 +1674,9 @@ export const HierarchyDashboard: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  {createSubLoading ? 'جاري الإنشاء...' : 'حفظ وإنشاء الحساب'}
+                  {createSubLoading 
+                    ? (isAr ? 'جاري الإنشاء...' : 'Creating...') 
+                    : (isAr ? 'حفظ وإنشاء الحساب' : 'Save & Create Account')}
                 </button>
               </div>
             </form>
@@ -1649,7 +1706,7 @@ export const HierarchyDashboard: React.FC = () => {
             width: '100%',
             maxWidth: '520px',
             boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            direction: 'rtl',
+            direction: isAr ? 'rtl' : 'ltr',
             overflow: 'hidden'
           }}>
             <div style={{
@@ -1662,10 +1719,10 @@ export const HierarchyDashboard: React.FC = () => {
             }}>
               <div>
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--text-dark)', margin: 0 }}>
-                  التحكم في صلاحيات: {permissionsModal.user.fullName}
+                  {isAr ? `التحكم في صلاحيات: ${permissionsModal.user.fullName}` : `Manage Permissions: ${permissionsModal.user.fullName}`}
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  يمكنك فتح وإغلاق الصلاحيات بضغطة زر واحدة
+                  {isAr ? 'يمكنك فتح وإغلاق الصلاحيات بضغطة زر واحدة' : 'Enable or disable permissions instantly'}
                 </span>
               </div>
               <button
@@ -1689,10 +1746,10 @@ export const HierarchyDashboard: React.FC = () => {
               }}>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: '0.9rem', color: permissionsModal.user.isActive ? '#065F46' : '#991B1B' }}>
-                    حالة الحساب العامة (تفعيل / تجميد)
+                    {isAr ? 'حالة الحساب العامة (تفعيل / تجميد)' : 'Account Status (Active / Suspended)'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    عند التجميد يُمنع المستخدم من الدخول للمنصة نهائياً
+                    {isAr ? 'عند التجميد يُمنع المستخدم من الدخول للمنصة نهائياً' : 'Suspended users cannot access the platform'}
                   </div>
                 </div>
                 <button
@@ -1708,15 +1765,21 @@ export const HierarchyDashboard: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  {permissionsModal.user.isActive ? 'مفعّل ✓' : 'مجمّد ✕'}
+                  {permissionsModal.user.isActive 
+                    ? (isAr ? 'مفعّل ✓' : 'Active ✓') 
+                    : (isAr ? 'مجمّد ✕' : 'Suspended ✕')}
                 </button>
               </div>
 
               {/* View Exams Permission */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.85rem' }}>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>صلاحية رؤية وفحص الاختبارات</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>السماح للمستخدم بالاطلاع على جميع الاختبارات في نطاقه</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                    {isAr ? 'صلاحية رؤية وفحص الاختبارات' : 'Inspect & View Exams'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'السماح للمستخدم بالاطلاع على جميع الاختبارات في نطاقه' : 'Allow inspecting all exams within scope'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -1729,8 +1792,12 @@ export const HierarchyDashboard: React.FC = () => {
               {/* Manage Subordinates Permission */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.85rem' }}>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>صلاحية إنشاء وإدارة الكوادر الأدنى</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>السماح له بإنشاء حسابات لمن هم تحته في الهيكل</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                    {isAr ? 'صلاحية إنشاء وإدارة الكوادر الأدنى' : 'Create & Manage Subordinates'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'السماح له بإنشاء حسابات لمن هم تحته في الهيكل' : 'Allow creating accounts for staff under their rank'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -1743,8 +1810,12 @@ export const HierarchyDashboard: React.FC = () => {
               {/* Edit Permissions of Subordinates */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>صلاحية تعديل صلاحيات المرؤوسين</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>السماح له بفتح وإغلاق صلاحيات الكوادر التابعة له</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                    {isAr ? 'صلاحية تعديل صلاحيات المرؤوسين' : 'Edit Subordinate Permissions'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'السماح له بفتح وإغلاق صلاحيات الكوادر التابعة له' : 'Allow opening/closing permissions of their direct subordinates'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -1755,12 +1826,12 @@ export const HierarchyDashboard: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-light)', background: '#F8FAFC', textAlign: 'left' }}>
+            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-light)', background: '#F8FAFC', textAlign: isAr ? 'left' : 'right' }}>
               <button
                 className="btn btn-primary"
                 onClick={() => setPermissionsModal(prev => ({ ...prev, isOpen: false }))}
               >
-                تم والانتهاء
+                {isAr ? 'تم والانتهاء' : 'Done'}
               </button>
             </div>
           </div>

@@ -624,11 +624,11 @@ export const AdminDashboard: React.FC = () => {
           {/* Teachers Cards List */}
           {teachersLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-              جاري تحميل قائمة المعلمين...
+              {language === 'ar' ? 'جاري تحميل قائمة المعلمين...' : 'Loading teachers list...'}
             </div>
           ) : filteredTeachers.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-              لا يوجد معلمين مطابقين للبحث.
+              {language === 'ar' ? 'لا يوجد معلمين مطابقين للبحث.' : 'No teachers matching search.'}
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
@@ -684,17 +684,17 @@ export const AdminDashboard: React.FC = () => {
                     {/* Stats */}
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '0.85rem', padding: '0.65rem 0', borderTop: '1px solid var(--border-light)', borderBottom: '1px solid var(--border-light)', fontSize: '0.825rem' }}>
                       <div>
-                        <span style={{ color: 'var(--text-muted)' }}>الكتب: </span>
+                        <span style={{ color: 'var(--text-muted)' }}>{language === 'ar' ? 'الكتب: ' : 'Books: '}</span>
                         <strong>{teacher.booksCount}</strong>
                       </div>
                       <div>
-                        <span style={{ color: 'var(--text-muted)' }}>الامتحانات: </span>
+                        <span style={{ color: 'var(--text-muted)' }}>{language === 'ar' ? 'الامتحانات: ' : 'Exams: '}</span>
                         <strong>{teacher.examsCount}</strong>
                       </div>
                       <div>
-                        <span style={{ color: 'var(--text-muted)' }}>الحالة: </span>
+                        <span style={{ color: 'var(--text-muted)' }}>{language === 'ar' ? 'الحالة: ' : 'Status: '}</span>
                         <span style={{ color: teacher.isActive ? '#16A34A' : '#DC2626', fontWeight: 700 }}>
-                          {teacher.isActive ? 'نشط' : 'معطّل'}
+                          {teacher.isActive ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'معطّل' : 'Suspended')}
                         </span>
                       </div>
                     </div>
@@ -702,13 +702,13 @@ export const AdminDashboard: React.FC = () => {
                     {/* Permissions summary badges */}
                     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
                       <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: teacher.permissions.can_upload_books ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_upload_books ? '#15803D' : '#9CA3AF', fontWeight: 700 }}>
-                        {teacher.permissions.can_upload_books ? '✓ رفع كتب' : '✕ منع الكتب'}
+                        {teacher.permissions.can_upload_books ? (language === 'ar' ? '✓ رفع كتب' : '✓ Upload Books') : (language === 'ar' ? '✕ منع الكتب' : '✕ No Books')}
                       </span>
                       <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: teacher.permissions.can_create_exams ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_create_exams ? '#15803D' : '#9CA3AF', fontWeight: 700 }}>
-                        {teacher.permissions.can_create_exams ? '✓ امتحانات' : '✕ منع الامتحانات'}
+                        {teacher.permissions.can_create_exams ? (language === 'ar' ? '✓ امتحانات' : '✓ Exams') : (language === 'ar' ? '✕ منع الامتحانات' : '✕ No Exams')}
                       </span>
                       <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: teacher.permissions.can_view_analytics ? '#DCFCE7' : '#F3F4F6', color: teacher.permissions.can_view_analytics ? '#15803D' : '#9CA3AF', fontWeight: 700 }}>
-                        {teacher.permissions.can_view_analytics ? '✓ تحليلات' : '✕ حجب التحليلات'}
+                        {teacher.permissions.can_view_analytics ? (language === 'ar' ? '✓ تحليلات' : '✓ Analytics') : (language === 'ar' ? '✕ حجب التحليلات' : '✕ No Analytics')}
                       </span>
                     </div>
                   </div>
@@ -719,10 +719,10 @@ export const AdminDashboard: React.FC = () => {
                       className="btn btn-secondary btn-sm"
                       onClick={() => handleImpersonateTeacher(teacher)}
                       style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
-                      title="الدخول مباشرة إلى حساب هذا المعلم وإدارة كتبه وامتحاناته"
+                      title={language === 'ar' ? 'الدخول مباشرة إلى حساب هذا المعلم وإدارة كتبه وامتحاناته' : 'Login directly into this teacher account'}
                     >
                       <ExternalLink size={14} />
-                      <span>{language === 'ar' ? 'دخول حسابه' : 'Go Inside'}</span>
+                      <span>{language === 'ar' ? 'دخول حسابه' : 'Enter Account'}</span>
                     </button>
 
                     <button
@@ -761,23 +761,35 @@ export const AdminDashboard: React.FC = () => {
 
           {studentsLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-              جاري تحميل بيانات الطلاب...
+              {language === 'ar' ? 'جاري تحميل بيانات الطلاب...' : 'Loading students data...'}
             </div>
           ) : filteredStudents.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-              لا يوجد طلاب مطابقين للبحث.
+              {language === 'ar' ? 'لا يوجد طلاب مطابقين للبحث.' : 'No students matching search.'}
             </div>
           ) : (
             <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-light)', boxShadow: 'var(--shadow-sm)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', background: '#FFFFFF' }}>
                 <thead>
                   <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border-light)', textAlign: language === 'ar' ? 'right' : 'left' }}>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>اسم الطالب والبريد</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>المعرف القياسي (id)</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>المرحلة والصف</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>نوع المدرسة</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>المحاولات والدرجة</th>
-                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)', textAlign: 'center' }}>الإجراءات</th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                      {language === 'ar' ? 'اسم الطالب والبريد' : 'Student & Email'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                      {language === 'ar' ? 'المعرف القياسي (id)' : 'Standard ID (id)'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                      {language === 'ar' ? 'المرحلة والصف' : 'Stage & Grade'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                      {language === 'ar' ? 'نوع المدرسة' : 'School Type'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                      {language === 'ar' ? 'المحاولات والدرجة' : 'Attempts & Score'}
+                    </th>
+                    <th style={{ padding: '0.85rem 1rem', fontSize: '0.825rem', fontWeight: 800, color: 'var(--text-title)', textAlign: 'center' }}>
+                      {language === 'ar' ? 'الإجراءات' : 'Actions'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -798,14 +810,16 @@ export const AdminDashboard: React.FC = () => {
                       </td>
                       <td style={{ padding: '0.85rem 1rem', fontSize: '0.825rem' }}>
                         <span className={`badge ${student.schoolType === 'لغات' ? 'badge-primary' : ''}`}>
-                          {student.schoolType === 'لغات' ? '🌐 لغات' : '🏫 عربي'}
+                          {student.schoolType === 'لغات' 
+                            ? (language === 'ar' ? '🌐 لغات' : '🌐 Language') 
+                            : (language === 'ar' ? '🏫 عربي' : '🏫 Arabic')}
                         </span>
                       </td>
                       <td style={{ padding: '0.85rem 1rem', fontSize: '0.85rem' }}>
-                        <div><strong>{student.attemptsCount}</strong> امتحانات</div>
+                        <div><strong>{student.attemptsCount}</strong> {language === 'ar' ? 'امتحانات' : 'exams'}</div>
                         {student.avgScore !== null && (
                           <div style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 700 }}>
-                            متوسط: {student.avgScore}%
+                            {language === 'ar' ? 'متوسط: ' : 'Avg: '}{student.avgScore}%
                           </div>
                         )}
                       </td>
@@ -816,15 +830,15 @@ export const AdminDashboard: React.FC = () => {
                             onClick={() => handleInspectStudent(student)}
                             style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
                           >
-                            📊 التشخيص
+                            {language === 'ar' ? '📊 التشخيص' : '📊 Diagnosis'}
                           </button>
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => handleImpersonateStudent(student.id)}
                             style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', fontWeight: 700 }}
-                            title="دخول حساب الطالب لمعاينة لوحته كطالب"
+                            title={language === 'ar' ? 'دخول حساب الطالب لمعاينة لوحته كطالب' : 'Login into student dashboard'}
                           >
-                            👁️ حسابه
+                            {language === 'ar' ? '👁️ حسابه' : '👁️ Account'}
                           </button>
                         </div>
                       </td>
@@ -910,10 +924,10 @@ export const AdminDashboard: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
               <div>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
-                  صلاحيات المعلم: {selectedTeacherForPerms.fullName}
+                  {language === 'ar' ? `صلاحيات المعلم: ${selectedTeacherForPerms.fullName}` : `Teacher Permissions: ${selectedTeacherForPerms.fullName}`}
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  المعرّف الهجين: {selectedTeacherForPerms.hybrid_id}
+                  {language === 'ar' ? 'المعرّف الهجين: ' : 'Hybrid ID: '}{selectedTeacherForPerms.hybrid_id}
                 </span>
               </div>
               <button
@@ -928,8 +942,12 @@ export const AdminDashboard: React.FC = () => {
               {/* Permission: Upload Books */}
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>رفع ومعالجة كتب المناهج (PDF)</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>السماح للمعلم برفع الكتب واستخراج المتجهات</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                    {language === 'ar' ? 'رفع ومعالجة كتب المناهج (PDF)' : 'Upload & Process Textbooks (PDF)'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {language === 'ar' ? 'السماح للمعلم برفع الكتب واستخراج المتجهات' : 'Allow teacher to upload textbooks and extract semantic vectors'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -942,8 +960,12 @@ export const AdminDashboard: React.FC = () => {
               {/* Permission: Create Exams */}
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>إنشاء وتصميم الاختبارات الدورية</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>السماح للمعلم بتصميم امتحانات بمؤقت للطلاب</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                    {language === 'ar' ? 'إنشاء وتصميم الاختبارات الدورية' : 'Build Periodic Exams & Quizzes'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {language === 'ar' ? 'السماح للمعلم بتصميم امتحانات بمؤقت للطلاب' : 'Allow teacher to build timed exams for students'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -956,8 +978,12 @@ export const AdminDashboard: React.FC = () => {
               {/* Permission: Delete Content */}
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>حذف وتعديل المحتوى</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>إمكانية حذف الكتب والأسئلة القديمة</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                    {language === 'ar' ? 'حذف وتعديل المحتوى' : 'Delete & Edit Content'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {language === 'ar' ? 'إمكانية حذف الكتب والأسئلة القديمة' : 'Ability to delete obsolete textbooks & questions'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -970,8 +996,12 @@ export const AdminDashboard: React.FC = () => {
               {/* Permission: View Analytics */}
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>الاطلاع على تحليلات ونتائج الطلاب</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>استعراض نسب إتقان الفصول ومحاولات الطلاب</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                    {language === 'ar' ? 'الاطلاع على تحليلات ونتائج الطلاب' : 'View Student Results & Analytics'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {language === 'ar' ? 'استعراض نسب إتقان الفصول ومحاولات الطلاب' : 'Inspect chapter mastery rates and attempts'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -985,9 +1015,13 @@ export const AdminDashboard: React.FC = () => {
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: editPermissions.is_active ? '#F0FDF4' : '#FEF2F2', border: editPermissions.is_active ? '1px solid #BBF7D0' : '1px solid #FECACA', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.9rem', color: editPermissions.is_active ? '#15803D' : '#DC2626' }}>
-                    {editPermissions.is_active ? 'الحساب نشط ويستطيع الدخول' : 'الحساب مجمّد وموقوف عن العمل'}
+                    {editPermissions.is_active 
+                      ? (language === 'ar' ? 'الحساب نشط ويستطيع الدخول' : 'Account is Active') 
+                      : (language === 'ar' ? 'الحساب مجمّد وموقوف عن العمل' : 'Account is Suspended')}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>تجميد حساب المعلم فورياً يمنع تسجيل دخوله</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {language === 'ar' ? 'تجميد حساب المعلم فورياً يمنع تسجيل دخوله' : 'Suspending a teacher account immediately revokes login access'}
+                  </div>
                 </div>
                 <input
                   type="checkbox"
@@ -1004,7 +1038,7 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => setSelectedTeacherForPerms(null)}
                 disabled={savingPerms}
               >
-                إلغاء
+                {language === 'ar' ? 'إلغاء' : 'Cancel'}
               </button>
               <button
                 className="btn btn-primary"
@@ -1012,7 +1046,9 @@ export const AdminDashboard: React.FC = () => {
                 disabled={savingPerms}
                 style={{ fontWeight: 800 }}
               >
-                {savingPerms ? 'جاري الحفظ...' : 'حفظ الصلاحيات'}
+                {savingPerms 
+                  ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') 
+                  : (language === 'ar' ? 'حفظ الصلاحيات' : 'Save Permissions')}
               </button>
             </div>
           </div>
@@ -1036,10 +1072,10 @@ export const AdminDashboard: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
               <div>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
-                  إضافة حساب معلم جديد (بالمعرّف الهجين)
+                  {language === 'ar' ? 'إضافة حساب معلم جديد (بالمعرّف الهجين)' : 'Add New Teacher (Hybrid ID)'}
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  سيتم توليد hybrid_id تلقائياً وتعيين الصلاحيات
+                  {language === 'ar' ? 'سيتم توليد hybrid_id تلقائياً وتعيين الصلاحيات' : 'hybrid_id will be auto-generated with default permissions'}
                 </span>
               </div>
               <button
@@ -1058,20 +1094,20 @@ export const AdminDashboard: React.FC = () => {
 
             <form onSubmit={handleCreateTeacher}>
               <div className="form-group">
-                <label className="form-label">الاسم ثلاثي للمعلم</label>
+                <label className="form-label">{language === 'ar' ? 'الاسم ثلاثي للمعلم' : 'Teacher Full Name'}</label>
                 <input
                   type="text"
                   required
                   className="form-input"
                   value={newTeacherData.fullName}
                   onChange={(e) => setNewTeacherData({ ...newTeacherData, fullName: e.target.value })}
-                  placeholder="أ. شريف محمود عبد الله"
+                  placeholder={language === 'ar' ? 'أ. شريف محمود عبد الله' : 'e.g. Sherif Mahmoud'}
                 />
               </div>
 
               <div className="responsive-form-grid-2">
                 <div className="form-group">
-                  <label className="form-label">البريد الإلكتروني</label>
+                  <label className="form-label">{language === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}</label>
                   <input
                     type="email"
                     required
@@ -1083,7 +1119,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">كلمة المرور</label>
+                  <label className="form-label">{language === 'ar' ? 'كلمة المرور' : 'Password'}</label>
                   <input
                     type="password"
                     required
@@ -1097,32 +1133,34 @@ export const AdminDashboard: React.FC = () => {
 
               <div className="responsive-form-grid-2">
                 <div className="form-group">
-                  <label className="form-label">التخصص التعليمي</label>
+                  <label className="form-label">{language === 'ar' ? 'التخصص التعليمي' : 'Specialization'}</label>
                   <input
                     type="text"
                     required
                     className="form-input"
                     value={newTeacherData.specialization}
                     onChange={(e) => setNewTeacherData({ ...newTeacherData, specialization: e.target.value })}
-                    placeholder="معلم أول علوم"
+                    placeholder={language === 'ar' ? 'معلم أول علوم' : 'Science Teacher'}
                   />
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">المدرسة التابع لها</label>
+                  <label className="form-label">{language === 'ar' ? 'المدرسة التابع لها' : 'School Name'}</label>
                   <input
                     type="text"
                     required
                     className="form-input"
                     value={newTeacherData.schoolName}
                     onChange={(e) => setNewTeacherData({ ...newTeacherData, schoolName: e.target.value })}
-                    placeholder="مدرسة النيل الإعدادية"
+                    placeholder={language === 'ar' ? 'مدرسة النيل الإعدادية' : 'Nile Prep School'}
                   />
                 </div>
               </div>
 
               <div style={{ marginTop: '0.5rem', marginBottom: '1.25rem' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.5rem' }}>الصلاحيات الأولية الممنوحة:</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                  {language === 'ar' ? 'الصلاحيات الأولية الممنوحة:' : 'Initial Permissions Granted:'}
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
                     <input
@@ -1130,7 +1168,7 @@ export const AdminDashboard: React.FC = () => {
                       checked={newTeacherData.can_upload_books}
                       onChange={(e) => setNewTeacherData({ ...newTeacherData, can_upload_books: e.target.checked })}
                     />
-                    <span>رفع ومعالجة الكتب</span>
+                    <span>{language === 'ar' ? 'رفع ومعالجة الكتب' : 'Upload Books'}</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
                     <input
@@ -1138,7 +1176,7 @@ export const AdminDashboard: React.FC = () => {
                       checked={newTeacherData.can_create_exams}
                       onChange={(e) => setNewTeacherData({ ...newTeacherData, can_create_exams: e.target.checked })}
                     />
-                    <span>تصميم الامتحانات</span>
+                    <span>{language === 'ar' ? 'تصميم الامتحانات' : 'Build Exams'}</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
                     <input
@@ -1146,7 +1184,7 @@ export const AdminDashboard: React.FC = () => {
                       checked={newTeacherData.can_view_analytics}
                       onChange={(e) => setNewTeacherData({ ...newTeacherData, can_view_analytics: e.target.checked })}
                     />
-                    <span>الاطلاع على التحليلات</span>
+                    <span>{language === 'ar' ? 'الاطلاع على التحليلات' : 'View Analytics'}</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
                     <input
@@ -1154,7 +1192,7 @@ export const AdminDashboard: React.FC = () => {
                       checked={newTeacherData.can_delete_content}
                       onChange={(e) => setNewTeacherData({ ...newTeacherData, can_delete_content: e.target.checked })}
                     />
-                    <span>حذف المحتوى</span>
+                    <span>{language === 'ar' ? 'حذف المحتوى' : 'Delete Content'}</span>
                   </label>
                 </div>
               </div>
@@ -1166,7 +1204,7 @@ export const AdminDashboard: React.FC = () => {
                   onClick={() => setAddTeacherModalOpen(false)}
                   disabled={creatingTeacher}
                 >
-                  إلغاء
+                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
@@ -1174,7 +1212,9 @@ export const AdminDashboard: React.FC = () => {
                   disabled={creatingTeacher}
                   style={{ fontWeight: 800 }}
                 >
-                  {creatingTeacher ? 'جاري الإنشاء...' : 'إنشاء حساب المعلم'}
+                  {creatingTeacher 
+                    ? (language === 'ar' ? 'جاري الإنشاء...' : 'Creating...') 
+                    : (language === 'ar' ? 'إنشاء حساب المعلم' : 'Create Teacher Account')}
                 </button>
               </div>
             </form>
@@ -1199,10 +1239,10 @@ export const AdminDashboard: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
               <div>
                 <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0 }}>
-                  تقرير الطالب: {selectedStudentForDetails.student?.fullName || selectedStudentForDetails.student?.full_name}
+                  {language === 'ar' ? `تقرير الطالب: ${selectedStudentForDetails.student?.fullName || selectedStudentForDetails.student?.full_name}` : `Student Report: ${selectedStudentForDetails.student?.fullName || selectedStudentForDetails.student?.full_name}`}
                 </h3>
                 <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                  المعرف: <code>{selectedStudentForDetails.student?.id}</code> • {selectedStudentForDetails.student?.grade_name_ar || selectedStudentForDetails.student?.gradeNameAr}
+                  {language === 'ar' ? 'المعرف: ' : 'ID: '}<code>{selectedStudentForDetails.student?.id}</code> • {selectedStudentForDetails.student?.grade_name_ar || selectedStudentForDetails.student?.gradeNameAr}
                 </div>
               </div>
               <button
@@ -1214,12 +1254,14 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             {studentDetailsLoading ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>جاري جلب سجلات الطالب...</div>
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                {language === 'ar' ? 'جاري جلب سجلات الطالب...' : 'Loading student records...'}
+              </div>
             ) : (
               <div>
                 {/* Recent Exam Attempts */}
                 <h4 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.75rem', color: 'var(--text-title)' }}>
-                  سجل الامتحانات المكتملة:
+                  {language === 'ar' ? 'سجل الامتحانات المكتملة:' : 'Completed Exam History:'}
                 </h4>
                 {selectedStudentForDetails.attempts && selectedStudentForDetails.attempts.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
@@ -1227,7 +1269,7 @@ export const AdminDashboard: React.FC = () => {
                       <div key={att.id} style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{att.exam_title}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{att.completed_at ? new Date(att.completed_at).toLocaleDateString('ar-EG') : 'مكتمل'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{att.completed_at ? new Date(att.completed_at).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : (language === 'ar' ? 'مكتمل' : 'Completed')}</div>
                         </div>
                         <span style={{ fontWeight: 800, color: '#16A34A', fontSize: '1.1rem' }}>
                           {att.score}%
@@ -1237,13 +1279,13 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 ) : (
                   <div style={{ padding: '1rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-                    لم يقم الطالب بأي محاولات اختبارات حتى الآن.
+                    {language === 'ar' ? 'لم يقم الطالب بأي محاولات اختبارات حتى الآن.' : 'No attempts recorded for this student yet.'}
                   </div>
                 )}
 
                 {/* Topic Mastery */}
                 <h4 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.75rem', color: 'var(--text-title)' }}>
-                  مستوى إتقان الفصول الدراسية:
+                  {language === 'ar' ? 'مستوى إتقان الفصول الدراسية:' : 'Chapter Mastery Levels:'}
                 </h4>
                 {selectedStudentForDetails.topicMastery && selectedStudentForDetails.topicMastery.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
@@ -1258,7 +1300,7 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 ) : (
                   <div style={{ padding: '1rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-                    لا توجد بيانات إتقان مسجلة بعد.
+                    {language === 'ar' ? 'لا توجد بيانات إتقان مسجلة بعد.' : 'No mastery data recorded yet.'}
                   </div>
                 )}
 
@@ -1273,13 +1315,13 @@ export const AdminDashboard: React.FC = () => {
                     style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                   >
                     <ExternalLink size={15} />
-                    <span>دخول حساب الطالب بالكامل</span>
+                    <span>{language === 'ar' ? 'دخول حساب الطالب بالكامل' : 'Enter Student Dashboard'}</span>
                   </button>
                   <button
                     className="btn btn-outline"
                     onClick={() => setSelectedStudentForDetails(null)}
                   >
-                    إغلاق
+                    {language === 'ar' ? 'إغلاق' : 'Close'}
                   </button>
                 </div>
               </div>

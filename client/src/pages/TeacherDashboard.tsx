@@ -1723,13 +1723,13 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              {isAr ? `${ch.attempts_count || 15} تقييم محلول` : `${ch.attempts_count || 15} attempts`}
+                              {isAr ? `${ch.attempts_count || 15} تقييم محلول` : `${ch.attempts_count || 15} solved assessments`}
                             </span>
                             <span 
                               className={`badge ${ch.mastery_percentage >= 80 ? 'badge-success' : ch.mastery_percentage >= 50 ? 'badge-warning' : 'badge-danger'}`}
                               style={{ fontSize: '0.75rem', fontWeight: 700 }}
                             >
-                              {ch.mastery_percentage >= 80 ? (isAr ? 'متقن 🌟' : 'Mastered') : ch.mastery_percentage >= 50 ? (isAr ? 'قيد التطوير 📈' : 'Developing') : (isAr ? 'بحاجة لدعم ⚠️' : 'Needs Support')}
+                              {ch.mastery_percentage >= 80 ? (isAr ? 'متقن 🌟' : 'Mastered 🌟') : ch.mastery_percentage >= 50 ? (isAr ? 'قيد التطوير 📈' : 'Developing 📈') : (isAr ? 'بحاجة لدعم ⚠️' : 'Needs Support ⚠️')}
                             </span>
                             <strong style={{ fontSize: '0.95rem', minWidth: '42px', textAlign: isAr ? 'left' : 'right' }}>
                               {ch.mastery_percentage}%
