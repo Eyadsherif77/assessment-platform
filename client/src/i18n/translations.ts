@@ -28,7 +28,7 @@ export const translations = {
     feat3Title: 'تشخيص الأخطاء وخطة علاجية بالصفحة',
     feat3Desc: 'عند الإجابة الخاطئة، يوضح الذكاء الاصطناعي سبب الخطأ، ويحدد رقم الصفحة والفقرة التي ينبغي مراجعتها فوراً.',
     feat4Title: 'تحليلات تقدم وتعلم طولية',
-    feat4Desc: 'متابعة نقاط الضعف والقوة بمرور الوقت ورسم بياني لمستوى إتقان كل فصل ووحدة دراسية.',
+    feat4Desc: 'متابعة نقاط الضعف والقوة بمرور الوقت ورسم بياني لمستوى إتقان كل وحدة دراسية.',
 
     // Auth
     loginTitle: 'تسجيل الدخول للمنصة',
@@ -56,7 +56,7 @@ export const translations = {
     tabAiEval: 'التقييم الذكي الموجه',
     tabAnalytics: 'تحليلات نقاط الضعف والقوة',
     noBooksAvailable: 'لا توجد كتب مضافة لهذا الصف حالياً.',
-    chaptersCount: 'فصول دراسية',
+    chaptersCount: 'وحدات دراسية',
     totalPages: 'صفحة',
     openBook: 'عرض محتوى الكتاب',
     startAiQuiz: 'بدء التقييم الذكي للوحدة',
@@ -69,8 +69,8 @@ export const translations = {
 
     // AI Evaluation Studio
     aiStudioTitle: 'استوديو التقييم الذكي المستند لنص الكتاب',
-    selectSubjectBookChapter: 'اختر المادة ثم الكتاب ثم الفصل الدراسي المراد تقييمه',
-    generateQuestionsBtn: 'توليد أسئلة التقييم من نصوص الفصل',
+    selectSubjectBookChapter: 'اختر المادة ثم الكتاب ثم الوحدة الدراسية المراد تقييمها',
+    generateQuestionsBtn: 'توليد أسئلة التقييم من نصوص الوحدة',
     generatingQuestions: 'جاري استرجاع فقرات الكتاب وتوليد الأسئلة بدقة تربوية...',
     submitAiAnswers: 'إرسال الإجابات للتشخيص الذكي',
     evaluatingReport: 'جاري تحليل الإجابات وتحديد أرقام الصفحات وخطة المراجعة...',
@@ -162,7 +162,7 @@ export const translations = {
     tabAiEval: 'AI Diagnostic Assessment',
     tabAnalytics: 'Weak & Strong Topics Analytics',
     noBooksAvailable: 'No books available for this grade yet.',
-    chaptersCount: 'Chapters',
+    chaptersCount: 'Units',
     totalPages: 'Pages',
     openBook: 'Read & Study Book',
     startAiQuiz: 'Start AI Diagnostic Assessment',
@@ -175,9 +175,9 @@ export const translations = {
 
     // AI Evaluation Studio
     aiStudioTitle: 'AI Diagnostic Assessment Studio (Curriculum-Linked)',
-    selectSubjectBookChapter: 'Select Subject, Book, and Chapter to diagnose',
-    generateQuestionsBtn: 'Generate AI Questions from Textbook',
-    generatingQuestions: 'Analyzing curriculum chapters and generating questions...',
+    selectSubjectBookChapter: 'Select Subject, Book, and Unit to diagnose',
+    generateQuestionsBtn: 'Generate AI Questions from Unit Content',
+    generatingQuestions: 'Analyzing curriculum units and generating questions...',
     submitAiAnswers: 'Submit Answers for AI Diagnosis',
     evaluatingReport: 'Analyzing responses, diagnosing misconceptions, and finding study citations...',
     aiDiagnosisResult: 'Diagnostic Evaluation & Targeted Study Prescription',

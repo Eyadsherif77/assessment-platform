@@ -1068,7 +1068,7 @@ export const StudentDashboard: React.FC = () => {
                 {isAr ? '1. اختيار المادة' : '1. Subject'}
               </span>
               <span className={`step-pill ${aiStep === 2 ? 'active' : (aiStep > 2 ? 'completed' : '')}`}>
-                {isAr ? '2. اختيار الفصل' : '2. Chapter'}
+                {isAr ? '2. اختيار الوحدة' : '2. Unit'}
               </span>
               <span className={`step-pill ${aiStep === 3 ? 'active' : (aiStep > 3 ? 'completed' : '')}`}>
                 {isAr ? '3. بدأ الاسئلة' : '3. Start Questions'}
@@ -1151,7 +1151,7 @@ export const StudentDashboard: React.FC = () => {
                       {isAr ? 'الخطوة 2 من 6' : 'Step 2 of 6'}
                     </span>
                     <h2 style={{ fontSize: '1.4rem', fontWeight: 900, margin: 0 }}>
-                      {isAr ? 'اختر الفصل المطلوب تقييمه' : 'Select Chapter to Assess'}
+                      {isAr ? 'اختر الوحدة المطلوب تقييمها' : 'Select Unit to Assess'}
                     </h2>
                     <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
                       {isAr ? `الكتاب: ${selectedAiBook.title_ar}` : `Textbook: ${selectedAiBook.title_en || selectedAiBook.title_ar}`}
@@ -1202,7 +1202,7 @@ export const StudentDashboard: React.FC = () => {
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                               <span className="badge badge-primary">
-                                {isBookEnglish || !isAr ? `Chapter #${ch.chapter_number}` : `الفصل #${ch.chapter_number}`}
+                                {isBookEnglish || !isAr ? `Unit #${ch.chapter_number}` : `الوحدة #${ch.chapter_number}`}
                               </span>
                               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                 {isBookEnglish || !isAr ? `${ch.chunks_count ?? 3} Paragraphs` : `${ch.chunks_count ?? 3} فقرات مفهرسة`}
@@ -1218,14 +1218,14 @@ export const StudentDashboard: React.FC = () => {
                             )}
                           </div>
                           <span style={{ fontSize: '0.78rem', color: 'var(--primary-700)', fontWeight: 700, marginTop: '0.5rem' }}>
-                            {isBookEnglish || !isAr ? 'Click to select this chapter ➡️' : 'انقر لاختيار هذا الفصل ⬅️'}
+                            {isBookEnglish || !isAr ? 'Click to select this unit ➡️' : 'انقر لاختيار هذه الوحدة ⬅️'}
                           </span>
                         </div>
                       );
                     })
                   ) : (
                     <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                      {isAr ? 'لا توجد فصول دراسية مدخلة لهذا الكتاب بعد.' : 'No chapters available yet for this book.'}
+                      {isAr ? 'لا توجد وحدات دراسية مدخلة لهذا الكتاب بعد.' : 'No units available yet for this book.'}
                     </div>
                   )}
                 </div>
@@ -1288,7 +1288,7 @@ export const StudentDashboard: React.FC = () => {
                       : (isAr ? 'بدء الاختبار وحل الأسئلة 🚀' : 'Start Exam & Solve Questions 🚀')}
                   </button>
                   <button className="btn btn-outline" onClick={() => setAiStep(2)} disabled={isGeneratingAi}>
-                    {isAr ? 'الرجوع للفصول' : 'Back to Chapters'}
+                    {isAr ? 'الرجوع للوحدات' : 'Back to Units'}
                   </button>
                 </div>
               </div>
@@ -1609,7 +1609,7 @@ export const StudentDashboard: React.FC = () => {
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-body)', lineHeight: 1.6, margin: 0 }}>
                         {weakItems.length > 0
                           ? weakItems.join('، ')
-                          : (isAr ? 'لا توجد ثغرات حرجة، أحسنت استيعاب جميع أفكار الفصل!' : 'No critical gaps identified, outstanding comprehension of all chapter concepts!')}
+                          : (isAr ? 'لا توجد ثغرات حرجة، أحسنت استيعاب جميع أفكار الوحدة!' : 'No critical gaps identified, outstanding comprehension of all unit concepts!')}
                       </p>
                     </div>
                   </div>
@@ -1759,7 +1759,7 @@ export const StudentDashboard: React.FC = () => {
                       </span>
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                      {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)} • {isAr ? `${book.chapters?.length || 1} فصول مفهرسة` : `${book.chapters?.length || 1} Indexed Chapters`}
+                      {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)} • {isAr ? `${book.chapters?.length || 1} وحدات مفهرسة` : `${book.chapters?.length || 1} Indexed Units`}
                     </div>
                   </div>
 
@@ -2349,7 +2349,7 @@ export const StudentDashboard: React.FC = () => {
                 {isAr ? 'تحليلات النتائج والتقدم التراكمي' : 'Results Analytics & Learning Progress'}
               </h2>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {isAr ? 'متابعة دقيقة للأداء عبر الفصول الدراسية وتصنيف نواتج التعلم' : 'Longitudinal tracking across chapters and curriculum benchmarks'}
+                {isAr ? 'متابعة دقيقة للأداء عبر الوحدات الدراسية وتصنيف نواتج التعلم' : 'Longitudinal tracking across units and curriculum benchmarks'}
               </span>
             </div>
 
@@ -2419,10 +2419,10 @@ export const StudentDashboard: React.FC = () => {
 
               <div className="goal-card">
                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                  {isAr ? 'الفصول المتقنة' : 'Mastered Units'}
+                  {isAr ? 'الوحدات المتقنة' : 'Mastered Units'}
                 </span>
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#D97706' }}>
-                  {`${analytics?.summary?.mastered_topics_count ?? 0} ${isAr ? 'فصول' : 'Units'}`}
+                  {`${analytics?.summary?.mastered_topics_count ?? 0} ${isAr ? 'وحدات' : 'Units'}`}
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {isAr ? 'نسبة إتقان أعلى من 80%' : 'Above 80% mastery threshold'}
@@ -2433,7 +2433,7 @@ export const StudentDashboard: React.FC = () => {
             {/* Topic Mastery List */}
             <div className="card" style={{ padding: '1.75rem' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1rem' }}>
-                {isAr ? 'مستوى استيعاب الفصول الدراسية:' : 'Chapter Mastery Breakdown:'}
+                {isAr ? 'مستوى استيعاب الوحدات الدراسية:' : 'Unit Mastery Breakdown:'}
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 {analytics?.topics && analytics.topics.length > 0 ? (
@@ -3476,7 +3476,7 @@ export const StudentDashboard: React.FC = () => {
               const chunkId = debugItem?.chunk_id || activeQ?.chunk_id || 'N/A';
               const bookId = debugItem?.book_id || activeQ?.book_id || selectedAiBook?.id || 'N/A';
               const chapterId = debugItem?.chapter_id || activeQ?.chapter_id || selectedAiChapterId || 'N/A';
-              const chunkText = debugItem?.chunk_text || activeQ?.chunk_text || activeQ?.source_excerpt || 'المحتوى المنهجي المعتمد للفصل الدراسي المسترجع من قاعدة البيانات.';
+              const chunkText = debugItem?.chunk_text || activeQ?.chunk_text || activeQ?.source_excerpt || 'المحتوى المنهجي المعتمد للوحدة الدراسية المسترجعة من قاعدة البيانات.';
               const similarityScore = debugItem?.similarity_score !== undefined ? debugItem.similarity_score : 1.0;
               const validationStatus = debugItem?.validation_status || { isValid: true };
 
@@ -3556,7 +3556,7 @@ export const StudentDashboard: React.FC = () => {
                       <code style={{ fontSize: '0.8rem', color: '#A78BFA', wordBreak: 'break-all' }}>{bookId}</code>
                     </div>
                     <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>CHAPTER ID (معرف الفصل)</div>
+                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>UNIT ID (معرف الوحدة)</div>
                       <code style={{ fontSize: '0.8rem', color: '#34D399', wordBreak: 'break-all' }}>{chapterId}</code>
                     </div>
                     <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
@@ -3721,7 +3721,7 @@ export const StudentDashboard: React.FC = () => {
 
               <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>
-                  {isAr ? 'الفصول المتقنة' : 'Mastered Units'}
+                  {isAr ? 'الوحدات المتقنة' : 'Mastered Units'}
                 </div>
                 <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#D97706' }}>
                   {analytics?.summary?.mastered_topics_count ?? 0}

@@ -13,8 +13,8 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
     const masteryRes = await db.query(
       `SELECT stm.*, 
               s.name_ar as subject_name_ar, s.name_en as subject_name_en,
-              COALESCE(bc.title_ar, 'الفصل العام') as chapter_title_ar, 
-              COALESCE(bc.title_en, 'General Chapter') as chapter_title_en,
+              COALESCE(bc.title_ar, 'الوحدة العامة') as chapter_title_ar, 
+              COALESCE(bc.title_en, 'General Unit') as chapter_title_en,
               COALESCE(b.title_ar, s.name_ar) as book_title,
               COALESCE(b.title_en, s.name_en) as book_title_en
        FROM student_topic_mastery stm

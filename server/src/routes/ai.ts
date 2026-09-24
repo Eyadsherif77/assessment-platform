@@ -109,7 +109,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
     console.error('AI Generate Quiz error:', err);
     if (err.message?.includes('Insufficient educational content for assessment generation')) {
       return res.status(422).json({
-        error: 'المحتوى التعليمي المستخرج من هذا الفصل غير كافٍ لصياغة أسئلة تقييمية معتمدة.',
+        error: 'المحتوى التعليمي المستخرج من هذه الوحدة غير كافٍ لصياغة أسئلة تقييمية معتمدة.',
         code: 'INSUFFICIENT_EDUCATIONAL_CONTENT'
       });
     }

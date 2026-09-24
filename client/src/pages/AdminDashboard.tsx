@@ -1000,7 +1000,7 @@ export const AdminDashboard: React.FC = () => {
                     {language === 'ar' ? 'الاطلاع على تحليلات ونتائج الطلاب' : 'View Student Results & Analytics'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {language === 'ar' ? 'استعراض نسب إتقان الفصول ومحاولات الطلاب' : 'Inspect chapter mastery rates and attempts'}
+                    {language === 'ar' ? 'استعراض نسب إتقان الوحدات ومحاولات الطلاب' : 'Inspect unit mastery rates and attempts'}
                   </div>
                 </div>
                 <input
@@ -1285,7 +1285,7 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* Topic Mastery */}
                 <h4 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.75rem', color: 'var(--text-title)' }}>
-                  {language === 'ar' ? 'مستوى إتقان الفصول الدراسية:' : 'Chapter Mastery Levels:'}
+                  {language === 'ar' ? 'مستوى إتقان الوحدات الدراسية:' : 'Unit Mastery Levels:'}
                 </h4>
                 {selectedStudentForDetails.topicMastery && selectedStudentForDetails.topicMastery.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>

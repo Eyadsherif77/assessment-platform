@@ -193,7 +193,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to detect chapters');
-      alert(data.message || (isAr ? 'تم استخراج الفصول بنجاح' : 'Chapters detected successfully'));
+      alert(data.message || (isAr ? 'تم استخراج الوحدات بنجاح' : 'Units detected successfully'));
       handleOpenChaptersModal(selectedBookForChapters);
       loadTeacherData();
     } catch (err: any) {
@@ -235,7 +235,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
   const handleDeleteChapter = async (chapterId: string) => {
     if (!selectedBookForChapters) return;
-    if (!confirm(isAr ? 'هل أنت متأكد من حذف هذا الفصل؟' : 'Are you sure you want to delete this chapter?')) return;
+    if (!confirm(isAr ? 'هل أنت متأكد من حذف هذه الوحدة؟' : 'Are you sure you want to delete this unit?')) return;
     try {
       const res = await fetch(apiUrl(`/api/books/${selectedBookForChapters.id}/chapters/${chapterId}`), {
         method: 'DELETE',
@@ -570,7 +570,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
           grade_id: selectedGradeId,
           subject_id: selectedSubjectId,
           chapter_number: chapterNumber,
-          chapter_title_ar: chapterTitleAr || 'الفصل الأول',
+          chapter_title_ar: chapterTitleAr || 'الوحدة الأولى',
           school_type: schoolTypeTarget,
           fileName: pdfFile.name,
           fileSize: pdfFile.size,
@@ -988,14 +988,14 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                       </span>
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                      {isAr ? 'الفصول:' : 'Chapters:'} {book.chapters_count || book.chapters?.length || 1}
+                      {isAr ? 'الوحدات:' : 'Units:'} {book.chapters_count || book.chapters?.length || 1}
                     </div>
                     <button
                       className="btn btn-outline btn-sm"
                       onClick={() => handleOpenChaptersModal(book)}
                       style={{ width: '100%', marginBottom: '0.75rem', fontWeight: 700, fontSize: '0.8rem' }}
                     >
-                      📖 {isAr ? 'إدارة وتعديل الفصول' : 'Manage & Edit Chapters'}
+                      📖 {isAr ? 'إدارة وتعديل الوحدات' : 'Manage & Edit Units'}
                     </button>
                   </div>
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1171,7 +1171,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
                 <div className="responsive-form-grid-2">
                   <div className="form-group">
-                    <label className="form-label">{isAr ? 'رقم الفصل' : 'Chapter Number'}</label>
+                    <label className="form-label">{isAr ? 'رقم الوحدة' : 'Unit Number'}</label>
                     <input
                       type="number"
                       required
@@ -1183,7 +1183,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">{isAr ? 'عنوان الفصل الدراسي' : 'Chapter Title'}</label>
+                    <label className="form-label">{isAr ? 'عنوان الوحدة الدراسية' : 'Unit Title'}</label>
                     <input
                       type="text"
                       className="form-input"
@@ -1640,7 +1640,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                     <div className="goal-card">
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                          {isAr ? 'أعلى فصل استيعاباً' : 'Top Mastered Chapter'}
+                          {isAr ? 'أعلى وحدة استيعاباً' : 'Top Mastered Unit'}
                         </span>
                         <Award size={16} color="#16A34A" />
                       </div>
@@ -1657,7 +1657,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                     <div className="goal-card">
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                          {isAr ? 'فصل يحتاج تعزيز' : 'Needs Reinforcement'}
+                          {isAr ? 'وحدة تحتاج تعزيز' : 'Needs Reinforcement'}
                         </span>
                         <AlertTriangle size={16} color="#DC2626" />
                       </div>
@@ -1677,10 +1677,10 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
                     <div>
                       <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
-                        {isAr ? `مستويات إتقان فصول المنهج الدراسي (${activeSubjectName})` : `Curriculum Chapter Mastery Levels (${activeSubjectName})`}
+                        {isAr ? `مستويات إتقان وحدات المنهج الدراسي (${activeSubjectName})` : `Curriculum Unit Mastery Levels (${activeSubjectName})`}
                       </h3>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        {isAr ? 'نسب استيعاب الطلاب لكل فصل من واقع إجابات الامتحانات والتقييمات لهذه المادة حصراً' : 'Student mastery rates per chapter strictly for this subject'}
+                        {isAr ? 'نسب استيعاب الطلاب لكل وحدة من واقع إجابات الامتحانات والتقييمات لهذه المادة حصراً' : 'Student mastery rates per unit strictly for this subject'}
                       </span>
                     </div>
                     <span className="badge badge-secondary" style={{ fontSize: '0.75rem' }}>
@@ -1755,7 +1755,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                     <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
                       <BookOpen size={36} style={{ opacity: 0.35, marginBottom: '0.6rem' }} />
                       <p style={{ fontWeight: 800, margin: 0, fontSize: '0.95rem' }}>
-                        {isAr ? 'لا توجد فصول مضافة بعد لهذه المادة' : 'No curriculum chapters found for this subject'}
+                        {isAr ? 'لا توجد وحدات مضافة بعد لهذه المادة' : 'No curriculum units found for this subject'}
                       </p>
                       <p style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
                         {isAr ? 'قم برفع كتاب المادة لربط المنهج وتحليل إتقان الطلاب تلقائياً' : 'Upload textbook to track live mastery'}
@@ -2035,10 +2035,10 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '1rem' }}>
                 <div>
                   <h3 style={{ fontSize: '1.3rem', fontWeight: 900, margin: 0 }}>
-                    {isAr ? `فصول كتاب: ${selectedBookForChapters.title_ar}` : `Chapters of: ${selectedBookForChapters.title_en || selectedBookForChapters.title_ar}`}
+                    {isAr ? `وحدات كتاب: ${selectedBookForChapters.title_ar}` : `Units of: ${selectedBookForChapters.title_en || selectedBookForChapters.title_ar}`}
                   </h3>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {isAr ? 'تقسيم الكتاب لوحدات وفصول دراسية مع توزيع الفقرات التعليمية' : 'Manage textbook units, chapters & educational chunk partitions'}
+                    {isAr ? 'تقسيم الكتاب لوحدات دراسية مع توزيع الفقرات التعليمية' : 'Manage textbook units & educational chunk partitions'}
                   </span>
                 </div>
                 <button
@@ -2057,7 +2057,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   onClick={() => setShowAddChapterForm(!showAddChapterForm)}
                   style={{ fontWeight: 800 }}
                 >
-                  {showAddChapterForm ? (isAr ? 'إلغاء الإضافة' : 'Cancel') : (isAr ? '➕ إضافة فصل يدوياً' : '➕ Add Chapter Manually')}
+                  {showAddChapterForm ? (isAr ? 'إلغاء الإضافة' : 'Cancel') : (isAr ? '➕ إضافة وحدة يدوياً' : '➕ Add Unit Manually')}
                 </button>
                 <button
                   className="btn btn-outline btn-sm"
@@ -2065,7 +2065,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   onClick={() => handleAutoDetectChapters(selectedBookForChapters.id)}
                   style={{ fontWeight: 800, background: '#EEF2FF', borderColor: '#818CF8', color: '#4F46E5' }}
                 >
-                  {isDetectingChapters ? (isAr ? 'جاري الفحص الذكي...' : 'Detecting...') : (isAr ? '✨ استخراج الفصول بالذكاء الاصطناعي' : '✨ AI Auto-Detect Chapters')}
+                  {isDetectingChapters ? (isAr ? 'جاري الفحص الذكي...' : 'Detecting...') : (isAr ? '✨ استخراج الوحدات بالذكاء الاصطناعي' : '✨ AI Auto-Detect Units')}
                 </button>
               </div>
 
@@ -2073,12 +2073,12 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
               {showAddChapterForm && (
                 <div style={{ background: 'var(--bg-subtle)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', marginBottom: '1.5rem', border: '1px solid var(--border-light)' }}>
                   <h4 style={{ fontWeight: 800, fontSize: '0.95rem', margin: '0 0 1rem' }}>
-                    {isAr ? 'إضافة فصل دراسي جديد للكتاب:' : 'Add New Chapter to Textbook:'}
+                    {isAr ? 'إضافة وحدة دراسية جديدة للكتاب:' : 'Add New Unit to Textbook:'}
                   </h4>
                   <form onSubmit={handleAddChapter}>
                     <div className="responsive-form-grid-2" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
                       <div>
-                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'رقم الفصل' : 'Chapter #'}</label>
+                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'رقم الوحدة' : 'Unit #'}</label>
                         <input
                           type="number"
                           required
@@ -2089,7 +2089,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         />
                       </div>
                       <div>
-                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'عنوان الفصل (بالعربية)' : 'Title (Arabic)'}</label>
+                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'عنوان الوحدة (بالعربية)' : 'Title (Arabic)'}</label>
                         <input
                           type="text"
                           required
@@ -2102,7 +2102,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                     </div>
                     <div className="responsive-form-grid-2" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
                       <div>
-                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'عنوان الفصل (بالإنجليزية)' : 'Title (English)'}</label>
+                        <label className="form-label" style={{ fontSize: '0.78rem' }}>{isAr ? 'عنوان الوحدة (بالإنجليزية)' : 'Title (English)'}</label>
                         <input
                           type="text"
                           className="form-input"
@@ -2139,7 +2139,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         {isAr ? 'إلغاء' : 'Cancel'}
                       </button>
                       <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 800 }}>
-                        {isAr ? 'حفظ الفصل' : 'Save Chapter'}
+                        {isAr ? 'حفظ الوحدة' : 'Save Unit'}
                       </button>
                     </div>
                   </form>
@@ -2150,7 +2150,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {isLoadingChapters ? (
                   <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                    {isAr ? 'جاري تحميل الفصول...' : 'Loading chapters...'}
+                    {isAr ? 'جاري تحميل الوحدات...' : 'Loading units...'}
                   </div>
                 ) : bookChaptersList.length > 0 ? (
                   bookChaptersList.map(ch => (
@@ -2170,7 +2170,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                           <span className="badge badge-primary">
-                            {isAr ? `الفصل #${ch.chapter_number}` : `Chapter #${ch.chapter_number}`}
+                            {isAr ? `الوحدة #${ch.chapter_number}` : `Unit #${ch.chapter_number}`}
                           </span>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             📖 {isAr ? `الصفحات: ${ch.start_page} - ${ch.end_page}` : `Pages: ${ch.start_page} - ${ch.end_page}`}
@@ -2194,7 +2194,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   ))
                 ) : (
                   <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                    {isAr ? 'لا توجد فصول مضافة بعد. انقر على "استخراج الفصول بالذكاء الاصطناعي" أعلاه.' : 'No chapters yet. Click "AI Auto-Detect Chapters" above.'}
+                    {isAr ? 'لا توجد وحدات مضافة بعد. انقر على "استخراج الوحدات بالذكاء الاصطناعي" أعلاه.' : 'No units yet. Click "AI Auto-Detect Units" above.'}
                   </div>
                 )}
               </div>

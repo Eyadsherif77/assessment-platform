@@ -762,7 +762,7 @@ router.get('/:id/chapters/:chapterId/chunks', authenticateToken, enforceStudentG
 
     return res.json(chunksRes.rows);
   } catch (err: any) {
-    return res.status(500).json({ error: 'خطأ في جلب فقرات الفصل' });
+    return res.status(500).json({ error: 'خطأ في جلب فقرات الوحدة' });
   }
 });
 
@@ -915,7 +915,7 @@ router.get('/:id/chapters', authenticateToken, async (req, res) => {
     );
     return res.json(chaptersRes.rows);
   } catch (err: any) {
-    return res.status(500).json({ error: 'خطأ في جلب فصول الكتاب: ' + err.message });
+    return res.status(500).json({ error: 'خطأ في جلب وحدات الكتاب: ' + err.message });
   }
 });
 
@@ -926,7 +926,7 @@ router.post('/:id/chapters', authenticateToken, requireRole(['TEACHER', 'ADMIN']
     const { chapter_number, title_ar, title_en, start_page, end_page, description } = req.body;
 
     if (!title_ar) {
-      return res.status(400).json({ error: 'الرجاء إدخال عنوان الفصل' });
+      return res.status(400).json({ error: 'الرجاء إدخال عنوان الوحدة' });
     }
 
     const bookRes = await db.query('SELECT id, academic_stage_id, grade_id, subject_id FROM books WHERE id = $1', [id]);
@@ -963,7 +963,7 @@ router.post('/:id/chapters', authenticateToken, requireRole(['TEACHER', 'ADMIN']
     );
 
     return res.status(201).json({
-      message: 'تمت إضافة الفصل بنجاح',
+      message: 'تمت إضافة الوحدة بنجاح',
       chapter: {
         id: chapterId,
         book_id: id,
@@ -975,7 +975,7 @@ router.post('/:id/chapters', authenticateToken, requireRole(['TEACHER', 'ADMIN']
       }
     });
   } catch (err: any) {
-    return res.status(500).json({ error: 'خطأ في إضافة الفصل: ' + err.message });
+    return res.status(500).json({ error: 'خطأ في إضافة الوحدة: ' + err.message });
   }
 });
 
@@ -997,9 +997,9 @@ router.put('/:id/chapters/:chapterId', authenticateToken, requireRole(['TEACHER'
       [chapterId, id, chapter_number, title_ar, title_en, start_page, end_page]
     );
 
-    return res.json({ message: 'تم تحديث بيانات الفصل بنجاح' });
+    return res.json({ message: 'تم تحديث بيانات الوحدة بنجاح' });
   } catch (err: any) {
-    return res.status(500).json({ error: 'خطأ في تحديث الفصل: ' + err.message });
+    return res.status(500).json({ error: 'خطأ في تحديث الوحدة: ' + err.message });
   }
 });
 
@@ -1009,9 +1009,9 @@ router.delete('/:id/chapters/:chapterId', authenticateToken, requireRole(['TEACH
     const id = String(req.params.id);
     const chapterId = String(req.params.chapterId);
     await db.query('DELETE FROM book_chapters WHERE id = $1 AND book_id = $2', [chapterId, id]);
-    return res.json({ message: 'تم حذف الفصل بنجاح' });
+    return res.json({ message: 'تم حذف الوحدة بنجاح' });
   } catch (err: any) {
-    return res.status(500).json({ error: 'خطأ في حذف الفصل: ' + err.message });
+    return res.status(500).json({ error: 'خطأ في حذف الوحدة: ' + err.message });
   }
 });
 
@@ -1045,12 +1045,12 @@ router.post('/:id/auto-detect-chapters', authenticateToken, requireRole(['TEACHE
     });
 
     return res.json({
-      message: `تم استخراج وتقسيم ${detected.length} فصول بنجاح بالذكاء الاصطناعي.`,
+      message: `تم استخراج وتقسيم ${detected.length} وحدات بنجاح بالذكاء الاصطناعي.`,
       chapters: detected
     });
   } catch (err: any) {
     console.error('Auto detect chapters error:', err);
-    return res.status(500).json({ error: 'فشل استخراج الفصول آلياً: ' + err.message });
+    return res.status(500).json({ error: 'فشل استخراج الوحدات آلياً: ' + err.message });
   }
 });
 
