@@ -478,57 +478,57 @@ export const HierarchyDashboard: React.FC = () => {
 
   // Helper strings based on role
   const getRoleTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return isAr ? 'الأمين المركزي' : 'Central Secretary';
-    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? `أمين محافظة ${user?.governorate_name || ''}` : `Governorate Admin - ${user?.governorate_name || ''}`;
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? 'المدير المركزي' : 'Central Director';
+    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? `مدير محافظة ${user?.governorate_name || ''}` : `Governorate Director - ${user?.governorate_name || ''}`;
     if (user?.role === 'SUPERVISOR') return isAr ? `الموجه الأول لمادة ${user?.subject_name || ''} - ${user?.governorate_name || ''}` : `Head Supervisor - ${user?.subject_name || ''} (${user?.governorate_name || ''})`;
     return isAr ? 'المدير العام للمنصة' : 'General Platform Administrator';
   };
 
   const getSubordinateTabTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '🏢 أمناء المحافظات (27 محافظة)' : '🏢 Governorate Admins (27 Governorates)';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '🏢 مدراء المحافظات (27 محافظة)' : '🏢 Governorate Directors (27 Governorates)';
     if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '📐 موجهو المواد بالمحافظة' : '📐 Subject Supervisors in Governorate';
     if (user?.role === 'SUPERVISOR') return isAr ? '👨‍🏫 معلمو المادة التابعون لي' : '👨‍🏫 Subordinate Subject Teachers';
-    return isAr ? '🏛️ الأمناء المركزيون' : '🏛️ Central Secretaries';
+    return isAr ? '🏛️ المدراء المركزيون' : '🏛️ Central Directors';
   };
 
   const getAddSubordinateBtnTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '➕ إضافة أمين محافظة جديد' : '➕ Add New Governorate Admin';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '➕ إضافة مدير محافظة جديد' : '➕ Add New Governorate Director';
     if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '➕ إضافة موجه مادة جديد' : '➕ Add New Subject Supervisor';
     if (user?.role === 'SUPERVISOR') return isAr ? '➕ إضافة معلم جديد' : '➕ Add New Teacher';
-    return isAr ? '➕ إضافة أمين مركزي' : '➕ Add Central Secretary';
+    return isAr ? '➕ إضافة مدير مركزي' : '➕ Add Central Director';
   };
 
   return (
     <div className="hierarchy-portal-container" style={{
       maxWidth: '1360px',
       margin: '0 auto',
-      padding: '1.5rem 1rem 4rem',
+      padding: '1rem 0.75rem 3.5rem',
       direction: isAr ? 'rtl' : 'ltr'
     }}>
-      {/* 1. Header Banner (Bright Theme) */}
+      {/* 1. Header Banner (Bright Theme - Fully Mobile Responsive) */}
       <div className="card" style={{
         background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 50%, #EEF2FF 100%)',
         borderRadius: '1.25rem',
-        padding: '2rem 1.75rem',
+        padding: '1.25rem 1rem',
         color: 'var(--text-title)',
-        marginBottom: '2rem',
+        marginBottom: '1.5rem',
         boxShadow: '0 10px 30px -10px rgba(79, 70, 229, 0.08)',
         border: '1.5px solid #E0E7FF',
         position: 'relative',
         overflow: 'hidden'
       }}>
         <div style={{ position: 'relative', zIndex: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem', flexWrap: 'wrap' }}>
             <span style={{
               background: '#EEF2FF',
               color: '#4F46E5',
-              padding: '0.35rem 0.85rem',
+              padding: '0.3rem 0.75rem',
               borderRadius: '999px',
-              fontSize: '0.825rem',
+              fontSize: '0.78rem',
               fontWeight: 800,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.4rem',
+              gap: '0.35rem',
               border: '1px solid #C7D2FE'
             }}>
               <ShieldCheck size={14} color="#4F46E5" />
@@ -540,9 +540,9 @@ export const HierarchyDashboard: React.FC = () => {
                 background: '#FEF3C7',
                 color: '#92400E',
                 border: '1px solid #FDE68A',
-                padding: '0.35rem 0.85rem',
+                padding: '0.3rem 0.75rem',
                 borderRadius: '999px',
-                fontSize: '0.825rem',
+                fontSize: '0.78rem',
                 fontWeight: 700
               }}>
                 📍 {user.governorate_name}
@@ -554,9 +554,9 @@ export const HierarchyDashboard: React.FC = () => {
                 background: '#ECFDF5',
                 color: '#065F46',
                 border: '1px solid #A7F3D0',
-                padding: '0.35rem 0.85rem',
+                padding: '0.3rem 0.75rem',
                 borderRadius: '999px',
-                fontSize: '0.825rem',
+                fontSize: '0.78rem',
                 fontWeight: 700
               }}>
                 📚 {isAr ? `مادة ${user.subject_name}` : `Subject: ${user.subject_name}`}
@@ -564,7 +564,7 @@ export const HierarchyDashboard: React.FC = () => {
             )}
           </div>
 
-          <h1 style={{ fontSize: '1.85rem', fontWeight: 900, margin: 0, color: 'var(--text-title)', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: 'clamp(1.25rem, 3.5vw, 1.85rem)', fontWeight: 900, margin: 0, color: 'var(--text-title)', letterSpacing: '-0.02em', lineHeight: 1.3 }}>
             {getRoleTitle()}
           </h1>
         </div>
@@ -573,28 +573,28 @@ export const HierarchyDashboard: React.FC = () => {
       {/* 2. Top KPI Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-        gap: '1rem',
-        marginBottom: '2rem'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
+        gap: '0.75rem',
+        marginBottom: '1.5rem'
       }}>
         <div style={{
           background: '#FFFFFF',
-          borderRadius: '1rem',
-          padding: '1.25rem',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+          borderRadius: '0.875rem',
+          padding: '1rem',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
           border: '1px solid var(--border-light)',
           display: 'flex',
           alignItems: 'center',
-          gap: '1rem'
+          gap: '0.75rem'
         }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#EEF2FF', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <FileText size={24} />
+          <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#EEF2FF', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <FileText size={20} />
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
               {isAr ? 'إجمالي الاختبارات المتاحة' : 'Total Available Exams'}
             </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--primary-900)' }}>{stats.examsCount}</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--primary-900)' }}>{stats.examsCount}</div>
           </div>
         </div>
 
@@ -706,7 +706,7 @@ export const HierarchyDashboard: React.FC = () => {
                   {isAr ? 'المستوى 1 في التراتبية' : 'Hierarchy Level 1'}
                 </span>
                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#1E3A8A' }}>
-                  {isAr ? 'إدارة وتعيين الأمين المركزي' : 'Manage & Assign Central Secretary'}
+                  {isAr ? 'إدارة وتعيين المدير المركزي' : 'Manage & Assign Central Director'}
                 </h3>
               </div>
             </div>
@@ -746,7 +746,7 @@ export const HierarchyDashboard: React.FC = () => {
               }}
             >
               <Plus size={18} />
-              <span>{isAr ? '➕ إنشاء أمين مركزي جديد' : '➕ Create Central Secretary'}</span>
+              <span>{isAr ? '➕ إنشاء مدير مركزي جديد' : '➕ Create Central Director'}</span>
             </button>
 
             <button
@@ -763,25 +763,29 @@ export const HierarchyDashboard: React.FC = () => {
                 boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
               }}
             >
-              {isAr ? `عرض قائمة الأمناء المركزيين (${subordinates.length})` : `View Central Secretaries (${subordinates.length})`}
+              {isAr ? `عرض قائمة المدراء المركزيين (${subordinates.length})` : `View Central Directors (${subordinates.length})`}
             </button>
           </div>
         </div>
       )}
 
-      {/* 3. Main Navigation Tabs */}
+      {/* 3. Main Navigation Tabs (Swipeable / Scrollable on Mobile) */}
       <div style={{
         display: 'flex',
         gap: '0.5rem',
         borderBottom: '2px solid var(--border-light)',
-        marginBottom: '1.5rem'
+        marginBottom: '1.5rem',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        paddingBottom: '2px',
+        scrollbarWidth: 'none'
       }}>
         <button
           onClick={() => setActiveTab('analysis')}
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.75rem 1.25rem',
             fontWeight: 800,
-            fontSize: '0.95rem',
+            fontSize: '0.9rem',
             border: 'none',
             background: 'none',
             cursor: 'pointer',
@@ -789,10 +793,12 @@ export const HierarchyDashboard: React.FC = () => {
             color: activeTab === 'analysis' ? '#4F46E5' : 'var(--text-muted)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem'
+            gap: '0.45rem',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
-          <BarChart2 size={18} />
+          <BarChart2 size={17} />
           <span>{isAr ? 'التحليلات والمتابعة الإشرافية' : 'Supervisory Analytics'}</span>
           <span style={{
             background: activeTab === 'analysis' ? '#EEF2FF' : '#F3F4F6',
@@ -808,9 +814,9 @@ export const HierarchyDashboard: React.FC = () => {
         <button
           onClick={() => setActiveTab('exams')}
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.75rem 1.25rem',
             fontWeight: 800,
-            fontSize: '0.95rem',
+            fontSize: '0.9rem',
             border: 'none',
             background: 'none',
             cursor: 'pointer',
@@ -818,10 +824,12 @@ export const HierarchyDashboard: React.FC = () => {
             color: activeTab === 'exams' ? '#4F46E5' : 'var(--text-muted)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem'
+            gap: '0.45rem',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
-          <FileText size={18} />
+          <FileText size={17} />
           <span>{isAr ? 'مستكشف الاختبارات التفاعلي' : 'Interactive Exams Explorer'}</span>
           <span style={{
             background: activeTab === 'exams' ? '#EEF2FF' : '#F3F4F6',
@@ -837,9 +845,9 @@ export const HierarchyDashboard: React.FC = () => {
         <button
           onClick={() => setActiveTab('subordinates')}
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.75rem 1.25rem',
             fontWeight: 800,
-            fontSize: '0.95rem',
+            fontSize: '0.9rem',
             border: 'none',
             background: 'none',
             cursor: 'pointer',
@@ -847,10 +855,12 @@ export const HierarchyDashboard: React.FC = () => {
             color: activeTab === 'subordinates' ? '#4F46E5' : 'var(--text-muted)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem'
+            gap: '0.45rem',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
-          <Users size={18} />
+          <Users size={17} />
           <span>{getSubordinateTabTitle()}</span>
           <span style={{
             background: activeTab === 'subordinates' ? '#EEF2FF' : '#F3F4F6',
@@ -1045,89 +1055,105 @@ export const HierarchyDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* KPI Stat Cards (5 metrics) */}
+          {/* KPI Stat Cards (5 metrics - Mobile Responsive & Combined Generated + Teacher Exams) */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '1rem'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',
+            gap: '0.75rem'
           }}>
             {/* 1. Exams in period */}
             <div style={{
               background: '#FFFFFF',
-              borderRadius: '1rem',
-              padding: '1.25rem',
+              borderRadius: '0.875rem',
+              padding: '1rem',
               border: '1px solid #E0E7FF',
               boxShadow: '0 2px 4px rgba(79, 70, 229, 0.04)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '0.5rem'
+              gap: '0.4rem'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                  {analysisTimeframe === 'monthly' ? (isAr ? 'اختبارات هذا الشهر' : 'Exams this Month') : (isAr ? 'اختبارات هذا الأسبوع' : 'Exams this Week')}
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  {analysisTimeframe === 'monthly' ? (isAr ? 'إجمالي الاختبارات شهرياً' : 'Exams this Month') : (isAr ? 'إجمالي الاختبارات أسبوعياً' : 'Exams this Week')}
                 </span>
-                <span style={{ padding: '0.35rem', background: '#EEF2FF', borderRadius: '0.5rem', color: '#4F46E5' }}>
-                  <FileText size={18} />
+                <span style={{ padding: '0.3rem', background: '#EEF2FF', borderRadius: '0.45rem', color: '#4F46E5' }}>
+                  <FileText size={16} />
                 </span>
               </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#1E293B' }}>
+              <div style={{ fontSize: 'clamp(1.4rem, 4vw, 1.85rem)', fontWeight: 900, color: '#1E293B', lineHeight: 1.1 }}>
                 {analysisData?.kpis?.totalExams ?? 0}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
-                {isAr ? `إجمالي تراكمي: ${analysisData?.kpis?.lifetimeExams ?? 0} اختبار` : `Lifetime: ${analysisData?.kpis?.lifetimeExams ?? 0} exams`}
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
+                <span style={{ fontSize: '0.7rem', background: '#F0FDF4', color: '#166534', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
+                  {isAr ? `🤖 ${analysisData?.kpis?.generatedExamsCount ?? 0} مولدة` : `🤖 ${analysisData?.kpis?.generatedExamsCount ?? 0} AI`}
+                </span>
+                <span style={{ fontSize: '0.7rem', background: '#EEF2FF', color: '#3730A3', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
+                  {isAr ? `👨‍🏫 ${analysisData?.kpis?.teacherExamsCount ?? 0} مضافة` : `👨‍🏫 ${analysisData?.kpis?.teacherExamsCount ?? 0} Teacher`}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? `تراكمي: ${analysisData?.kpis?.lifetimeExams ?? 0} اختبار` : `Lifetime: ${analysisData?.kpis?.lifetimeExams ?? 0} exams`}
               </div>
             </div>
 
             {/* 2. Total Attempts */}
             <div style={{
               background: '#FFFFFF',
-              borderRadius: '1rem',
-              padding: '1.25rem',
+              borderRadius: '0.875rem',
+              padding: '1rem',
               border: '1px solid #DCFCE7',
               boxShadow: '0 2px 4px rgba(5, 150, 105, 0.04)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '0.5rem'
+              gap: '0.4rem'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                   {isAr ? 'محاولات ونتائج الطلاب' : 'Student Submissions'}
                 </span>
-                <span style={{ padding: '0.35rem', background: '#ECFDF5', borderRadius: '0.5rem', color: '#059669' }}>
-                  <CheckCircle2 size={18} />
+                <span style={{ padding: '0.3rem', background: '#ECFDF5', borderRadius: '0.45rem', color: '#059669' }}>
+                  <CheckCircle2 size={16} />
                 </span>
               </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#059669' }}>
+              <div style={{ fontSize: 'clamp(1.4rem, 4vw, 1.85rem)', fontWeight: 900, color: '#059669', lineHeight: 1.1 }}>
                 {analysisData?.kpis?.totalAttempts ?? 0}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
-                {isAr ? 'تم تصحيحها وتسجيلها في النظام' : 'Graded & logged in system'}
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
+                <span style={{ fontSize: '0.7rem', background: '#F0FDF4', color: '#166534', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
+                  {isAr ? `🤖 ${analysisData?.kpis?.generatedAttemptsCount ?? 0} تقييم ذكي` : `🤖 ${analysisData?.kpis?.generatedAttemptsCount ?? 0} AI`}
+                </span>
+                <span style={{ fontSize: '0.7rem', background: '#EEF2FF', color: '#3730A3', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
+                  {isAr ? `👨‍🏫 ${analysisData?.kpis?.teacherAttemptsCount ?? 0} امتحانات` : `👨‍🏫 ${analysisData?.kpis?.teacherAttemptsCount ?? 0} Tests`}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? 'نتائج مصححة ومقيدة بالمنظومة' : 'Graded in system'}
               </div>
             </div>
 
             {/* 3. Average Score */}
             <div style={{
               background: '#FFFFFF',
-              borderRadius: '1rem',
-              padding: '1.25rem',
+              borderRadius: '0.875rem',
+              padding: '1rem',
               border: '1px solid #FEF3C7',
               boxShadow: '0 2px 4px rgba(217, 119, 6, 0.04)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '0.5rem'
+              gap: '0.4rem'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                   {isAr ? 'متوسط درجات الطلاب' : 'Average Student Score'}
                 </span>
-                <span style={{ padding: '0.35rem', background: '#FFFBEB', borderRadius: '0.5rem', color: '#D97706' }}>
-                  <Award size={18} />
+                <span style={{ padding: '0.3rem', background: '#FFFBEB', borderRadius: '0.45rem', color: '#D97706' }}>
+                  <Award size={16} />
                 </span>
               </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#D97706' }}>
+              <div style={{ fontSize: 'clamp(1.4rem, 4vw, 1.85rem)', fontWeight: 900, color: '#D97706', lineHeight: 1.1 }}>
                 {analysisData?.kpis?.averageScore ?? 0}%
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+              <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
                 {analysisData?.kpis?.averageScore >= 75 ? (isAr ? '🌟 أداء ممتاز ومرتفع' : '🌟 High Performance') : (isAr ? '📈 أداء مستقر وقيد المتابعة' : '📈 Stable performance')}
               </div>
             </div>
@@ -1135,57 +1161,57 @@ export const HierarchyDashboard: React.FC = () => {
             {/* 4. Pass Rate */}
             <div style={{
               background: '#FFFFFF',
-              borderRadius: '1rem',
-              padding: '1.25rem',
+              borderRadius: '0.875rem',
+              padding: '1rem',
               border: '1px solid #E0F2FE',
               boxShadow: '0 2px 4px rgba(2, 132, 199, 0.04)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '0.5rem'
+              gap: '0.4rem'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                   {isAr ? 'نسبة اجتياز الطلاب' : 'Student Pass Rate'}
                 </span>
-                <span style={{ padding: '0.35rem', background: '#F0F9FF', borderRadius: '0.5rem', color: '#0284C7' }}>
-                  <TrendingUp size={18} />
+                <span style={{ padding: '0.3rem', background: '#F0F9FF', borderRadius: '0.45rem', color: '#0284C7' }}>
+                  <TrendingUp size={16} />
                 </span>
               </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#0284C7' }}>
+              <div style={{ fontSize: 'clamp(1.4rem, 4vw, 1.85rem)', fontWeight: 900, color: '#0284C7', lineHeight: 1.1 }}>
                 {analysisData?.kpis?.passRate ?? 0}%
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
-                {isAr ? 'الدرجات أعلى من 50%' : 'Scores above 50% passing'}
+              <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? 'الدرجات أعلى من 50%' : 'Scores >= 50%'}
               </div>
             </div>
 
             {/* 5. Active Staff Under Supervision */}
             <div style={{
               background: '#FFFFFF',
-              borderRadius: '1rem',
-              padding: '1.25rem',
+              borderRadius: '0.875rem',
+              padding: '1rem',
               border: '1px solid #FCE7F3',
               boxShadow: '0 2px 4px rgba(219, 39, 119, 0.04)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '0.5rem'
+              gap: '0.4rem'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                   {isAr ? 'الكوادر الفعالة تحتي' : 'Active Subordinates'}
                 </span>
-                <span style={{ padding: '0.35rem', background: '#FDF2F8', borderRadius: '0.5rem', color: '#DB2777' }}>
-                  <Users size={18} />
+                <span style={{ padding: '0.3rem', background: '#FDF2F8', borderRadius: '0.45rem', color: '#DB2777' }}>
+                  <Users size={16} />
                 </span>
               </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#DB2777' }}>
+              <div style={{ fontSize: 'clamp(1.4rem, 4vw, 1.85rem)', fontWeight: 900, color: '#DB2777', lineHeight: 1.1 }}>
                 {analysisData?.kpis?.activeSubordinatesCount ?? 0}
-                <span style={{ fontSize: '1rem', fontWeight: 600, color: '#94A3B8', marginInlineStart: '0.35rem' }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#94A3B8', marginInlineStart: '0.35rem' }}>
                   / {analysisData?.kpis?.totalSubordinatesCount ?? 0}
                 </span>
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
-                {isAr ? 'أنشأوا اختبارات ونشطوا بالفترة' : 'Created tests in period'}
+              <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                {isAr ? 'أنشأوا اختبارات ونشطوا بالفترة' : 'Active in period'}
               </div>
             </div>
           </div>
@@ -1195,20 +1221,21 @@ export const HierarchyDashboard: React.FC = () => {
             <div style={{
               background: '#FFFFFF',
               borderRadius: '1rem',
-              padding: '1.5rem',
+              padding: '1.25rem 1rem',
               border: '1px solid var(--border-light)',
               boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
             }}>
               <h3 style={{
-                margin: '0 0 1.25rem 0',
-                fontSize: '1.05rem',
+                margin: '0 0 1rem 0',
+                fontSize: '1rem',
                 fontWeight: 800,
                 color: '#1E293B',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem'
+                gap: '0.5rem',
+                flexWrap: 'wrap'
               }}>
-                <TrendingUp size={20} color="#4F46E5" />
+                <TrendingUp size={18} color="#4F46E5" />
                 <span>
                   {analysisTimeframe === 'monthly'
                     ? (isAr ? 'مقارنة تطور الأداء والامتحانات (آخر 4 شهور)' : 'Performance & Exam Progression (Last 4 Months)')
@@ -1218,37 +1245,37 @@ export const HierarchyDashboard: React.FC = () => {
 
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '1rem'
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
+                gap: '0.75rem'
               }}>
                 {analysisData.timelineTrend.map((slot: any, idx: number) => (
                   <div key={idx} style={{
-                    padding: '1rem',
+                    padding: '0.85rem',
                     background: '#F8FAFC',
                     borderRadius: '0.75rem',
                     border: '1px solid #E2E8F0',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '0.65rem'
+                    gap: '0.5rem'
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#334155' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#334155' }}>
                         {isAr ? slot.label : slot.labelEn}
                       </span>
                       <span style={{
                         background: '#EEF2FF',
                         color: '#4F46E5',
-                        padding: '0.2rem 0.5rem',
+                        padding: '0.15rem 0.45rem',
                         borderRadius: '0.375rem',
-                        fontSize: '0.75rem',
+                        fontSize: '0.72rem',
                         fontWeight: 700
                       }}>
                         {slot.examsCount} {isAr ? 'اختبار' : 'exams'}
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#64748B' }}>
-                      <span>{isAr ? 'المحاولات:' : 'Attempts:'} <strong>{slot.attemptsCount}</strong></span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748B' }}>
+                      <span>{isAr ? 'المحاولات:' : 'Atts:'} <strong>{slot.attemptsCount}</strong></span>
                       <span>{isAr ? 'المتوسط:' : 'Avg:'} <strong style={{ color: slot.avgScore >= 50 ? '#059669' : '#D97706' }}>{slot.avgScore}%</strong></span>
                     </div>
 
@@ -1278,7 +1305,7 @@ export const HierarchyDashboard: React.FC = () => {
           <div style={{
             background: '#FFFFFF',
             borderRadius: '1rem',
-            padding: '1.5rem',
+            padding: '1.25rem 1rem',
             border: '1px solid var(--border-light)',
             boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
           }}>
@@ -1293,35 +1320,36 @@ export const HierarchyDashboard: React.FC = () => {
               <div>
                 <h3 style={{
                   margin: 0,
-                  fontSize: '1.1rem',
+                  fontSize: '1.05rem',
                   fontWeight: 800,
                   color: '#1E293B',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.5rem'
+                  gap: '0.5rem',
+                  flexWrap: 'wrap'
                 }}>
-                  <Users size={20} color="#4F46E5" />
+                  <Users size={18} color="#4F46E5" />
                   <span>
                     {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN')
-                      ? (isAr ? 'تحليل ومتابعة المحافظات وأمنائها التابعين لي' : 'Governorates & Governorate Admins Analysis')
+                      ? (isAr ? 'تحليل ومتابعة المحافظات ومدراء المحافظات التابعين لي' : 'Governorates & Governorate Directors Analysis')
                       : (user?.role === 'GOVERNORATE_ADMIN')
                         ? (isAr ? 'تحليل ومتابعة المواد والموجهين في محافظتي' : 'Subjects & Supervisors in My Governorate')
                         : (isAr ? 'تحليل ومتابعة المعلمين تحت إشرافي وتخصصي' : 'Teachers Under My Supervision')}
                   </span>
                 </h3>
-                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.825rem', color: '#64748B' }}>
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
                   {isAr
-                    ? 'فحص شامل لمعدلات إنشاء الامتحانات ومحاولات ودرجات الطلاب لكل مرؤوس مع إمكانية الدخول المباشر لحسابه'
-                    : 'Comprehensive review of exam creation, student attempts and scores with direct account access'}
+                    ? 'فحص شامل لمعدلات الاختبارات (المولدة ذكياً والمضافة من المعلمين) ومحاولات ودرجات الطلاب مع إمكانية الدخول المباشر للحساب'
+                    : 'Comprehensive review of exams (AI generated + teacher added) and student scores with direct account access'}
                 </p>
               </div>
 
               <span style={{
                 background: '#F1F5F9',
                 color: '#475569',
-                padding: '0.35rem 0.75rem',
+                padding: '0.3rem 0.65rem',
                 borderRadius: '0.5rem',
-                fontSize: '0.8rem',
+                fontSize: '0.78rem',
                 fontWeight: 700
               }}>
                 {isAr ? `العدد: ${analysisData?.subordinatesAnalysis?.length || 0}` : `Total: ${analysisData?.subordinatesAnalysis?.length || 0}`}
@@ -1340,7 +1368,7 @@ export const HierarchyDashboard: React.FC = () => {
             ) : (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
                 gap: '1rem'
               }}>
                 {analysisData.subordinatesAnalysis.map((item: any, idx: number) => {
@@ -1357,32 +1385,32 @@ export const HierarchyDashboard: React.FC = () => {
                         background: '#FFFFFF',
                         border: '1px solid #E2E8F0',
                         borderRadius: '0.875rem',
-                        padding: '1.25rem',
+                        padding: '1.15rem',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'space-between',
-                        gap: '1rem',
+                        gap: '0.85rem',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                         transition: 'transform 0.15s ease, box-shadow 0.15s ease'
                       }}
                     >
                       <div>
                         {/* Header: Title & Status */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.65rem' }}>
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0F172A' }}>
+                            <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0F172A' }}>
                               {item.title}
                             </div>
-                            <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '0.15rem' }}>
+                            <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '0.15rem' }}>
                               {item.subordinateName} {item.schoolName ? `• ${item.schoolName}` : ''}
                             </div>
                           </div>
                           <span style={{
-                            padding: '0.25rem 0.65rem',
+                            padding: '0.2rem 0.55rem',
                             borderRadius: '999px',
                             background: statusBg,
                             color: statusColor,
-                            fontSize: '0.75rem',
+                            fontSize: '0.72rem',
                             fontWeight: 800,
                             whiteSpace: 'nowrap'
                           }}>
@@ -1394,42 +1422,51 @@ export const HierarchyDashboard: React.FC = () => {
                         <div style={{
                           display: 'grid',
                           gridTemplateColumns: 'repeat(3, 1fr)',
-                          gap: '0.5rem',
+                          gap: '0.4rem',
                           background: '#F8FAFC',
                           borderRadius: '0.625rem',
-                          padding: '0.75rem',
+                          padding: '0.65rem',
                           textAlign: 'center'
                         }}>
                           <div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
                               {isAr ? 'الاختبارات' : 'Exams'}
                             </div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1E293B', marginTop: '0.15rem' }}>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1E293B', marginTop: '0.1rem' }}>
                               {item.totalExams}
                             </div>
+                            <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>
+                              {item.teacherExams || 0} مضاف + {item.generatedExams || 0} ذكي
+                            </div>
                           </div>
 
                           <div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
                               {isAr ? 'المحاولات' : 'Attempts'}
                             </div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1E293B', marginTop: '0.15rem' }}>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1E293B', marginTop: '0.1rem' }}>
                               {item.totalAttempts}
+                            </div>
+                            <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>
+                              {isAr ? 'محاولة طالب' : 'student att.'}
                             </div>
                           </div>
 
                           <div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
-                              {isAr ? 'المتوسط' : 'Avg Score'}
+                            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
+                              {isAr ? 'المتوسط' : 'Avg'}
                             </div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: statusColor, marginTop: '0.15rem' }}>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: statusColor, marginTop: '0.1rem' }}>
                               {item.averageScore}%
+                            </div>
+                            <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>
+                              {isAr ? `نجاح ${item.passRate}%` : `${item.passRate}% pass`}
                             </div>
                           </div>
                         </div>
 
                         {item.subordinateEmail && (
-                          <div style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: '0.5rem', direction: 'ltr', textAlign: isAr ? 'right' : 'left' }}>
+                          <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.4rem', direction: 'ltr', textAlign: isAr ? 'right' : 'left' }}>
                             ✉️ {item.subordinateEmail}
                           </div>
                         )}
@@ -1440,10 +1477,12 @@ export const HierarchyDashboard: React.FC = () => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        paddingTop: '0.75rem',
-                        borderTop: '1px solid #F1F5F9'
+                        paddingTop: '0.65rem',
+                        borderTop: '1px solid #F1F5F9',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem'
                       }}>
-                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
                           {isAr ? `نسبة الاجتياز: ${item.passRate}%` : `Pass: ${item.passRate}%`}
                         </span>
 
@@ -1452,26 +1491,34 @@ export const HierarchyDashboard: React.FC = () => {
                             type="button"
                             onClick={() => handleImpersonateById(item.subordinateId)}
                             style={{
-                              padding: '0.45rem 0.85rem',
+                              padding: '0.4rem 0.75rem',
                               background: '#4F46E5',
                               color: '#FFFFFF',
                               borderRadius: '0.5rem',
                               border: 'none',
-                              fontSize: '0.8rem',
+                              fontSize: '0.78rem',
                               fontWeight: 700,
                               cursor: 'pointer',
-                              display: 'flex',
+                              display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.35rem',
+                              gap: '0.3rem',
                               boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)',
                               transition: 'background 0.15s ease'
                             }}
                           >
-                            <Eye size={14} />
-                            <span>{isAr ? 'معاينة ودخول الحساب' : 'Access Account'}</span>
+                            <Eye size={13} />
+                            <span>
+                              {isAr 
+                                ? (item.targetType === 'GOVERNORATE' 
+                                    ? 'معاينة ودخول حساب مدير المحافظة' 
+                                    : item.targetType === 'SUBJECT_SUPERVISOR' 
+                                      ? 'معاينة ودخول حساب الموجه' 
+                                      : 'معاينة ودخول حساب المعلم') 
+                                : 'Access Account'}
+                            </span>
                           </button>
                         ) : (
-                          <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                          <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontStyle: 'italic' }}>
                             {isAr ? 'غير معيّن بعد' : 'Not assigned'}
                           </span>
                         )}
@@ -1660,7 +1707,7 @@ export const HierarchyDashboard: React.FC = () => {
           ) : (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))',
               gap: '1.25rem'
             }}>
               {exams.map(exam => (
@@ -1863,7 +1910,7 @@ export const HierarchyDashboard: React.FC = () => {
               overflowX: 'auto',
               boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
             }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
+              <table style={{ minWidth: '650px', width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
                 <thead>
                   <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid var(--border-light)' }}>
                     <th style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
@@ -1903,8 +1950,8 @@ export const HierarchyDashboard: React.FC = () => {
                           fontSize: '0.75rem',
                           fontWeight: 800
                         }}>
-                          {subUser.role === 'CENTRAL_ADMIN' && (isAr ? 'الأمين المركزي' : 'Central Secretary')}
-                          {subUser.role === 'GOVERNORATE_ADMIN' && (isAr ? 'أمين المحافظة' : 'Gov Admin')}
+                          {subUser.role === 'CENTRAL_ADMIN' && (isAr ? 'المدير المركزي' : 'Central Director')}
+                          {subUser.role === 'GOVERNORATE_ADMIN' && (isAr ? 'مدير المحافظة' : 'Gov Director')}
                           {subUser.role === 'SUPERVISOR' && (isAr ? 'موجه مادة' : 'Subject Supervisor')}
                           {subUser.role === 'TEACHER' && (isAr ? 'معلم' : 'Teacher')}
                         </span>
@@ -2206,9 +2253,10 @@ export const HierarchyDashboard: React.FC = () => {
             borderRadius: '1.25rem',
             width: '100%',
             maxWidth: '560px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
             boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            direction: isAr ? 'rtl' : 'ltr',
-            overflow: 'hidden'
+            direction: isAr ? 'rtl' : 'ltr'
           }}>
             <div style={{
               padding: '1.25rem 1.5rem',
@@ -2253,7 +2301,7 @@ export const HierarchyDashboard: React.FC = () => {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
                       {isAr ? 'البريد الإلكتروني: *' : 'Email Address: *'}
@@ -2287,7 +2335,7 @@ export const HierarchyDashboard: React.FC = () => {
                 {user?.role === 'CENTRAL_ADMIN' && (
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      {isAr ? 'المحافظة المسندة لأمين المحافظة: *' : 'Assigned Governorate: *'}
+                      {isAr ? 'المحافظة المسندة لمدير المحافظة: *' : 'Assigned Governorate: *'}
                     </label>
                     <select
                       required
@@ -2403,9 +2451,10 @@ export const HierarchyDashboard: React.FC = () => {
             borderRadius: '1.25rem',
             width: '100%',
             maxWidth: '520px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
             boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            direction: isAr ? 'rtl' : 'ltr',
-            overflow: 'hidden'
+            direction: isAr ? 'rtl' : 'ltr'
           }}>
             <div style={{
               padding: '1.25rem 1.5rem',

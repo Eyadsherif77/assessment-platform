@@ -466,7 +466,7 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
     } else if (user.role === 'CENTRAL_ADMIN') {
       targetRole = 'GOVERNORATE_ADMIN';
       if (!governorateId) {
-        return res.status(400).json({ error: 'يجب اختيار المحافظة التابع لها أمين المحافظة' });
+        return res.status(400).json({ error: 'يجب اختيار المحافظة التابع لها مدير المحافظة' });
       }
       assignedGovId = governorateId;
     } else if (user.role === 'GOVERNORATE_ADMIN') {
@@ -773,7 +773,7 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
     const allGovs = govRes.rows;
     const allSubjects = subRes.rows;
 
-    // 2. Fetch all exams with teacher & subject information
+    // 2. Fetch all teacher exams with teacher & subject information
     const examsRes = await db.query(
       `SELECT 
         e.id, e.title_ar, e.created_at, e.subject_id, e.teacher_id, e.is_published,
@@ -781,10 +781,11 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
         u.full_name as teacher_name,
         u.email as teacher_email,
         s.name_ar as subject_name_ar,
-        g.name_ar as governorate_name
+        g.name_ar as governorate_name,
+        'TEACHER_EXAM' as exam_source
        FROM exams e
-       JOIN users u ON e.teacher_id = u.id
-       JOIN subjects s ON e.subject_id = s.id
+       LEFT JOIN users u ON e.teacher_id = u.id
+       LEFT JOIN subjects s ON e.subject_id = s.id
        LEFT JOIN governorates g ON (e.governorate_id = g.id OR u.governorate_id = g.id)`
     );
 
@@ -801,54 +802,101 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
       attemptsByExam[att.exam_id].push(att);
     });
 
-    // 4. Timeframe calculations (Monthly vs Weekly)
+    // 4. Fetch all AI Generated Assessments from ai_evaluations
+    const aiEvalsRes = await db.query(
+      `SELECT 
+        ae.id,
+        ae.score,
+        ae.total_questions,
+        ae.created_at,
+        ae.subject_id,
+        b.teacher_id,
+        COALESCE(sp.governorate_id, su.governorate_id, tu.governorate_id) as governorate_id,
+        tu.full_name as teacher_name,
+        tu.email as teacher_email,
+        s.name_ar as subject_name_ar,
+        g.name_ar as governorate_name,
+        'AI_GENERATED' as exam_source
+       FROM ai_evaluations ae
+       LEFT JOIN books b ON ae.book_id = b.id
+       LEFT JOIN student_profiles sp ON ae.student_id = sp.user_id
+       LEFT JOIN users su ON ae.student_id = su.id
+       LEFT JOIN users tu ON b.teacher_id = tu.id
+       LEFT JOIN subjects s ON ae.subject_id = s.id
+       LEFT JOIN governorates g ON (COALESCE(sp.governorate_id, su.governorate_id, tu.governorate_id) = g.id)`
+    );
+
+    // 5. Timeframe calculations (Monthly vs Weekly)
     const now = new Date();
     const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfCurrentWeek = new Date(now);
-    const dayOfWeek = (now.getDay() + 1) % 7; // Saturday as start or standard 7-day window
     startOfCurrentWeek.setDate(now.getDate() - 7);
     startOfCurrentWeek.setHours(0, 0, 0, 0);
 
     const cutoffDate = timeframe === 'weekly' ? startOfCurrentWeek : startOfCurrentMonth;
 
-    // Filter exams within caller's overarching scope and timeframe
-    const scopedExams = examsRes.rows.filter((ex: any) => {
-      // Gov filter
+    // Filter teacher exams within caller's overarching scope
+    const scopedTeacherExams = examsRes.rows.filter((ex: any) => {
       if (effectiveGovId && ex.governorate_id !== effectiveGovId) return false;
-      // Subject filter
       if (effectiveSubId && ex.subject_id !== effectiveSubId) return false;
       return true;
     });
 
-    const periodExams = scopedExams.filter((ex: any) => {
+    // Filter AI generated assessments within caller's overarching scope
+    const scopedAiEvals = aiEvalsRes.rows.filter((ev: any) => {
+      if (effectiveGovId && ev.governorate_id !== effectiveGovId) return false;
+      if (effectiveSubId && ev.subject_id !== effectiveSubId) return false;
+      return true;
+    });
+
+    const periodTeacherExams = scopedTeacherExams.filter((ex: any) => {
       const d = new Date(ex.created_at || now);
       return d >= cutoffDate;
     });
 
-    // Calculate overall KPIs in period
+    const periodAiEvals = scopedAiEvals.filter((ev: any) => {
+      const d = new Date(ev.created_at || now);
+      return d >= cutoffDate;
+    });
+
+    // Combined overall KPIs in period
     let totalAttemptsCount = 0;
     let totalScoreSum = 0;
     let passingAttemptsCount = 0;
+    let teacherAttemptsCount = 0;
 
-    periodExams.forEach((ex: any) => {
+    // A) Process teacher exam attempts
+    periodTeacherExams.forEach((ex: any) => {
       const atts = attemptsByExam[ex.id] || [];
       atts.forEach((a: any) => {
         totalAttemptsCount++;
-        const sc = Number(a.score) || 0;
-        totalScoreSum += sc;
-        if (sc >= 50) passingAttemptsCount++;
+        teacherAttemptsCount++;
+        const totalPts = Number(a.total_points) || 0;
+        const rawScore = Number(a.score) || 0;
+        const scorePct = totalPts > 0 ? (rawScore / totalPts) * 100 : rawScore;
+        totalScoreSum += scorePct;
+        if (scorePct >= 50) passingAttemptsCount++;
       });
+    });
+
+    // B) Process AI generated evaluations (each evaluation is a completed student attempt)
+    periodAiEvals.forEach((ev: any) => {
+      totalAttemptsCount++;
+      const totalQ = Number(ev.total_questions) || 0;
+      const rawSc = Number(ev.score) || 0;
+      const scorePct = totalQ > 0 ? (rawSc / totalQ) * 100 : (rawSc <= 5 ? rawSc * 20 : rawSc);
+      totalScoreSum += scorePct;
+      if (scorePct >= 50) passingAttemptsCount++;
     });
 
     const averageScore = totalAttemptsCount > 0 ? Math.round((totalScoreSum / totalAttemptsCount) * 10) / 10 : 0;
     const passRate = totalAttemptsCount > 0 ? Math.round((passingAttemptsCount / totalAttemptsCount) * 100) : 0;
 
-    // 5. Build Subordinates Analysis based on Caller's Role
+    // 6. Build Subordinates Analysis based on Caller's Role
     let subordinatesAnalysis: any[] = [];
 
     if (isMaster) {
       // Caller is ADMIN or CENTRAL_ADMIN: Analyze each of the 27 Governorates
-      // Fetch governorate admin users
       const govAdminsRes = await db.query(
         `SELECT id, full_name, email, governorate_id, is_active FROM users WHERE role = 'GOVERNORATE_ADMIN'`
       );
@@ -857,31 +905,45 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
         if (ga.governorate_id) govAdminsByGovId[ga.governorate_id] = ga;
       });
 
-      // Filter governorates if a specific one was picked
       const targetGovs = (effectiveGovId && effectiveGovId !== 'ALL')
         ? allGovs.filter(g => g.id === effectiveGovId)
         : allGovs;
 
       subordinatesAnalysis = targetGovs.map(gov => {
         const adminUser = govAdminsByGovId[gov.id];
-        // Exams in this governorate
-        const govExams = scopedExams.filter(e => e.governorate_id === gov.id);
-        const govPeriodExams = govExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+        const govTeacherExams = scopedTeacherExams.filter(e => e.governorate_id === gov.id);
+        const govPeriodTeacherExams = govTeacherExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+        const govAiEvals = scopedAiEvals.filter(e => e.governorate_id === gov.id);
+        const govPeriodAiEvals = govAiEvals.filter(e => new Date(e.created_at || now) >= cutoffDate);
 
         let govAttempts = 0;
         let govScoreSum = 0;
         let govPassing = 0;
         const activeTeachersSet = new Set<string>();
 
-        govPeriodExams.forEach(e => {
+        // Teacher exams
+        govPeriodTeacherExams.forEach(e => {
           if (e.teacher_id) activeTeachersSet.add(e.teacher_id);
           const atts = attemptsByExam[e.id] || [];
           atts.forEach(a => {
             govAttempts++;
-            const sc = Number(a.score) || 0;
-            govScoreSum += sc;
-            if (sc >= 50) govPassing++;
+            const totalPts = Number(a.total_points) || 0;
+            const raw = Number(a.score) || 0;
+            const pct = totalPts > 0 ? (raw / totalPts) * 100 : raw;
+            govScoreSum += pct;
+            if (pct >= 50) govPassing++;
           });
+        });
+
+        // AI evaluations
+        govPeriodAiEvals.forEach(ev => {
+          if (ev.teacher_id) activeTeachersSet.add(ev.teacher_id);
+          govAttempts++;
+          const tQ = Number(ev.total_questions) || 0;
+          const rS = Number(ev.score) || 0;
+          const pct = tQ > 0 ? (rS / tQ) * 100 : (rS <= 5 ? rS * 20 : rS);
+          govScoreSum += pct;
+          if (pct >= 50) govPassing++;
         });
 
         const govAvgScore = govAttempts > 0 ? Math.round((govScoreSum / govAttempts) * 10) / 10 : 0;
@@ -890,7 +952,7 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
         return {
           id: gov.id,
           targetType: 'GOVERNORATE',
-          title: gov.name_ar,
+          title: `محافظة ${gov.name_ar}`,
           titleEn: gov.name_en || gov.name_ar,
           governorateId: gov.id,
           governorateName: gov.name_ar,
@@ -898,8 +960,10 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
           subordinateEmail: adminUser ? adminUser.email : null,
           subordinateId: adminUser ? adminUser.id : null,
           hasAssignedUser: Boolean(adminUser),
-          totalExams: govPeriodExams.length,
-          lifetimeExams: govExams.length,
+          totalExams: govPeriodTeacherExams.length + govPeriodAiEvals.length,
+          teacherExams: govPeriodTeacherExams.length,
+          generatedExams: govPeriodAiEvals.length,
+          lifetimeExams: govTeacherExams.length + govAiEvals.length,
           totalAttempts: govAttempts,
           averageScore: govAvgScore,
           passRate: govPassRate,
@@ -926,23 +990,39 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
 
       subordinatesAnalysis = targetSubjects.map(sub => {
         const supervisorUser = supervisorsBySubId[sub.id];
-        const subExams = scopedExams.filter(e => e.subject_id === sub.id && e.governorate_id === myGovId);
-        const subPeriodExams = subExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+        const subTeacherExams = scopedTeacherExams.filter(e => e.subject_id === sub.id && e.governorate_id === myGovId);
+        const subPeriodTeacherExams = subTeacherExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+        const subAiEvals = scopedAiEvals.filter(e => e.subject_id === sub.id && e.governorate_id === myGovId);
+        const subPeriodAiEvals = subAiEvals.filter(e => new Date(e.created_at || now) >= cutoffDate);
 
         let subAttempts = 0;
         let subScoreSum = 0;
         let subPassing = 0;
         const activeTeachersSet = new Set<string>();
 
-        subPeriodExams.forEach(e => {
+        // Teacher exams
+        subPeriodTeacherExams.forEach(e => {
           if (e.teacher_id) activeTeachersSet.add(e.teacher_id);
           const atts = attemptsByExam[e.id] || [];
           atts.forEach(a => {
             subAttempts++;
-            const sc = Number(a.score) || 0;
-            subScoreSum += sc;
-            if (sc >= 50) subPassing++;
+            const totalPts = Number(a.total_points) || 0;
+            const raw = Number(a.score) || 0;
+            const pct = totalPts > 0 ? (raw / totalPts) * 100 : raw;
+            subScoreSum += pct;
+            if (pct >= 50) subPassing++;
           });
+        });
+
+        // AI evaluations
+        subPeriodAiEvals.forEach(ev => {
+          if (ev.teacher_id) activeTeachersSet.add(ev.teacher_id);
+          subAttempts++;
+          const tQ = Number(ev.total_questions) || 0;
+          const rS = Number(ev.score) || 0;
+          const pct = tQ > 0 ? (rS / tQ) * 100 : (rS <= 5 ? rS * 20 : rS);
+          subScoreSum += pct;
+          if (pct >= 50) subPassing++;
         });
 
         const subAvgScore = subAttempts > 0 ? Math.round((subScoreSum / subAttempts) * 10) / 10 : 0;
@@ -961,8 +1041,10 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
           subordinateEmail: supervisorUser ? supervisorUser.email : null,
           subordinateId: supervisorUser ? supervisorUser.id : null,
           hasAssignedUser: Boolean(supervisorUser),
-          totalExams: subPeriodExams.length,
-          lifetimeExams: subExams.length,
+          totalExams: subPeriodTeacherExams.length + subPeriodAiEvals.length,
+          teacherExams: subPeriodTeacherExams.length,
+          generatedExams: subPeriodAiEvals.length,
+          lifetimeExams: subTeacherExams.length + subAiEvals.length,
           totalAttempts: subAttempts,
           averageScore: subAvgScore,
           passRate: subPassRate,
@@ -985,8 +1067,10 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
       );
 
       subordinatesAnalysis = teachersRes.rows.map(teacher => {
-        const teacherExams = scopedExams.filter(e => e.teacher_id === teacher.id);
+        const teacherExams = scopedTeacherExams.filter(e => e.teacher_id === teacher.id);
         const teacherPeriodExams = teacherExams.filter(e => new Date(e.created_at || now) >= cutoffDate);
+        const teacherAiEvals = scopedAiEvals.filter(e => e.teacher_id === teacher.id);
+        const teacherPeriodAiEvals = teacherAiEvals.filter(e => new Date(e.created_at || now) >= cutoffDate);
 
         let tAttempts = 0;
         let tScoreSum = 0;
@@ -996,10 +1080,21 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
           const atts = attemptsByExam[e.id] || [];
           atts.forEach(a => {
             tAttempts++;
-            const sc = Number(a.score) || 0;
-            tScoreSum += sc;
-            if (sc >= 50) tPassing++;
+            const totalPts = Number(a.total_points) || 0;
+            const raw = Number(a.score) || 0;
+            const pct = totalPts > 0 ? (raw / totalPts) * 100 : raw;
+            tScoreSum += pct;
+            if (pct >= 50) tPassing++;
           });
+        });
+
+        teacherPeriodAiEvals.forEach(ev => {
+          tAttempts++;
+          const tQ = Number(ev.total_questions) || 0;
+          const rS = Number(ev.score) || 0;
+          const pct = tQ > 0 ? (rS / tQ) * 100 : (rS <= 5 ? rS * 20 : rS);
+          tScoreSum += pct;
+          if (pct >= 50) tPassing++;
         });
 
         const tAvgScore = tAttempts > 0 ? Math.round((tScoreSum / tAttempts) * 10) / 10 : 0;
@@ -1019,8 +1114,10 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
           subordinateId: teacher.id,
           schoolName: teacher.school_name || 'المدرسة المسجلة',
           hasAssignedUser: true,
-          totalExams: teacherPeriodExams.length,
-          lifetimeExams: teacherExams.length,
+          totalExams: teacherPeriodExams.length + teacherPeriodAiEvals.length,
+          teacherExams: teacherPeriodExams.length,
+          generatedExams: teacherPeriodAiEvals.length,
+          lifetimeExams: teacherExams.length + teacherAiEvals.length,
           totalAttempts: tAttempts,
           averageScore: tAvgScore,
           passRate: tPassRate,
@@ -1030,7 +1127,7 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    // 6. Trend Breakdown (4 slots for Monthly or 4 Weeks for Weekly)
+    // 7. Trend Breakdown (4 slots for Monthly or 4 Weeks for Weekly) combining both sources
     const trendList: any[] = [];
     if (timeframe === 'weekly') {
       for (let i = 3; i >= 0; i--) {
@@ -1039,25 +1136,42 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
         const labelAr = i === 0 ? 'الأسبوع الحالي' : `منذ ${i} أسبوع`;
         const labelEn = i === 0 ? 'Current Week' : `${i}w ago`;
 
-        const wExams = scopedExams.filter(e => {
+        const wTeacherExams = scopedTeacherExams.filter(e => {
+          const d = new Date(e.created_at || now);
+          return d >= wStart && d <= wEnd;
+        });
+
+        const wAiEvals = scopedAiEvals.filter(e => {
           const d = new Date(e.created_at || now);
           return d >= wStart && d <= wEnd;
         });
 
         let wAtts = 0;
         let wScore = 0;
-        wExams.forEach(e => {
+
+        wTeacherExams.forEach(e => {
           const atts = attemptsByExam[e.id] || [];
           atts.forEach(a => {
             wAtts++;
-            wScore += Number(a.score) || 0;
+            const tP = Number(a.total_points) || 0;
+            const rS = Number(a.score) || 0;
+            wScore += tP > 0 ? (rS / tP) * 100 : rS;
           });
+        });
+
+        wAiEvals.forEach(ev => {
+          wAtts++;
+          const tQ = Number(ev.total_questions) || 0;
+          const rS = Number(ev.score) || 0;
+          wScore += tQ > 0 ? (rS / tQ) * 100 : (rS <= 5 ? rS * 20 : rS);
         });
 
         trendList.push({
           label: labelAr,
           labelEn,
-          examsCount: wExams.length,
+          examsCount: wTeacherExams.length + wAiEvals.length,
+          teacherExamsCount: wTeacherExams.length,
+          generatedExamsCount: wAiEvals.length,
           attemptsCount: wAtts,
           avgScore: wAtts > 0 ? Math.round((wScore / wAtts) * 10) / 10 : 0
         });
@@ -1075,32 +1189,49 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
         const mLabelAr = monthNamesAr[targetDate.getMonth()];
         const mLabelEn = monthNamesEn[targetDate.getMonth()];
 
-        const mExams = scopedExams.filter(e => {
+        const mTeacherExams = scopedTeacherExams.filter(e => {
+          const d = new Date(e.created_at || now);
+          return d >= mStart && d <= mEnd;
+        });
+
+        const mAiEvals = scopedAiEvals.filter(e => {
           const d = new Date(e.created_at || now);
           return d >= mStart && d <= mEnd;
         });
 
         let mAtts = 0;
         let mScore = 0;
-        mExams.forEach(e => {
+
+        mTeacherExams.forEach(e => {
           const atts = attemptsByExam[e.id] || [];
           atts.forEach(a => {
             mAtts++;
-            mScore += Number(a.score) || 0;
+            const tP = Number(a.total_points) || 0;
+            const rS = Number(a.score) || 0;
+            mScore += tP > 0 ? (rS / tP) * 100 : rS;
           });
+        });
+
+        mAiEvals.forEach(ev => {
+          mAtts++;
+          const tQ = Number(ev.total_questions) || 0;
+          const rS = Number(ev.score) || 0;
+          mScore += tQ > 0 ? (rS / tQ) * 100 : (rS <= 5 ? rS * 20 : rS);
         });
 
         trendList.push({
           label: mLabelAr,
           labelEn: mLabelEn,
-          examsCount: mExams.length,
+          examsCount: mTeacherExams.length + mAiEvals.length,
+          teacherExamsCount: mTeacherExams.length,
+          generatedExamsCount: mAiEvals.length,
           attemptsCount: mAtts,
           avgScore: mAtts > 0 ? Math.round((mScore / mAtts) * 10) / 10 : 0
         });
       }
     }
 
-    // 7. Active Subordinates Count in Period
+    // 8. Active Subordinates Count in Period
     const activeSubordinatesCount = subordinatesAnalysis.filter(s => s.totalExams > 0).length;
 
     return res.json({
@@ -1113,9 +1244,15 @@ router.get('/supervisory-analysis', async (req: AuthenticatedRequest, res) => {
         timeframe
       },
       kpis: {
-        totalExams: periodExams.length,
-        lifetimeExams: scopedExams.length,
+        totalExams: periodTeacherExams.length + periodAiEvals.length,
+        generatedExamsCount: periodAiEvals.length,
+        teacherExamsCount: periodTeacherExams.length,
+        lifetimeExams: scopedTeacherExams.length + scopedAiEvals.length,
+        lifetimeGeneratedExams: scopedAiEvals.length,
+        lifetimeTeacherExams: scopedTeacherExams.length,
         totalAttempts: totalAttemptsCount,
+        teacherAttemptsCount,
+        generatedAttemptsCount: periodAiEvals.length,
         averageScore,
         passRate,
         activeSubordinatesCount,

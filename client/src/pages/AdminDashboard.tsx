@@ -559,7 +559,7 @@ export const AdminDashboard: React.FC = () => {
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', padding: '0.75rem 1.25rem', fontWeight: 700 }}
         >
           <ShieldCheck size={17} />
-          <span>{language === 'ar' ? 'الهيكل الرقابي والجمهوري (الأمين المركزي والمحافظات)' : 'Supervisory Hierarchy'}</span>
+          <span>{language === 'ar' ? 'الهيكل الرقابي والجمهوري (المدير المركزي ومدراء المحافظات)' : 'Supervisory Hierarchy'}</span>
         </button>
 
         <button
