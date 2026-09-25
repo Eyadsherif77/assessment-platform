@@ -618,7 +618,7 @@ export const StudentDashboard: React.FC = () => {
   const handleGenerateAiAssessment = async () => {
     if (!selectedAiBook || !selectedAiChapterId) return;
     if (monthlyLimitStatus?.isLimitReached) {
-      alert(monthlyLimitStatus.message || (isAr ? 'عذراً، لقد استنفدت الحد الأقصى المسموح به من اختبارات الذكاء الاصطناعي لهذا الشهر.' : 'Monthly AI exam limit reached.'));
+      alert(monthlyLimitStatus.message || (isAr ? 'عذراً، لقد استنفدت الحد الأقصى المسموح به لهذا الشهر.' : 'Monthly exam limit reached.'));
       return;
     }
     setIsGeneratingAi(true);
