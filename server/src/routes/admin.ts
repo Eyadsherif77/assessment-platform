@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, generateToken, AuthenticatedRequest } from '../middleware/auth.js';
+import { getMonthlyExamLimit, setMonthlyExamLimit } from '../services/examLimitService.js';
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.get('/overview', async (req: AuthenticatedRequest, res) => {
     const examsRes = await db.query(`SELECT COUNT(*) as count FROM exams`);
     const attemptsRes = await db.query(`SELECT COUNT(*) as count FROM exam_attempts`);
     const evaluationsRes = await db.query(`SELECT COUNT(*) as count FROM ai_evaluations`);
+    const monthlyLimit = await getMonthlyExamLimit();
 
     return res.json({
       stats: {
@@ -29,17 +31,32 @@ router.get('/overview', async (req: AuthenticatedRequest, res) => {
         totalBooks: Number(booksRes.rows[0]?.count || 0),
         totalExams: Number(examsRes.rows[0]?.count || 0),
         totalExamAttempts: Number(attemptsRes.rows[0]?.count || 0),
-        totalAiEvaluations: Number(evaluationsRes.rows[0]?.count || 0)
-      },
-      idArchitecture: {
-        owner: { format: 'superid', sample: 'SUPER-ADMIN-001', note: 'المعرّف الفائق للمالك والمدير العام' },
-        teacher: { format: 'hybrid_id', sample: 'HYBRID-TEA-SCI-01', note: 'المعرّف الهجين التجميعي للمعلم وتخصصه ومدرسته' },
-        student: { format: 'id', sample: 'd190ea63-127b-40fa-a10c', note: 'معرّف قياسي مباشر وبسيط دون إضافات' }
+        totalAiEvaluations: Number(evaluationsRes.rows[0]?.count || 0),
+        monthlyExamLimit: monthlyLimit
       }
     });
   } catch (error: any) {
     console.error('Error fetching admin overview:', error);
     return res.status(500).json({ error: 'حدث خطأ أثناء جلب ملخص النظام' });
+  }
+});
+
+router.get('/monthly-exam-limit', async (req: AuthenticatedRequest, res) => {
+  const limit = await getMonthlyExamLimit();
+  return res.json({ limit });
+});
+
+router.post('/monthly-exam-limit', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { limit } = req.body;
+    const numLimit = parseInt(limit, 10);
+    if (isNaN(numLimit) || numLimit < 1) {
+      return res.status(400).json({ error: 'الرجاء إدخال رقم صحيح موجب للحد الأقصى للاختبارات' });
+    }
+    const updatedLimit = await setMonthlyExamLimit(numLimit, req.user!.email);
+    return res.json({ success: true, limit: updatedLimit });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في تحديث الحد الشهري للاختبارات' });
   }
 });
 

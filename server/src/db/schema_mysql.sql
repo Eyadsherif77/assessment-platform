@@ -321,3 +321,11 @@ CREATE TABLE IF NOT EXISTS student_learning_history (
     FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE SET NULL,
     FOREIGN KEY (chapter_id) REFERENCES book_chapters(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS platform_settings (
+    setting_key VARCHAR(64) PRIMARY KEY,
+    setting_value TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by VARCHAR(64)
+);
+

@@ -252,6 +252,23 @@ class DatabaseManager {
             `);
           } catch (_) {}
 
+          // Ensure platform settings table and default monthly exam limit
+          try {
+            await this.tidbConn.execute(`
+              CREATE TABLE IF NOT EXISTS platform_settings (
+                setting_key VARCHAR(64) PRIMARY KEY,
+                setting_value TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                updated_by VARCHAR(64)
+              )
+            `);
+            await this.tidbConn.execute(`
+              INSERT INTO platform_settings (setting_key, setting_value, updated_by)
+              VALUES ('monthly_exam_limit', '10', 'SYSTEM')
+              ON DUPLICATE KEY UPDATE setting_value = setting_value
+            `);
+          } catch (_) {}
+
           // Safe high-performance indexing for question bank caching
           try {
             await this.tidbConn.execute(`CREATE INDEX idx_qbank_chapter ON question_bank_items (chapter_id)`);
@@ -332,6 +349,18 @@ class DatabaseManager {
           await this.query(`UPDATE student_profiles SET school_type = 'عربي' WHERE school_type IS NULL OR school_type = ''`);
           await this.query(`UPDATE books SET school_type = 'كلاهما' WHERE school_type IS NULL OR school_type = ''`);
           await this.query(`UPDATE exams SET school_type = 'كلاهما' WHERE school_type IS NULL OR school_type = ''`);
+        } catch (_) {}
+
+        // Ensure platform_settings table
+        try {
+          await this.query(`
+            CREATE TABLE IF NOT EXISTS platform_settings (
+              setting_key TEXT PRIMARY KEY,
+              setting_value TEXT NOT NULL,
+              updated_at TEXT,
+              updated_by TEXT
+            )
+          `);
         } catch (_) {}
 
         console.log('✅ Database schema verified and active.');

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, generateToken, AuthenticatedRequest } from '../middleware/auth.js';
+import { getMonthlyExamLimit, setMonthlyExamLimit } from '../services/examLimitService.js';
 
 const router = Router();
 
@@ -70,7 +71,8 @@ router.get('/meta', async (req: AuthenticatedRequest, res) => {
         lockedSubjectName
       },
       governorates: govRes.rows,
-      subjects: subRes.rows
+      subjects: subRes.rows,
+      monthlyExamLimit: await getMonthlyExamLimit()
     });
   } catch (err: any) {
     console.error('Error in /api/hierarchy/meta:', err);
@@ -149,12 +151,47 @@ router.get('/stats', async (req: AuthenticatedRequest, res) => {
         teachersCount,
         supervisorsCount,
         govAdminsCount,
-        questionsCount
+        questionsCount,
+        monthlyExamLimit: await getMonthlyExamLimit()
       }
     });
   } catch (err: any) {
     console.error('Error in /api/hierarchy/stats:', err);
     return res.status(500).json({ error: 'خطأ في جلب إحصائيات الهيكل الإداري: ' + err.message });
+  }
+});
+
+/**
+ * 2.1 Get Monthly Exam Limit
+ */
+router.get('/monthly-exam-limit', async (req: AuthenticatedRequest, res) => {
+  try {
+    const limit = await getMonthlyExamLimit();
+    return res.json({ limit });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب الحد الشهري للاختبارات' });
+  }
+});
+
+/**
+ * 2.2 Update Monthly Exam Limit (ADMIN & CENTRAL_ADMIN only)
+ */
+router.post('/monthly-exam-limit', requireRole(['ADMIN', 'CENTRAL_ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { limit } = req.body;
+    const numLimit = parseInt(limit, 10);
+    if (isNaN(numLimit) || numLimit < 1) {
+      return res.status(400).json({ error: 'الرجاء إدخال رقم صحيح موجب للحد الأقصى للاختبارات' });
+    }
+    const updatedLimit = await setMonthlyExamLimit(numLimit, req.user!.email);
+    return res.json({
+      success: true,
+      limit: updatedLimit,
+      message: `تم ضبط وتحديث الحد الأقصى للاختبارات شهرياً بنجاح إلى ${updatedLimit} اختباراً لكل طالب.`
+    });
+  } catch (err: any) {
+    console.error('Error updating monthly exam limit:', err);
+    return res.status(500).json({ error: 'خطأ في تحديث الحد الشهري للاختبارات' });
   }
 });
 

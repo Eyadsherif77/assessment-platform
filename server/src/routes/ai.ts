@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
 import { aiRagEngine } from '../services/ai/aiRagEngine.js';
+import { checkStudentExamLimit } from '../services/examLimitService.js';
 
 const router = Router();
 
@@ -12,6 +13,17 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
 
     if (!book_id || !chapter_id || !subject_id) {
       return res.status(400).json({ error: 'الرجاء اختيار المادة والكتاب والفصل الدراسي للتقييم' });
+    }
+
+    // Check student's monthly exam limit across all subjects
+    const limitStatus = await checkStudentExamLimit(req.user!.id);
+    if (!limitStatus.allowed) {
+      return res.status(403).json({
+        error: limitStatus.message,
+        code: 'MONTHLY_EXAM_LIMIT_REACHED',
+        limit: limitStatus.limit,
+        currentCount: limitStatus.currentCount
+      });
     }
 
     const studentProfile = req.studentProfile;
@@ -124,6 +136,17 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
 
     if (!book_id || !chapter_id || !subject_id || !Array.isArray(questions) || !Array.isArray(answers)) {
       return res.status(400).json({ error: 'بيانات التقييم غير مكتملة' });
+    }
+
+    // Check student's monthly exam limit across all subjects
+    const limitStatus = await checkStudentExamLimit(req.user!.id);
+    if (!limitStatus.allowed) {
+      return res.status(403).json({
+        error: limitStatus.message,
+        code: 'MONTHLY_EXAM_LIMIT_REACHED',
+        limit: limitStatus.limit,
+        currentCount: limitStatus.currentCount
+      });
     }
 
     const studentProfile = req.studentProfile;

@@ -2,8 +2,29 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
+import { checkStudentExamLimit, getMonthlyExamLimit } from '../services/examLimitService.js';
 
 const router = Router();
+
+// Get Monthly Exam Limit Status for current student
+router.get('/monthly-limit-status', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (req.user?.role !== 'STUDENT') {
+      const limit = await getMonthlyExamLimit();
+      return res.json({ limit, currentCount: 0, remaining: limit, isLimitReached: false });
+    }
+    const status = await checkStudentExamLimit(req.user.id);
+    return res.json({
+      limit: status.limit,
+      currentCount: status.currentCount,
+      remaining: status.remaining,
+      isLimitReached: !status.allowed,
+      message: status.message
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب بيانات الحد الشهري للاختبارات' });
+  }
+});
 
 // List exams
 router.get('/', authenticateToken, enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
@@ -246,6 +267,17 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
       if (!isBoth && examSchoolType && examSchoolType !== studentSchoolType) {
         return res.status(403).json({ error: 'هذا الاختبار غير مخصص لنوع مدرستك' });
       }
+
+      // Check student's monthly exam limit across all subjects
+      const limitStatus = await checkStudentExamLimit(req.user.id);
+      if (!limitStatus.allowed) {
+        return res.status(403).json({
+          error: limitStatus.message,
+          code: 'MONTHLY_EXAM_LIMIT_REACHED',
+          limit: limitStatus.limit,
+          currentCount: limitStatus.currentCount
+        });
+      }
     }
 
     // Fetch questions
@@ -298,6 +330,17 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
     const isBoth = ['كلاهما', 'both', 'عربي ولغات', 'عام ولغات'].includes(examSchoolType);
     if (!isBoth && examSchoolType && examSchoolType !== studentSchoolType) {
       return res.status(403).json({ error: 'الاختبار غير مخصص لنوع مدرستك' });
+    }
+
+    // Check student's monthly exam limit across all subjects
+    const limitStatus = await checkStudentExamLimit(req.user!.id);
+    if (!limitStatus.allowed) {
+      return res.status(403).json({
+        error: limitStatus.message,
+        code: 'MONTHLY_EXAM_LIMIT_REACHED',
+        limit: limitStatus.limit,
+        currentCount: limitStatus.currentCount
+      });
     }
 
     // Fetch all questions and their correct options

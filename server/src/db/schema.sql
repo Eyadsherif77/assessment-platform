@@ -287,6 +287,14 @@ CREATE TABLE IF NOT EXISTS student_learning_history (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS platform_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now')),
+    updated_by TEXT
+);
+
+
 -- High-performance Indexes
 CREATE INDEX IF NOT EXISTS idx_users_role_email ON users(role, email);
 CREATE INDEX IF NOT EXISTS idx_student_profiles_stage_grade ON student_profiles(academic_stage_id, grade_id);

@@ -16,7 +16,8 @@ import {
   TrendingUp,
   X,
   School,
-  ShieldCheck
+  ShieldCheck,
+  Sliders
 } from 'lucide-react';
 import { HierarchyDashboard } from './HierarchyDashboard';
 
@@ -105,6 +106,12 @@ export const AdminDashboard: React.FC = () => {
   const [selectedStudentForDetails, setSelectedStudentForDetails] = useState<any | null>(null);
   const [studentDetailsLoading, setStudentDetailsLoading] = useState(false);
 
+  // Monthly Exam Limit State
+  const [monthlyLimit, setMonthlyLimit] = useState<number>(10);
+  const [limitModalOpen, setLimitModalOpen] = useState<boolean>(false);
+  const [newLimitInput, setNewLimitInput] = useState<string>('10');
+  const [limitLoading, setLimitLoading] = useState<boolean>(false);
+
   // Status message
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -122,9 +129,46 @@ export const AdminDashboard: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setStats(data.stats);
+        if (data.stats?.monthlyExamLimit) {
+          setMonthlyLimit(data.stats.monthlyExamLimit);
+          setNewLimitInput(String(data.stats.monthlyExamLimit));
+        }
       }
     } catch (err) {
       console.error('Error fetching admin overview:', err);
+    }
+  };
+
+  const handleSaveMonthlyLimit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = parseInt(newLimitInput, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      showAlert('الرجاء إدخال رقم صحيح موجب للحد الأقصى', 'error');
+      return;
+    }
+    setLimitLoading(true);
+    try {
+      const res = await fetch(apiUrl('/api/admin/monthly-exam-limit'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ limit: parsed })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMonthlyLimit(data.limit || parsed);
+        setLimitModalOpen(false);
+        showAlert(`تم تحديث الحد الأقصى للاختبارات شهرياً بنجاح إلى ${data.limit || parsed} اختباراً لكل طالب.`, 'success');
+        fetchOverview();
+      } else {
+        showAlert(data.error || 'فشل تحديث الحد الأقصى', 'error');
+      }
+    } catch (err: any) {
+      showAlert('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+      setLimitLoading(false);
     }
   };
 
@@ -540,6 +584,61 @@ export const AdminDashboard: React.FC = () => {
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                 {language === 'ar' ? 'بتشخيص تربوي فوري' : 'Automated evaluations'}
               </div>
+            </div>
+
+            {/* Stat 6: Monthly Exam Limit */}
+            <div style={{
+              background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+              padding: '1.15rem 1.25rem',
+              borderRadius: 'var(--radius-lg)',
+              border: '1.5px solid #A7F3D0',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#065F46', fontWeight: 800 }}>
+                    {language === 'ar' ? 'الحد الشهري للاختبارات' : 'Monthly Exam Limit'}
+                  </span>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sliders size={17} color="#059669" />
+                  </div>
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: '0.4rem', color: '#059669', lineHeight: 1 }}>
+                  {monthlyLimit}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#047857', marginTop: '0.35rem', fontWeight: 600 }}>
+                  {language === 'ar' ? 'لكل طالب (شامل كافة المواد)' : 'per student (all subjects)'}
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setNewLimitInput(String(monthlyLimit));
+                  setLimitModalOpen(true);
+                }}
+                style={{
+                  marginTop: '0.85rem',
+                  background: '#059669',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  width: 'fit-content',
+                  boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)'
+                }}
+              >
+                <Settings size={13} />
+                <span>{language === 'ar' ? 'تعديل الحد' : 'Edit Limit'}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1262,6 +1361,101 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: MONTHLY EXAM LIMIT */}
+      {limitModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '480px', padding: '1.75rem', borderRadius: 'var(--radius-xl)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#D1FAE5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Sliders size={18} />
+                </div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0 }}>
+                  {language === 'ar' ? 'الحد الأقصى للاختبارات شهرياً' : 'Monthly Exam Limit per Student'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setLimitModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMonthlyLimit}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+                {language === 'ar'
+                  ? 'حدد أقصى عدد من الاختبارات المسموح لكل طالب إجراؤها شهرياً (إجمالي شامل لكافة المواد: اختبارات المعلمين + التقييمات الذكية). عند استهلاك الطالب للحد المحدد، يتم حظر الاختبار التالي مع إشعار بالحد الأقصى.'
+                  : 'Set the maximum number of exams a student can take per month across all subjects. Once reached, the student cannot take additional exams until the next month.'}
+              </p>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
+                  {language === 'ar' ? 'عدد الاختبارات المسموحة شهرياً لكل طالب: *' : 'Allowed Monthly Exams per Student: *'}
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  max={500}
+                  value={newLimitInput}
+                  onChange={(e) => setNewLimitInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '0.6rem',
+                    border: '2px solid #E2E8F0',
+                    fontSize: '1.25rem',
+                    fontWeight: 900,
+                    color: '#0F172A',
+                    outline: 'none',
+                    textAlign: 'center'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#10B981'}
+                  onBlur={(e) => e.target.style.borderColor = '#E2E8F0'}
+                />
+              </div>
+
+              <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setLimitModalOpen(false)}
+                >
+                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={limitLoading}
+                  style={{
+                    background: '#059669',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    padding: '0.65rem 1.5rem',
+                    borderRadius: '0.5rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)'
+                  }}
+                >
+                  {limitLoading ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ وتطبيق فوراً' : 'Save & Apply')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

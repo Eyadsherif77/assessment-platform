@@ -56,6 +56,30 @@ export const StudentDashboard: React.FC = () => {
   const [showExamsHistoryModal, setShowExamsHistoryModal] = useState<boolean>(false);
   const [selectedSubjectForWeeklyModal, setSelectedSubjectForWeeklyModal] = useState<any | null>(null);
 
+  // Monthly Exam Limit State
+  const [monthlyLimitStatus, setMonthlyLimitStatus] = useState<{
+    limit: number;
+    currentCount: number;
+    remaining: number;
+    isLimitReached: boolean;
+    message?: string;
+  } | null>(null);
+
+  const fetchExamLimitStatus = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(apiUrl('/api/exams/monthly-limit-status'), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMonthlyLimitStatus(data);
+      }
+    } catch (err) {
+      console.error('Error fetching monthly exam limit status:', err);
+    }
+  };
+
   // Books Data & PDF Reader
   const [books, setBooks] = useState<any[]>([]);
   const [selectedPdfBook, setSelectedPdfBook] = useState<any | null>(null);
@@ -502,6 +526,7 @@ export const StudentDashboard: React.FC = () => {
         setAnalytics(data);
       })
       .catch(console.error);
+    fetchExamLimitStatus();
   };
 
   // Live Exam Countdown Timer Effect
@@ -522,11 +547,22 @@ export const StudentDashboard: React.FC = () => {
 
   // Start taking an exam
   const handleStartExam = async (examId: string) => {
+    if (monthlyLimitStatus?.isLimitReached) {
+      alert(monthlyLimitStatus.message || (isAr ? 'عذراً، لقد استنفدت الحد الأقصى المسموح به من الاختبارات لهذا الشهر.' : 'Monthly exam limit reached.'));
+      return;
+    }
     try {
       const res = await fetch(apiUrl(`/api/exams/${examId}`), {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || (isAr ? 'تعذر بدء الاختبار' : 'Failed to start exam'));
+        if (data.code === 'MONTHLY_EXAM_LIMIT_REACHED') {
+          fetchExamLimitStatus();
+        }
+        return;
+      }
       setActiveExam(data);
       setExamAnswers({});
       setExamResult(null);
@@ -557,8 +593,16 @@ export const StudentDashboard: React.FC = () => {
         body: JSON.stringify({ answers: answersPayload })
       });
       const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || (isAr ? 'تعذر تسليم الاختبار' : 'Failed to submit exam'));
+        if (data.code === 'MONTHLY_EXAM_LIMIT_REACHED') {
+          fetchExamLimitStatus();
+        }
+        return;
+      }
       setExamResult(data);
       loadAnalytics();
+      fetchExamLimitStatus();
     } catch (e) {
       console.error(e);
     } finally {
@@ -584,6 +628,10 @@ export const StudentDashboard: React.FC = () => {
 
   const handleGenerateAiAssessment = async () => {
     if (!selectedAiBook || !selectedAiChapterId) return;
+    if (monthlyLimitStatus?.isLimitReached) {
+      alert(monthlyLimitStatus.message || (isAr ? 'عذراً، لقد استنفدت الحد الأقصى المسموح به من الاختبارات لهذا الشهر.' : 'Monthly exam limit reached.'));
+      return;
+    }
     setIsGeneratingAi(true);
     setAiGenError(null);
     setAiReport(null);
@@ -607,7 +655,12 @@ export const StudentDashboard: React.FC = () => {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل توليد التقييم');
+      if (!res.ok) {
+        if (data.code === 'MONTHLY_EXAM_LIMIT_REACHED') {
+          fetchExamLimitStatus();
+        }
+        throw new Error(data.error || 'فشل توليد التقييم');
+      }
 
       setAiQuestions(data.questions || []);
       setServerContextQuestions(data._server_context_questions || []);
@@ -648,10 +701,16 @@ export const StudentDashboard: React.FC = () => {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل تشخيص الإجابات');
+      if (!res.ok) {
+        if (data.code === 'MONTHLY_EXAM_LIMIT_REACHED') {
+          fetchExamLimitStatus();
+        }
+        throw new Error(data.error || 'فشل تشخيص الإجابات');
+      }
 
       setAiReport(data.report);
       loadAnalytics();
+      fetchExamLimitStatus();
       setAiStep(5); // Advance to diagnosis step
     } catch (err: any) {
       alert(err.message);
@@ -720,6 +779,42 @@ export const StudentDashboard: React.FC = () => {
             <span>{isAr ? `${analytics?.summary?.study_streak_days || 0} أيام دراسية متتالية 🔥` : `${analytics?.summary?.study_streak_days || 0}-Day Study Streak 🔥`}</span>
           </span>
         </div>
+
+        {/* Monthly Exam Limit Status Badge */}
+        {monthlyLimitStatus && (
+          <div style={{
+            padding: '0.75rem 0.85rem',
+            borderRadius: '0.85rem',
+            background: monthlyLimitStatus.isLimitReached
+              ? 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)'
+              : 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+            border: `1.5px solid ${monthlyLimitStatus.isLimitReached ? '#FECACA' : '#A7F3D0'}`,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+            marginTop: '0.25rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+              <span style={{ fontWeight: 800, fontSize: '0.78rem', color: monthlyLimitStatus.isLimitReached ? '#991B1B' : '#065F46' }}>
+                {isAr ? 'الحد الشهري للاختبارات' : 'Monthly Exam Limit'}
+              </span>
+              <span style={{
+                fontWeight: 900,
+                fontSize: '0.75rem',
+                color: monthlyLimitStatus.isLimitReached ? '#B91C1C' : '#047857',
+                background: '#FFFFFF',
+                padding: '0.15rem 0.5rem',
+                borderRadius: '999px',
+                border: `1px solid ${monthlyLimitStatus.isLimitReached ? '#FCA5A5' : '#86EFAC'}`
+              }}>
+                {monthlyLimitStatus.currentCount} / {monthlyLimitStatus.limit}
+              </span>
+            </div>
+            <div style={{ color: monthlyLimitStatus.isLimitReached ? '#B91C1C' : '#059669', fontSize: '0.72rem', fontWeight: 600, lineHeight: 1.4 }}>
+              {monthlyLimitStatus.isLimitReached
+                ? (isAr ? '⚠️ استنفدت حد الاختبارات لهذا الشهر' : '⚠️ Monthly limit reached')
+                : (isAr ? `متبقي لك ${monthlyLimitStatus.remaining} اختباراً هذا الشهر` : `${monthlyLimitStatus.remaining} exams remaining this month`)}
+            </div>
+          </div>
+        )}
 
         {/* Sidebar Nav Buttons */}
         <nav className="sidebar-nav">
