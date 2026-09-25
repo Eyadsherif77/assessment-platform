@@ -267,17 +267,6 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
       if (!isBoth && examSchoolType && examSchoolType !== studentSchoolType) {
         return res.status(403).json({ error: 'هذا الاختبار غير مخصص لنوع مدرستك' });
       }
-
-      // Check student's monthly exam limit across all subjects
-      const limitStatus = await checkStudentExamLimit(req.user.id);
-      if (!limitStatus.allowed) {
-        return res.status(403).json({
-          error: limitStatus.message,
-          code: 'MONTHLY_EXAM_LIMIT_REACHED',
-          limit: limitStatus.limit,
-          currentCount: limitStatus.currentCount
-        });
-      }
     }
 
     // Fetch questions
@@ -330,17 +319,6 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
     const isBoth = ['كلاهما', 'both', 'عربي ولغات', 'عام ولغات'].includes(examSchoolType);
     if (!isBoth && examSchoolType && examSchoolType !== studentSchoolType) {
       return res.status(403).json({ error: 'الاختبار غير مخصص لنوع مدرستك' });
-    }
-
-    // Check student's monthly exam limit across all subjects
-    const limitStatus = await checkStudentExamLimit(req.user!.id);
-    if (!limitStatus.allowed) {
-      return res.status(403).json({
-        error: limitStatus.message,
-        code: 'MONTHLY_EXAM_LIMIT_REACHED',
-        limit: limitStatus.limit,
-        currentCount: limitStatus.currentCount
-      });
     }
 
     // Fetch all questions and their correct options

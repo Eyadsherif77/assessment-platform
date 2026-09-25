@@ -59,11 +59,9 @@ export async function setMonthlyExamLimit(limit: number, updatedBy: string): Pro
 }
 
 /**
- * Get the total count of exams a student has completed in the current month across ALL subjects.
- * (Teacher-added exam attempts + AI evaluations)
+ * Get the total count of AI-generated exams a student has completed in the current month across ALL subjects.
  */
 export async function getStudentMonthlyExamsCount(studentId: string): Promise<{
-  teacherAttempts: number;
   aiEvaluations: number;
   total: number;
 }> {
@@ -75,30 +73,21 @@ export async function getStudentMonthlyExamsCount(studentId: string): Promise<{
       .slice(0, 19)
       .replace('T', ' ');
 
-    const [attemptsRes, aiEvalsRes] = await Promise.all([
-      db.query(
-        `SELECT COUNT(*) as count FROM exam_attempts WHERE student_id = $1 AND created_at >= $2`,
-        [studentId, startOfMonthUtc]
-      ),
-      db.query(
-        `SELECT COUNT(*) as count FROM ai_evaluations WHERE student_id = $1 AND created_at >= $2`,
-        [studentId, startOfMonthUtc]
-      )
-    ]);
+    const aiEvalsRes = await db.query(
+      `SELECT COUNT(*) as count FROM ai_evaluations WHERE student_id = $1 AND created_at >= $2`,
+      [studentId, startOfMonthUtc]
+    );
 
-    const teacherAttempts = Number(attemptsRes.rows[0]?.count || 0);
     const aiEvaluations = Number(aiEvalsRes.rows[0]?.count || 0);
-    const total = teacherAttempts + aiEvaluations;
-
-    return { teacherAttempts, aiEvaluations, total };
+    return { aiEvaluations, total: aiEvaluations };
   } catch (err) {
-    console.error('Error counting student monthly exams:', err);
-    return { teacherAttempts: 0, aiEvaluations: 0, total: 0 };
+    console.error('Error counting student monthly AI exams:', err);
+    return { aiEvaluations: 0, total: 0 };
   }
 }
 
 /**
- * Check if the student has reached their monthly exam limit.
+ * Check if the student has reached their monthly AI exam limit.
  */
 export async function checkStudentExamLimit(studentId: string): Promise<ExamLimitStatus> {
   const limit = await getMonthlyExamLimit();
@@ -114,6 +103,6 @@ export async function checkStudentExamLimit(studentId: string): Promise<ExamLimi
     remaining,
     message: allowed
       ? undefined
-      : `عذراً، لقد استنفدت الحد الأقصى المسموح به من الاختبارات لهذا الشهر (${limit} اختبارات شاملة كافة المواد). يمكنك خوض المزيد مع بداية الشهر القادم.`
+      : `عذراً، لقد استنفدت الحد الأقصى المسموح به من اختبارات الذكاء الاصطناعي لهذا الشهر (${limit} اختبارات شاملة كافة المواد). يمكنك خوض المزيد مع بداية الشهر القادم.`
   };
 }

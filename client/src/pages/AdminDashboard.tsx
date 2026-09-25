@@ -600,7 +600,7 @@ export const AdminDashboard: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '0.8rem', color: '#065F46', fontWeight: 800 }}>
-                    {language === 'ar' ? 'الحد الشهري للاختبارات' : 'Monthly Exam Limit'}
+                    {language === 'ar' ? 'الحد الشهري لاختبارات AI' : 'Monthly AI Quiz Limit'}
                   </span>
                   <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Sliders size={17} color="#059669" />
@@ -610,7 +610,7 @@ export const AdminDashboard: React.FC = () => {
                   {monthlyLimit}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#047857', marginTop: '0.35rem', fontWeight: 600 }}>
-                  {language === 'ar' ? 'لكل طالب (شامل كافة المواد)' : 'per student (all subjects)'}
+                  {language === 'ar' ? 'لكل طالب (اختبارات الذكاء الاصطناعي لكافة المواد)' : 'per student (AI exams across all subjects)'}
                 </div>
               </div>
 
@@ -1385,7 +1385,7 @@ export const AdminDashboard: React.FC = () => {
                   <Sliders size={18} />
                 </div>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0 }}>
-                  {language === 'ar' ? 'الحد الأقصى للاختبارات شهرياً' : 'Monthly Exam Limit per Student'}
+                  {language === 'ar' ? 'الحد الأقصى لاختبارات الذكاء الاصطناعي شهرياً' : 'Monthly AI Quiz Limit per Student'}
                 </h3>
               </div>
               <button
@@ -1399,13 +1399,13 @@ export const AdminDashboard: React.FC = () => {
             <form onSubmit={handleSaveMonthlyLimit}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '1.25rem' }}>
                 {language === 'ar'
-                  ? 'حدد أقصى عدد من الاختبارات المسموح لكل طالب إجراؤها شهرياً (إجمالي شامل لكافة المواد: اختبارات المعلمين + التقييمات الذكية). عند استهلاك الطالب للحد المحدد، يتم حظر الاختبار التالي مع إشعار بالحد الأقصى.'
-                  : 'Set the maximum number of exams a student can take per month across all subjects. Once reached, the student cannot take additional exams until the next month.'}
+                  ? 'حدد أقصى عدد لاختبارات الذكاء الاصطناعي المسموح لكل طالب توليدها شهرياً (إجمالي شامل لكافة المواد). لا يؤثر هذا الحد على اختبارات المعلمين، وعند استهلاك الطالب للحد المحدد، يتم حظر توليد اختبارات الذكاء الاصطناعي الإضافية حتى بداية الشهر القادم.'
+                  : 'Set the maximum number of AI-generated quizzes a student can take per month across all subjects. This does not affect teacher exams. Once reached, the student cannot generate additional AI quizzes until next month.'}
               </p>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
-                  {language === 'ar' ? 'عدد الاختبارات المسموحة شهرياً لكل طالب: *' : 'Allowed Monthly Exams per Student: *'}
+                  {language === 'ar' ? 'عدد اختبارات الذكاء الاصطناعي المسموحة شهرياً لكل طالب: *' : 'Allowed Monthly AI Quizzes per Student: *'}
                 </label>
                 <input
                   type="number"

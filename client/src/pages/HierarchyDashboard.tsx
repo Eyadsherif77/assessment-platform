@@ -715,12 +715,12 @@ export const HierarchyDashboard: React.FC = () => {
               </div>
               <div>
                 <div style={{ fontSize: '0.8rem', color: '#065F46', fontWeight: 800 }}>
-                  {isAr ? 'الحد الأقصى للاختبارات شهرياً' : 'Monthly Exam Limit'}
+                  {isAr ? 'الحد الأقصى لاختبارات الذكاء الاصطناعي شهرياً' : 'Monthly AI Quiz Limit'}
                 </div>
                 <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#047857', display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
                   <span>{monthlyLimit}</span>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669' }}>
-                    {isAr ? 'اختبار / طالب (لكافة المواد)' : 'exams/month (all subjects)'}
+                    {isAr ? 'اختبار AI / طالب (لكافة المواد)' : 'AI quizzes/month (all subjects)'}
                   </span>
                 </div>
               </div>
@@ -2733,7 +2733,7 @@ export const HierarchyDashboard: React.FC = () => {
                   <Sliders size={18} />
                 </div>
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--text-dark)', margin: 0 }}>
-                  {isAr ? 'الحد الأقصى للاختبارات شهرياً' : 'Monthly Exam Limit'}
+                  {isAr ? 'الحد الأقصى لاختبارات الذكاء الاصطناعي شهرياً' : 'Monthly AI Quiz Limit'}
                 </h3>
               </div>
               <button
@@ -2747,13 +2747,13 @@ export const HierarchyDashboard: React.FC = () => {
             <form onSubmit={handleSaveMonthlyLimit} style={{ padding: '1.5rem' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', lineHeight: 1.6, margin: '0 0 1.25rem 0' }}>
                 {isAr
-                  ? 'حدد أقصى عدد من الاختبارات المسموح لكل طالب إجراؤها شهرياً (إجمالي شامل لكافة المواد: اختبارات المعلمين + التقييمات الذكية). بمجرد إتمام الطالب لهذا العدد، يتم حظر الاختبار التالي مع إشعار بالحد الأقصى حتى مطلع الشهر الجديد.'
-                  : 'Set the maximum number of exams a student can take per month (combined across all subjects). Once reached, the student cannot take additional exams until the next month.'}
+                  ? 'حدد أقصى عدد لاختبارات الذكاء الاصطناعي المسموح لكل طالب توليدها شهرياً (إجمالي شامل لكافة المواد). لا يؤثر هذا الحد على اختبارات المعلمين. بمجرد إتمام الطالب لهذا العدد، يتم حظر توليد اختبارات الذكاء الاصطناعي الإضافية حتى مطلع الشهر الجديد.'
+                  : 'Set the maximum number of AI-generated quizzes a student can take per month (combined across all subjects). This does not affect teacher exams.'}
               </p>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
-                  {isAr ? 'عدد الاختبارات المسموحة شهرياً لكل طالب: *' : 'Allowed Monthly Exams per Student: *'}
+                  {isAr ? 'عدد اختبارات الذكاء الاصطناعي المسموحة شهرياً لكل طالب: *' : 'Allowed Monthly AI Quizzes per Student: *'}
                 </label>
                 <input
                   type="number"

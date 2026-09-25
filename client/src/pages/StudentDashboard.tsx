@@ -547,10 +547,6 @@ export const StudentDashboard: React.FC = () => {
 
   // Start taking an exam
   const handleStartExam = async (examId: string) => {
-    if (monthlyLimitStatus?.isLimitReached) {
-      alert(monthlyLimitStatus.message || (isAr ? 'عذراً، لقد استنفدت الحد الأقصى المسموح به من الاختبارات لهذا الشهر.' : 'Monthly exam limit reached.'));
-      return;
-    }
     try {
       const res = await fetch(apiUrl(`/api/exams/${examId}`), {
         headers: { Authorization: `Bearer ${token}` }
@@ -558,9 +554,6 @@ export const StudentDashboard: React.FC = () => {
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || (isAr ? 'تعذر بدء الاختبار' : 'Failed to start exam'));
-        if (data.code === 'MONTHLY_EXAM_LIMIT_REACHED') {
-          fetchExamLimitStatus();
-        }
         return;
       }
       setActiveExam(data);
@@ -595,14 +588,10 @@ export const StudentDashboard: React.FC = () => {
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || (isAr ? 'تعذر تسليم الاختبار' : 'Failed to submit exam'));
-        if (data.code === 'MONTHLY_EXAM_LIMIT_REACHED') {
-          fetchExamLimitStatus();
-        }
         return;
       }
       setExamResult(data);
       loadAnalytics();
-      fetchExamLimitStatus();
     } catch (e) {
       console.error(e);
     } finally {
@@ -629,7 +618,7 @@ export const StudentDashboard: React.FC = () => {
   const handleGenerateAiAssessment = async () => {
     if (!selectedAiBook || !selectedAiChapterId) return;
     if (monthlyLimitStatus?.isLimitReached) {
-      alert(monthlyLimitStatus.message || (isAr ? 'عذراً، لقد استنفدت الحد الأقصى المسموح به من الاختبارات لهذا الشهر.' : 'Monthly exam limit reached.'));
+      alert(monthlyLimitStatus.message || (isAr ? 'عذراً، لقد استنفدت الحد الأقصى المسموح به من اختبارات الذكاء الاصطناعي لهذا الشهر.' : 'Monthly AI exam limit reached.'));
       return;
     }
     setIsGeneratingAi(true);
@@ -794,7 +783,7 @@ export const StudentDashboard: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
               <span style={{ fontWeight: 800, fontSize: '0.78rem', color: monthlyLimitStatus.isLimitReached ? '#991B1B' : '#065F46' }}>
-                {isAr ? 'الحد الشهري للاختبارات' : 'Monthly Exam Limit'}
+                {isAr ? 'حد اختبارات الذكاء الاصطناعي' : 'Monthly AI Quiz Limit'}
               </span>
               <span style={{
                 fontWeight: 900,
@@ -810,8 +799,8 @@ export const StudentDashboard: React.FC = () => {
             </div>
             <div style={{ color: monthlyLimitStatus.isLimitReached ? '#B91C1C' : '#059669', fontSize: '0.72rem', fontWeight: 600, lineHeight: 1.4 }}>
               {monthlyLimitStatus.isLimitReached
-                ? (isAr ? '⚠️ استنفدت حد الاختبارات لهذا الشهر' : '⚠️ Monthly limit reached')
-                : (isAr ? `متبقي لك ${monthlyLimitStatus.remaining} اختباراً هذا الشهر` : `${monthlyLimitStatus.remaining} exams remaining this month`)}
+                ? (isAr ? '⚠️ استنفدت حد اختبارات AI لهذا الشهر' : '⚠️ Monthly AI limit reached')
+                : (isAr ? `متبقي لك ${monthlyLimitStatus.remaining} اختبار AI هذا الشهر` : `${monthlyLimitStatus.remaining} AI quizzes remaining this month`)}
             </div>
           </div>
         )}
