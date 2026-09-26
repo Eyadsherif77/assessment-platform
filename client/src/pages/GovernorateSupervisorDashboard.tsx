@@ -64,7 +64,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
   const [password, setPassword] = useState<string>('');
   const [selectedGradeId, setSelectedGradeId] = useState<string>('');
   const [schoolType, setSchoolType] = useState<'عربى' | 'لغات'>('عربى');
-  const [schoolName, setSchoolName] = useState<string>('مدرسة الفارابي');
+  const [schoolName, setSchoolName] = useState<string>('المدرسة الرسمية');
   const [formLoading, setFormLoading] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -131,7 +131,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
   // Auto-generate random password
   const generateRandomPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let p = 'Farabi@';
+    let p = 'Edu@';
     for (let i = 0; i < 4; i++) {
       p += chars.charAt(Math.floor(Math.random() * chars.length));
     }
@@ -142,7 +142,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
   const generateUsernameFromFullName = (name: string) => {
     if (!name.trim()) {
       const rnd = Math.floor(1000 + Math.random() * 9000);
-      setUsername(`farabi_stu_${rnd}`);
+      setUsername(`stu_${rnd}`);
       return;
     }
     const clean = name
@@ -179,7 +179,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
           password: password.trim(),
           gradeId: selectedGradeId,
           schoolType,
-          schoolName: schoolName.trim() || 'مدرسة الفارابي'
+          schoolName: schoolName.trim() || 'المدرسة الرسمية'
         })
       });
 
@@ -268,7 +268,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
       `"${s.stageName || ''}"`,
       `"${s.gradeName || ''}"`,
       `"${s.schoolType || 'عربى'}"`,
-      `"${s.schoolName || 'مدرسة الفارابي'}"`,
+      `"${s.schoolName || 'المدرسة الرسمية'}"`,
       `"${s.governorateName || governorateName}"`,
       `"${new Date(s.createdAt).toLocaleDateString('ar-EG')}"`
     ]);
@@ -282,7 +282,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
     const gradeNameSuffix = selectedGradeFilter !== 'ALL' 
       ? `_${grades.find(g => g.id === selectedGradeFilter)?.name_ar || ''}`
       : '_جميع_الصفوف';
-    const filename = `بيانات_حسابات_الطلاب_مدرسة_الفارابي${gradeNameSuffix}_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `بيانات_حسابات_الطلاب_المعتمدة${gradeNameSuffix}_${new Date().toISOString().slice(0, 10)}.csv`;
     link.setAttribute('href', url);
     link.setAttribute('download', filename);
     document.body.appendChild(link);
@@ -327,7 +327,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <img src="/logo.png" alt="Farabi School" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
+            <img src="/logo.png" alt="Platform Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
           </div>
 
           <div>
@@ -366,7 +366,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
               </span>
             </div>
             <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: '#FFFFFF', lineHeight: 1.3 }}>
-              {isAr ? 'منظومة إنشاء وتصدير حسابات الطلاب - مدرسة الفارابي' : 'Farabi Student Accounts Management'}
+              {isAr ? 'منظومة إنشاء وتصدير حسابات الطلاب - منصة التقييم من أجل التعلم' : 'Student Accounts Management - Assessment Platform'}
             </h1>
             <p style={{ margin: '0.35rem 0 0', color: '#BFDBFE', fontSize: '0.85rem' }}>
               {isAr
@@ -628,7 +628,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                 className="form-input"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Farabi@2026"
+                placeholder="Edu@2026"
               />
             </div>
 
@@ -698,7 +698,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                 className="form-input"
                 value={schoolName}
                 onChange={e => setSchoolName(e.target.value)}
-                placeholder="مدرسة الفارابي"
+                placeholder="المدرسة الرسمية"
               />
             </div>
 
@@ -879,7 +879,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                               padding: '0.15rem 0.45rem',
                               borderRadius: 'var(--radius-sm)'
                             }}>
-                              {isVisible ? (s.initialPassword || 'Farabi@123') : '••••••••'}
+                              {isVisible ? (s.initialPassword || 'Edu@123') : '••••••••'}
                             </span>
                             <button
                               onClick={() => togglePasswordVisibility(s.id)}
@@ -889,7 +889,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                               {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
                             </button>
                             <button
-                              onClick={() => handleCopyCredentials(s.initialPassword || 'Farabi@123', `${s.id}-pass`)}
+                              onClick={() => handleCopyCredentials(s.initialPassword || 'Edu@123', `${s.id}-pass`)}
                               title={isAr ? 'نسخ كلمة المرور' : 'Copy Password'}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.2rem' }}
                             >

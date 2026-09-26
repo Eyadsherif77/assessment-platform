@@ -36,7 +36,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // 2. إسم المحافظة (all in Egypt)
   const [governorate, setGovernorate] = useState<string>('القاهرة');
   // 3. الفصل الدراسى (الاول / التانى)
-  const [term, setTerm] = useState<'الاول' | 'التانى'>('الاول');
+  const [term] = useState<'الاول' | 'التانى'>('الاول');
   // 4. إسم المدرسة
   const [schoolName, setSchoolName] = useState<string>('');
   // 5. email
@@ -272,7 +272,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }}>
           <img
             src="/logo.png"
-            alt={isAr ? 'مدرسة الفارابي - Farabi School' : 'Farabi School Logo'}
+            alt={isAr ? 'منصة التقييم من أجل التعلم' : 'Assessment Platform Logo'}
             style={{
               width: '100%',
               height: '100%',
@@ -340,14 +340,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '0.35rem', color: 'var(--text-title)' }}>
             {isAr 
-              ? (mode === 'login' ? 'مرحباً بك مجدداً في مدرسة الفارابي' : 'إنشاء حساب جديد (الطلاب)')
-              : (mode === 'login' ? 'Welcome Back to Farabi School' : 'Student Account Registration')}
+              ? (mode === 'login' ? 'مرحباً بك مجدداً في منصة التقييم من أجل التعلم' : 'إنشاء حساب جديد (الطلاب)')
+              : (mode === 'login' ? 'Welcome Back to Assessment Platform' : 'Student Account Registration')}
           </h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
             {isAr
               ? (mode === 'login'
                   ? 'أدخل البريد الإلكتروني أو اسم المستخدم وكلمة المرور للمتابعة.'
-                  : 'بيانات تسجيل الطالب في منصة التقييم والتعلم بمدرسة الفارابي.')
+                  : 'بيانات تسجيل الطالب في منصة التقييم من أجل التعلم.')
               : (mode === 'login'
                   ? 'Enter your email or username to access your learning portal.'
                   : 'Student credentials and registration details.')}
@@ -423,24 +423,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </select>
                 </div>
 
-                {/* 3. الفصل الدراسى (الاول / التانى) */}
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 800 }}>
-                    {isAr ? 'الفصل الدراسى' : 'Academic Term'}
-                  </label>
-                  <select
-                    className="form-select"
-                    disabled={true}
-                    value={term}
-                    onChange={e => setTerm(e.target.value as any)}
-                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
-                  >
-                    <option value="الاول">{isAr ? 'الاول' : 'First Term'}</option>
-                    <option value="التانى">{isAr ? 'التانى' : 'Second Term'}</option>
-                  </select>
-                </div>
-
-                {/* 3b. الصف الدراسى – open grades Primary 1 to Secondary 3 */}
+                {/* 3. الصف الدراسى – open grades Primary 1 to Secondary 3 */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
                     <GraduationCap size={15} style={{ display: 'inline', marginInlineEnd: '4px' }} />
@@ -493,7 +476,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     type="text"
                     disabled={true}
                     className="form-input"
-                    value={schoolName || (isAr ? 'مدرسة الفارابي' : 'Farabi School')}
+                    value={schoolName || (isAr ? 'المدرسة الرسمية' : 'Official School')}
                     onChange={(e) => setSchoolName(e.target.value)}
                     readOnly
                     style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
@@ -514,7 +497,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       className="form-input"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
-                      placeholder="student@farabischool.edu.eg"
+                      placeholder="student@school.edu.eg"
                       style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem', opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                     />
                     <Mail 
@@ -589,7 +572,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       className="form-input"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
-                      placeholder={isAr ? 'student@farabischool.edu.eg أو اسم المستخدم' : 'email or username'}
+                      placeholder={isAr ? 'البريد الإلكتروني أو اسم المستخدم' : 'email or username'}
                       style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
                     />
                     <Mail 

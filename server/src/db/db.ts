@@ -218,6 +218,8 @@ class DatabaseManager {
             'ALTER TABLE teacher_profiles ADD COLUMN governorate_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN subject_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN supervisor_id VARCHAR(64) NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN grade_id VARCHAR(64) NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN academic_stage_id VARCHAR(64) NULL',
             'ALTER TABLE users ADD COLUMN initial_password VARCHAR(255) NULL'
           ];
           for (const colSql of hierarchyUserCols) {

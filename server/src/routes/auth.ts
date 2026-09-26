@@ -264,7 +264,15 @@ router.post('/login', async (req, res) => {
       );
       profileData = sp.rows[0];
     } else if (user.role === 'TEACHER') {
-      const tp = await db.query(`SELECT * FROM teacher_profiles WHERE user_id = $1`, [user.id]);
+      const tp = await db.query(
+        `SELECT tp.*, g.name_ar as grade_name_ar, g.name_en as grade_name_en,
+                s.name_ar as stage_name_ar, s.name_en as stage_name_en
+         FROM teacher_profiles tp
+         LEFT JOIN grades g ON tp.grade_id = g.id
+         LEFT JOIN academic_stages s ON tp.academic_stage_id = s.id
+         WHERE tp.user_id = $1`,
+        [user.id]
+      );
       profileData = tp.rows[0];
     }
 
@@ -347,7 +355,15 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
       );
       profileData = sp.rows[0];
     } else if (user.role === 'TEACHER') {
-      const tp = await db.query(`SELECT * FROM teacher_profiles WHERE user_id = $1`, [user.id]);
+      const tp = await db.query(
+        `SELECT tp.*, g.name_ar as grade_name_ar, g.name_en as grade_name_en,
+                s.name_ar as stage_name_ar, s.name_en as stage_name_en
+         FROM teacher_profiles tp
+         LEFT JOIN grades g ON tp.grade_id = g.id
+         LEFT JOIN academic_stages s ON tp.academic_stage_id = s.id
+         WHERE tp.user_id = $1`,
+        [user.id]
+      );
       profileData = tp.rows[0];
     }
 

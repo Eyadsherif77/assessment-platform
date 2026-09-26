@@ -155,7 +155,7 @@ router.get('/students', async (req: AuthenticatedRequest, res) => {
       gradeCode: row.grade_code,
       stageName: row.stage_name_ar || 'غير محدد',
       schoolType: row.school_type || 'عربى',
-      schoolName: row.school_name || 'مدرسة الفارابي',
+      schoolName: row.school_name || 'المدرسة الرسمية',
       governorateName: row.governorate_name || 'غير محدد',
       createdAt: row.created_at
     }));
@@ -194,7 +194,7 @@ router.post('/students', async (req: AuthenticatedRequest, res) => {
     const cleanPassword = password.trim();
     const cleanFullName = fullName.trim();
     const cleanSchoolType = schoolType || 'عربى';
-    const cleanSchoolName = (schoolName || 'مدرسة الفارابي').trim();
+    const cleanSchoolName = (schoolName || 'المدرسة الرسمية').trim();
 
     // Check username uniqueness
     const userCheck = await db.query(
@@ -228,7 +228,7 @@ router.post('/students', async (req: AuthenticatedRequest, res) => {
 
     const newUserId = uuidv4();
     const passwordHash = await bcrypt.hash(cleanPassword, 10);
-    const userEmail = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@farabischool.edu.eg`;
+    const userEmail = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@school.edu.eg`;
 
     // Governorate
     const assignedGovId = user.governorateId || null;

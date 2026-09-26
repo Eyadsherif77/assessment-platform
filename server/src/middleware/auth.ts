@@ -30,6 +30,8 @@ export interface TeacherProfileInfo {
   schoolName?: string;
   governorateId?: string;
   subjectId?: string;
+  gradeId?: string;
+  academicStageId?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -92,7 +94,8 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
       }
     } else if (decoded.role === 'TEACHER') {
       const tProfile = await db.query(
-        `SELECT specialization, school_name, governorate_id, subject_id FROM teacher_profiles WHERE user_id = $1`,
+        `SELECT specialization, school_name, governorate_id, subject_id, grade_id, academic_stage_id 
+         FROM teacher_profiles WHERE user_id = $1`,
         [decoded.id]
       );
       if (tProfile.rows.length > 0) {
@@ -100,7 +103,9 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
           specialization: (tProfile.rows[0].specialization || '').trim(),
           schoolName: tProfile.rows[0].school_name || '',
           governorateId: tProfile.rows[0].governorate_id,
-          subjectId: tProfile.rows[0].subject_id
+          subjectId: tProfile.rows[0].subject_id,
+          gradeId: tProfile.rows[0].grade_id,
+          academicStageId: tProfile.rows[0].academic_stage_id
         };
       }
     }

@@ -104,6 +104,8 @@ router.get('/stats', async (req: AuthenticatedRequest, res) => {
     let teachersCount = 0;
     let supervisorsCount = 0;
     let govAdminsCount = 0;
+    let govSupervisorsCount = 0;
+    let centralAdminsCount = 0;
     let questionsCount = 0;
 
     if (isMaster) {
@@ -111,12 +113,16 @@ router.get('/stats', async (req: AuthenticatedRequest, res) => {
       const tRes = await db.query(`SELECT COUNT(*) as cnt FROM users WHERE role = 'TEACHER'`);
       const sRes = await db.query(`SELECT COUNT(*) as cnt FROM users WHERE role = 'SUPERVISOR'`);
       const gRes = await db.query(`SELECT COUNT(*) as cnt FROM users WHERE role = 'GOVERNORATE_ADMIN'`);
+      const gsRes = await db.query(`SELECT COUNT(*) as cnt FROM users WHERE role = 'GOVERNORATE_SUPERVISOR'`);
+      const cRes = await db.query(`SELECT COUNT(*) as cnt FROM users WHERE role = 'CENTRAL_ADMIN'`);
       const qRes = await db.query(`SELECT COUNT(*) as cnt FROM exam_questions`);
 
       examsCount = Number(eRes.rows[0]?.cnt || 0);
       teachersCount = Number(tRes.rows[0]?.cnt || 0);
       supervisorsCount = Number(sRes.rows[0]?.cnt || 0);
       govAdminsCount = Number(gRes.rows[0]?.cnt || 0);
+      govSupervisorsCount = Number(gsRes.rows[0]?.cnt || 0);
+      centralAdminsCount = Number(cRes.rows[0]?.cnt || 0);
       questionsCount = Number(qRes.rows[0]?.cnt || 0);
     } else if (isGovAdmin) {
       const govId = user.governorateId;
@@ -134,9 +140,14 @@ router.get('/stats', async (req: AuthenticatedRequest, res) => {
         `SELECT COUNT(*) as cnt FROM users WHERE role = 'SUPERVISOR' AND governorate_id = $1`,
         [govId]
       );
+      const gsRes = await db.query(
+        `SELECT COUNT(*) as cnt FROM users WHERE role = 'GOVERNORATE_SUPERVISOR' AND governorate_id = $1`,
+        [govId]
+      );
       examsCount = Number(eRes.rows[0]?.cnt || 0);
       teachersCount = Number(tRes.rows[0]?.cnt || 0);
       supervisorsCount = Number(sRes.rows[0]?.cnt || 0);
+      govSupervisorsCount = Number(gsRes.rows[0]?.cnt || 0);
     } else if (isSupervisor) {
       const govId = user.governorateId;
       const subId = user.subjectId;
@@ -161,6 +172,8 @@ router.get('/stats', async (req: AuthenticatedRequest, res) => {
         teachersCount,
         supervisorsCount,
         govAdminsCount,
+        govSupervisorsCount,
+        centralAdminsCount,
         questionsCount,
         monthlyExamLimit: await getMonthlyExamLimit()
       }
@@ -431,6 +444,7 @@ router.get('/subordinates', async (req: AuthenticatedRequest, res) => {
       const gradeParam = params.length;
       conditions.push(`(
         u.role != 'TEACHER' OR 
+        tp.grade_id = $${gradeParam} OR
         EXISTS (SELECT 1 FROM exams e WHERE e.teacher_id = u.id AND e.grade_id = $${gradeParam}) OR
         tp.specialization LIKE '%' || (SELECT name_ar FROM grades WHERE id = $${gradeParam}) || '%'
       )`);
@@ -453,12 +467,17 @@ router.get('/subordinates', async (req: AuthenticatedRequest, res) => {
         s.name_ar as subject_name_ar,
         tp.school_name,
         tp.specialization,
+        tp.grade_id,
+        grd.name_ar as grade_name_ar,
+        stg.name_ar as stage_name_ar,
         (SELECT COUNT(*) FROM exams e WHERE e.teacher_id = u.id) as exams_count,
         (SELECT COUNT(*) FROM users sub WHERE sub.created_by = u.id) as subordinates_count
       FROM users u
       LEFT JOIN governorates g ON u.governorate_id = g.id
       LEFT JOIN subjects s ON u.subject_id = s.id
       LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+      LEFT JOIN grades grd ON tp.grade_id = grd.id
+      LEFT JOIN academic_stages stg ON tp.academic_stage_id = stg.id
       WHERE ${conditions.join(' AND ')}
       ORDER BY u.created_at DESC
     `;
@@ -492,6 +511,9 @@ router.get('/subordinates', async (req: AuthenticatedRequest, res) => {
         subjectName: row.subject_name_ar,
         schoolName: row.school_name,
         specialization: row.specialization,
+        gradeId: row.grade_id,
+        gradeName: row.grade_name_ar,
+        stageName: row.stage_name_ar,
         examsCount: Number(row.exams_count || 0),
         subordinatesCount: Number(row.subordinates_count || 0),
         permissions: parsedPerms,
@@ -524,6 +546,7 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
       password,
       governorateId,
       subjectId,
+      gradeId,
       schoolName,
       specialization,
       permissions
@@ -618,11 +641,21 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
       ]
     );
 
-    // If teacher, create profile
+    // If teacher, create profile with grade and stage link
     if (targetRole === 'TEACHER') {
+      let assignedStageId: string | null = null;
+      if (gradeId) {
+        const gr = await db.query('SELECT stage_id FROM grades WHERE id = $1', [gradeId]);
+        if (gr.rows.length > 0) {
+          assignedStageId = gr.rows[0].stage_id;
+        }
+      }
+
       await db.query(
-        `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization, governorate_id, subject_id, supervisor_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO teacher_profiles (
+          user_id, full_name, school_name, specialization, 
+          governorate_id, subject_id, supervisor_id, grade_id, academic_stage_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           newUserId,
           fullName.trim(),
@@ -630,7 +663,9 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
           specialization || null,
           assignedGovId,
           assignedSubId,
-          user.id
+          user.id,
+          gradeId || null,
+          assignedStageId
         ]
       );
     }

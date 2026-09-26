@@ -48,11 +48,20 @@ export const TeacherDashboard: React.FC = () => {
 const PREP_STAGE_ID = '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
 const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
 
-  // Metadata - Strictly locked to Preparatory Stage & Prep 3
-  const [selectedStageId] = useState(PREP_STAGE_ID);
-  const [selectedGradeId] = useState(PREP_3_GRADE_ID);
+  // Metadata - Linked to Teacher's assigned Grade & Stage
+  const [selectedStageId, setSelectedStageId] = useState(user?.profile?.academic_stage_id || PREP_STAGE_ID);
+  const [selectedGradeId, setSelectedGradeId] = useState(user?.profile?.grade_id || PREP_3_GRADE_ID);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
+
+  useEffect(() => {
+    if (user?.profile?.grade_id) {
+      setSelectedGradeId(user.profile.grade_id);
+    }
+    if (user?.profile?.academic_stage_id) {
+      setSelectedStageId(user.profile.academic_stage_id);
+    }
+  }, [user?.profile?.grade_id, user?.profile?.academic_stage_id]);
 
   // Books State
   const [books, setBooks] = useState<any[]>([]);
@@ -641,8 +650,8 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
     setIsCreatingExam(true);
     try {
-      const prep3GradeId = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
-      const targetStageId = selectedStageId || '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
+      const targetGradeId = selectedGradeId || user?.profile?.grade_id || '2f0f4f5a-7c5c-4136-a935-33c79effca3d';
+      const targetStageId = selectedStageId || user?.profile?.academic_stage_id || '61998777-4c5f-4e51-bc0a-38de938c842a';
 
       const res = await fetch(apiUrl('/api/exams'), {
         method: 'POST',
@@ -653,7 +662,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
         body: JSON.stringify({
           title_ar: newExamTitle,
           academic_stage_id: targetStageId,
-          grade_id: prep3GradeId,
+          grade_id: targetGradeId,
           subject_id: selectedSubjectId,
           duration_minutes: parseInt(examDuration, 10) || 30,
           school_type: examSchoolType,
@@ -835,6 +844,24 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   </span>
                   <span className="badge badge-success" style={{ fontSize: '0.7rem', fontWeight: 800 }}>
                     {isAr ? 'مثبتة ومفلترة لمادتك حصراً 🎯' : 'Locked to Your Subject 🎯'}
+                  </span>
+                </div>
+
+                {/* Assigned Grade Badge */}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.08)', padding: '0.4rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.18)', flexWrap: 'wrap', marginInlineStart: '0.5rem' }}>
+                  <span style={{ fontSize: '0.82rem', color: '#CBD5E1', fontWeight: 700 }}>
+                    {isAr ? '🎓 الصف الدراسي المسند:' : '🎓 Assigned Grade:'}
+                  </span>
+                  <span style={{
+                    background: 'rgba(16, 185, 129, 0.35)',
+                    color: '#FFFFFF',
+                    border: '1px solid rgba(110, 231, 183, 0.45)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '0.25rem 0.75rem',
+                    fontWeight: 800,
+                    fontSize: '0.85rem'
+                  }}>
+                    {user?.profile?.grade_name_ar || (isAr ? 'الصف الثالث الإعدادي' : 'Grade 9')}
                   </span>
                 </div>
               </div>
