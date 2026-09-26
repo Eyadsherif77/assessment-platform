@@ -35,6 +35,13 @@ interface Subject {
   icon?: string;
 }
 
+interface GradeItem {
+  id: string;
+  name_ar: string;
+  name_en: string;
+  stage_name_ar?: string;
+}
+
 interface ExamItem {
   id: string;
   title_ar: string;
@@ -146,8 +153,11 @@ export const HierarchyDashboard: React.FC = () => {
   // Meta & Filters
   const [governorates, setGovernorates] = useState<Governorate[]>(DEFAULT_EGYPT_GOVERNORATES);
   const [subjects, setSubjects] = useState<Subject[]>(DEFAULT_SUBJECTS);
+  const [grades, setGrades] = useState<GradeItem[]>([]);
   const [selectedGovId, setSelectedGovId] = useState<string>('ALL');
   const [selectedSubId, setSelectedSubId] = useState<string>('ALL');
+  const [selectedGradeId, setSelectedGradeId] = useState<string>('ALL');
+  const [selectedSubordinateRole, setSelectedSubordinateRole] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Stats
@@ -179,6 +189,7 @@ export const HierarchyDashboard: React.FC = () => {
     email: '',
     username: '',
     password: '',
+    targetRole: '',
     governorateId: '',
     subjectId: '',
     schoolName: '',
@@ -207,7 +218,7 @@ export const HierarchyDashboard: React.FC = () => {
     } else {
       fetchSubordinates();
     }
-  }, [activeTab, selectedGovId, selectedSubId, searchQuery, analysisTimeframe, analysisGovId, analysisSubId, token]);
+  }, [activeTab, selectedGovId, selectedSubId, selectedGradeId, selectedSubordinateRole, searchQuery, analysisTimeframe, analysisGovId, analysisSubId, token]);
 
   const fetchMetaAndStats = async () => {
     if (!token) return;
@@ -228,6 +239,9 @@ export const HierarchyDashboard: React.FC = () => {
         }
         if (metaData.subjects && metaData.subjects.length > 0) {
           setSubjects(metaData.subjects);
+        }
+        if (metaData.grades && metaData.grades.length > 0) {
+          setGrades(metaData.grades);
         }
 
         if (metaData.scope?.lockedGovernorateId) {
@@ -292,6 +306,7 @@ export const HierarchyDashboard: React.FC = () => {
       const params = new URLSearchParams();
       if (selectedGovId !== 'ALL') params.append('governorate_id', selectedGovId);
       if (selectedSubId !== 'ALL') params.append('subject_id', selectedSubId);
+      if (selectedGradeId !== 'ALL') params.append('grade_id', selectedGradeId);
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
 
       const res = await fetch(apiUrl(`/api/hierarchy/exams?${params.toString()}`), {
@@ -315,7 +330,12 @@ export const HierarchyDashboard: React.FC = () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(apiUrl('/api/hierarchy/subordinates'), {
+      const params = new URLSearchParams();
+      if (selectedSubordinateRole !== 'ALL') params.append('role', selectedSubordinateRole);
+      if (selectedGradeId !== 'ALL') params.append('grade_id', selectedGradeId);
+      const qStr = params.toString() ? `?${params.toString()}` : '';
+
+      const res = await fetch(apiUrl(`/api/hierarchy/subordinates${qStr}`), {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -380,6 +400,7 @@ export const HierarchyDashboard: React.FC = () => {
           email: '',
           username: '',
           password: '',
+          targetRole: '',
           governorateId: '',
           subjectId: '',
           schoolName: '',
@@ -485,17 +506,17 @@ export const HierarchyDashboard: React.FC = () => {
   };
 
   const getSubordinateTabTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '🏢 مدراء المحافظات (27 محافظة)' : '🏢 Governorate Directors (27 Governorates)';
-    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '📐 موجهو المواد بالمحافظة' : '📐 Subject Supervisors in Governorate';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '🏢 الكوادر التابعة للمدير المركزي (مدراء، مشرفون، موجهون، معلمون)' : '🏢 Central Subordinates';
+    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? `📐 الكوادر التابعة لمحافظة ${user?.governorate_name || ''} (مشرفون، موجهون، معلمون)` : `📐 Governorate Subordinates`;
     if (user?.role === 'SUPERVISOR') return isAr ? '👨‍🏫 معلمو المادة التابعون لي' : '👨‍🏫 Subordinate Subject Teachers';
-    return isAr ? '🏛️ المدراء المركزيون' : '🏛️ Central Directors';
+    return isAr ? '🏛️ إدارة الكوادر والمشرفين' : '🏛️ Staff Management';
   };
 
   const getAddSubordinateBtnTitle = () => {
-    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '➕ إضافة مدير محافظة جديد' : '➕ Add New Governorate Director';
-    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '➕ إضافة موجه مادة جديد' : '➕ Add New Subject Supervisor';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '➕ إضافة كادر جديد (مدير / مشرف / موجه / معلم)' : '➕ Add Subordinate';
+    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '➕ إضافة كادر بالمحافظة (مشرف / موجه / معلم)' : '➕ Add Subordinate';
     if (user?.role === 'SUPERVISOR') return isAr ? '➕ إضافة معلم جديد' : '➕ Add New Teacher';
-    return isAr ? '➕ إضافة مدير مركزي' : '➕ Add Central Director';
+    return isAr ? '➕ إضافة مستخدم' : '➕ Add User';
   };
 
   return (
@@ -715,6 +736,12 @@ export const HierarchyDashboard: React.FC = () => {
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button
               onClick={() => {
+                const defaultRole = user?.role === 'CENTRAL_ADMIN' 
+                  ? 'GOVERNORATE_ADMIN' 
+                  : user?.role === 'GOVERNORATE_ADMIN' 
+                  ? 'GOVERNORATE_SUPERVISOR' 
+                  : 'TEACHER';
+
                 setActiveTab('subordinates');
                 setCreateSubError(null);
                 setCreateFormData({
@@ -722,8 +749,9 @@ export const HierarchyDashboard: React.FC = () => {
                   email: '',
                   username: '',
                   password: '',
-                  governorateId: '',
-                  subjectId: '',
+                  targetRole: defaultRole,
+                  governorateId: user?.governorate_id || '',
+                  subjectId: user?.subject_id || '',
                   schoolName: '',
                   specialization: ''
                 });
@@ -1648,7 +1676,67 @@ export const HierarchyDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* 3. Search Bar */}
+            {/* 3. Grade Filter */}
+            <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                {isAr ? '🎓 تصفية بالصف الدراسي:' : '🎓 Filter by Grade:'}
+              </label>
+              <select
+                value={selectedGradeId}
+                onChange={(e) => setSelectedGradeId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.85rem',
+                  borderRadius: '0.5rem',
+                  border: '1.5px solid var(--border-light)',
+                  background: '#F9FAFB',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  color: 'var(--text-dark)',
+                  outline: 'none'
+                }}
+              >
+                <option value="ALL">{isAr ? '🎓 جميع الصفوف (1 - 12)' : '🎓 All Grades (1 - 12)'}</option>
+                {grades.length > 0 ? (
+                  <>
+                    <optgroup label={isAr ? 'المرحلة الابتدائية' : 'Primary Stage'}>
+                      {grades.filter(g => g.id.startsWith('PRIM_')).map(g => (
+                        <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label={isAr ? 'المرحلة الإعدادية' : 'Preparatory Stage'}>
+                      {grades.filter(g => g.id.startsWith('PREP_')).map(g => (
+                        <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label={isAr ? 'المرحلة الثانوية' : 'Secondary Stage'}>
+                      {grades.filter(g => g.id.startsWith('SEC_')).map(g => (
+                        <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>
+                      ))}
+                    </optgroup>
+                  </>
+                ) : (
+                  [
+                    { id: 'PRIM_1', name_ar: 'الصف الأول الابتدائي' },
+                    { id: 'PRIM_2', name_ar: 'الصف الثاني الابتدائي' },
+                    { id: 'PRIM_3', name_ar: 'الصف الثالث الابتدائي' },
+                    { id: 'PRIM_4', name_ar: 'الصف الرابع الابتدائي' },
+                    { id: 'PRIM_5', name_ar: 'الصف الخامس الابتدائي' },
+                    { id: 'PRIM_6', name_ar: 'الصف السادس الابتدائي' },
+                    { id: 'PREP_1', name_ar: 'الصف الأول الإعدادي' },
+                    { id: 'PREP_2', name_ar: 'الصف الثاني الإعدادي' },
+                    { id: 'PREP_3', name_ar: 'الصف الثالث الإعدادي' },
+                    { id: 'SEC_1', name_ar: 'الصف الأول الثانوي' },
+                    { id: 'SEC_2', name_ar: 'الصف الثاني الثانوي' },
+                    { id: 'SEC_3', name_ar: 'الصف الثالث الثانوي' },
+                  ].map(g => (
+                    <option key={g.id} value={g.id}>{g.name_ar}</option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            {/* 4. Search Bar */}
             <div style={{ flex: '2 1 280px', minWidth: '240px' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
                 {isAr ? '🔍 بحث سريع:' : '🔍 Quick Search:'}
@@ -1849,12 +1937,19 @@ export const HierarchyDashboard: React.FC = () => {
 
             <button
               onClick={() => {
+                const defaultRole = user?.role === 'CENTRAL_ADMIN' 
+                  ? 'GOVERNORATE_ADMIN' 
+                  : user?.role === 'GOVERNORATE_ADMIN' 
+                  ? 'GOVERNORATE_SUPERVISOR' 
+                  : 'TEACHER';
+
                 setCreateSubError(null);
                 setCreateFormData({
                   fullName: '',
                   email: '',
                   username: '',
                   password: '',
+                  targetRole: defaultRole,
                   governorateId: user?.governorate_id || '',
                   subjectId: user?.subject_id || '',
                   schoolName: '',
@@ -1880,6 +1975,95 @@ export const HierarchyDashboard: React.FC = () => {
               <Plus size={16} />
               <span>{getAddSubordinateBtnTitle()}</span>
             </button>
+          </div>
+
+          {/* Subordinates Filters: By Role & Grade */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            marginBottom: '1.25rem',
+            background: '#FFFFFF',
+            padding: '0.85rem 1rem',
+            borderRadius: '0.75rem',
+            border: '1px solid var(--border-light)',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                {isAr ? 'تصفية بالرتبة:' : 'Filter by Role:'}
+              </span>
+              {[
+                { id: 'ALL', label: isAr ? 'الكل' : 'All' },
+                ...((user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN') ? [{ id: 'GOVERNORATE_ADMIN', label: isAr ? 'مدراء المحافظات' : 'Gov Admins' }] : []),
+                ...((user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN' || user?.role === 'GOVERNORATE_ADMIN') ? [{ id: 'GOVERNORATE_SUPERVISOR', label: isAr ? 'مشرفو المحافظات' : 'Gov Supervisors' }] : []),
+                ...((user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN' || user?.role === 'GOVERNORATE_ADMIN') ? [{ id: 'SUPERVISOR', label: isAr ? 'موجهو المواد' : 'Subject Supervisors' }] : []),
+                { id: 'TEACHER', label: isAr ? 'المعلمون' : 'Teachers' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSelectedSubordinateRole(tab.id)}
+                  style={{
+                    padding: '0.35rem 0.8rem',
+                    borderRadius: '999px',
+                    border: selectedSubordinateRole === tab.id ? '1.5px solid #4F46E5' : '1px solid var(--border-light)',
+                    background: selectedSubordinateRole === tab.id ? '#4F46E5' : '#F8FAFC',
+                    color: selectedSubordinateRole === tab.id ? '#FFFFFF' : 'var(--text-dark)',
+                    fontWeight: 700,
+                    fontSize: '0.825rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <label style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                {isAr ? '🎓 تصفية بالصف:' : '🎓 Filter by Grade:'}
+              </label>
+              <select
+                value={selectedGradeId}
+                onChange={(e) => setSelectedGradeId(e.target.value)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '0.5rem',
+                  border: '1.5px solid var(--border-light)',
+                  background: '#F9FAFB',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  outline: 'none',
+                  color: 'var(--text-dark)'
+                }}
+              >
+                <option value="ALL">{isAr ? 'جميع الصفوف (1 - 12)' : 'All Grades (1 - 12)'}</option>
+                {grades.length > 0 ? (
+                  grades.map(g => (
+                    <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>
+                  ))
+                ) : (
+                  [
+                    { id: 'PRIM_1', name_ar: 'الصف الأول الابتدائي' },
+                    { id: 'PRIM_2', name_ar: 'الصف الثاني الابتدائي' },
+                    { id: 'PRIM_3', name_ar: 'الصف الثالث الابتدائي' },
+                    { id: 'PRIM_4', name_ar: 'الصف الرابع الابتدائي' },
+                    { id: 'PRIM_5', name_ar: 'الصف الخامس الابتدائي' },
+                    { id: 'PRIM_6', name_ar: 'الصف السادس الابتدائي' },
+                    { id: 'PREP_1', name_ar: 'الصف الأول الإعدادي' },
+                    { id: 'PREP_2', name_ar: 'الصف الثاني الإعدادي' },
+                    { id: 'PREP_3', name_ar: 'الصف الثالث الإعدادي' },
+                    { id: 'SEC_1', name_ar: 'الصف الأول الثانوي' },
+                    { id: 'SEC_2', name_ar: 'الصف الثاني الثانوي' },
+                    { id: 'SEC_3', name_ar: 'الصف الثالث الثانوي' },
+                  ].map(g => (
+                    <option key={g.id} value={g.id}>{g.name_ar}</option>
+                  ))
+                )}
+              </select>
+            </div>
           </div>
 
           {isLoading ? (
@@ -1943,8 +2127,8 @@ export const HierarchyDashboard: React.FC = () => {
 
                       <td style={{ padding: '1rem' }}>
                         <span style={{
-                          background: '#EEF2FF',
-                          color: '#4F46E5',
+                          background: subUser.role === 'GOVERNORATE_SUPERVISOR' ? '#FEF3C7' : '#EEF2FF',
+                          color: subUser.role === 'GOVERNORATE_SUPERVISOR' ? '#B45309' : '#4F46E5',
                           padding: '0.25rem 0.65rem',
                           borderRadius: '999px',
                           fontSize: '0.75rem',
@@ -1952,6 +2136,7 @@ export const HierarchyDashboard: React.FC = () => {
                         }}>
                           {subUser.role === 'CENTRAL_ADMIN' && (isAr ? 'المدير المركزي' : 'Central Director')}
                           {subUser.role === 'GOVERNORATE_ADMIN' && (isAr ? 'مدير المحافظة' : 'Gov Director')}
+                          {subUser.role === 'GOVERNORATE_SUPERVISOR' && (isAr ? 'مشرف المحافظة' : 'Gov Supervisor')}
                           {subUser.role === 'SUPERVISOR' && (isAr ? 'موجه مادة' : 'Subject Supervisor')}
                           {subUser.role === 'TEACHER' && (isAr ? 'معلم' : 'Teacher')}
                         </span>
@@ -2287,6 +2472,55 @@ export const HierarchyDashboard: React.FC = () => {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* 1. Target Role Selector (if user has choice of multiple subordinate roles) */}
+                {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN' || user?.role === 'GOVERNORATE_ADMIN') && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 800, color: '#4F46E5', marginBottom: '0.35rem' }}>
+                      {isAr ? 'الرتبة المراد إنشاؤها (الصلاحية التراتبية): *' : 'Target Role to Create: *'}
+                    </label>
+                    <select
+                      value={createFormData.targetRole}
+                      onChange={(e) => setCreateFormData(prev => ({ ...prev, targetRole: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '0.5rem',
+                        border: '2px solid #6366F1',
+                        fontSize: '0.9rem',
+                        fontWeight: 800,
+                        background: '#EEF2FF',
+                        color: '#312E81'
+                      }}
+                    >
+                      {user?.role === 'ADMIN' && (
+                        <>
+                          <option value="CENTRAL_ADMIN">{isAr ? '🏛️ مدير مركزي' : 'Central Director'}</option>
+                          <option value="GOVERNORATE_ADMIN">{isAr ? '🏢 مدير محافظة' : 'Governorate Director'}</option>
+                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرف محافظة (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
+                          <option value="SUPERVISOR">{isAr ? '📐 موجه مادة' : 'Subject Supervisor'}</option>
+                          <option value="TEACHER">{isAr ? '👨‍🏫 معلم' : 'Teacher'}</option>
+                        </>
+                      )}
+                      {user?.role === 'CENTRAL_ADMIN' && (
+                        <>
+                          <option value="GOVERNORATE_ADMIN">{isAr ? '🏢 مدير محافظة' : 'Governorate Director'}</option>
+                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرف محافظة (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
+                          <option value="SUPERVISOR">{isAr ? '📐 موجه مادة' : 'Subject Supervisor'}</option>
+                          <option value="TEACHER">{isAr ? '👨‍🏫 معلم' : 'Teacher'}</option>
+                        </>
+                      )}
+                      {user?.role === 'GOVERNORATE_ADMIN' && (
+                        <>
+                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرف محافظة (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
+                          <option value="SUPERVISOR">{isAr ? '📐 موجه مادة بالمحافظة' : 'Subject Supervisor'}</option>
+                          <option value="TEACHER">{isAr ? '👨‍🏫 معلم بالمحافظة' : 'Teacher'}</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                )}
+
+                {/* 2. Full Name */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
                     {isAr ? 'الاسم الكامل: *' : 'Full Name: *'}
@@ -2301,6 +2535,7 @@ export const HierarchyDashboard: React.FC = () => {
                   />
                 </div>
 
+                {/* 3. Email & Password */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
@@ -2331,11 +2566,11 @@ export const HierarchyDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* If Central Admin: choose Governorate for the Governorate Admin */}
-                {user?.role === 'CENTRAL_ADMIN' && (
+                {/* 4. Governorate Selection */}
+                {(user?.role === 'ADMIN' || user?.role === 'CENTRAL_ADMIN') && createFormData.targetRole !== 'CENTRAL_ADMIN' && (
                   <div>
                     <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      {isAr ? 'المحافظة المسندة لمدير المحافظة: *' : 'Assigned Governorate: *'}
+                      {isAr ? 'المحافظة المسندة: *' : 'Assigned Governorate: *'}
                     </label>
                     <select
                       required
@@ -2353,49 +2588,67 @@ export const HierarchyDashboard: React.FC = () => {
                   </div>
                 )}
 
-                {/* If Governorate Admin: choose Subject for the Supervisor */}
                 {user?.role === 'GOVERNORATE_ADMIN' && (
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      {isAr ? `المادة المسندة للموجه في محافظة ${user.governorate_name || ''}: *` : `Assigned Subject for Supervisor in ${user.governorate_name || ''}: *`}
-                    </label>
-                    <select
-                      required
-                      value={createFormData.subjectId}
-                      onChange={(e) => setCreateFormData(prev => ({ ...prev, subjectId: e.target.value }))}
-                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
-                    >
-                      <option value="">{isAr ? 'اختر المادة الدراسية...' : 'Select Academic Subject...'}</option>
-                      {subjects.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {isAr ? s.name_ar : (s.name_en || s.name_ar)}
-                        </option>
-                      ))}
-                    </select>
+                  <div style={{ padding: '0.65rem', background: '#F8FAFC', borderRadius: '0.5rem', fontSize: '0.825rem', color: '#334155', fontWeight: 700, border: '1px solid var(--border-light)' }}>
+                    📍 {isAr ? `المحافظة المسندة تلقائياً: ${user.governorate_name || 'محافظتك'}` : `Assigned Governorate: ${user.governorate_name || 'Assigned'}`}
                   </div>
                 )}
 
-                {/* If Supervisor: Teacher fields */}
-                {user?.role === 'SUPERVISOR' && (
-                  <>
-                    <div style={{ padding: '0.65rem', background: '#F0FDF4', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#15803D', fontWeight: 700 }}>
-                      {isAr 
-                        ? `✓ سيتم قفل هذا المعلم تلقائياً على مادة ${user.subject_name} في محافظة ${user.governorate_name}.` 
-                        : `✓ This teacher will be locked to ${user.subject_name} in ${user.governorate_name}.`}
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                        {isAr ? 'اسم المدرسة:' : 'School Name:'}
-                      </label>
-                      <input
-                        type="text"
-                        placeholder={isAr ? 'مثال: مدرسة السعيدية الثانوية' : 'e.g. Al-Saadia School'}
-                        value={createFormData.schoolName}
-                        onChange={(e) => setCreateFormData(prev => ({ ...prev, schoolName: e.target.value }))}
-                        style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
-                      />
-                    </div>
-                  </>
+                {/* 5. Special banner if creating GOVERNORATE_SUPERVISOR */}
+                {createFormData.targetRole === 'GOVERNORATE_SUPERVISOR' && (
+                  <div style={{ padding: '0.75rem', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '0.5rem', fontSize: '0.825rem', color: '#92400E', fontWeight: 700 }}>
+                    📋 {isAr 
+                      ? 'صلاحيات هذا الحساب: مشرف المحافظة لإنشاء بيانات دخول الطلاب لجميع الصفوف (1-12) وتصدير كشوف الحسابات إلى ملف Excel.' 
+                      : 'Role: Governorate Supervisor - Generates student credentials (grades 1-12) and exports to Excel.'}
+                  </div>
+                )}
+
+                {/* 6. Subject Selection (for SUPERVISOR or TEACHER) */}
+                {(createFormData.targetRole === 'SUPERVISOR' || createFormData.targetRole === 'TEACHER') && (
+                  <div>
+                    {user?.role === 'SUPERVISOR' ? (
+                      <div style={{ padding: '0.65rem', background: '#F0FDF4', borderRadius: '0.5rem', fontSize: '0.8rem', color: '#15803D', fontWeight: 700 }}>
+                        {isAr 
+                          ? `✓ سيتم قفل هذا المعلم تلقائياً على مادة ${user.subject_name} في محافظة ${user.governorate_name}.` 
+                          : `✓ This teacher will be locked to ${user.subject_name} in ${user.governorate_name}.`}
+                      </div>
+                    ) : (
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                          {isAr ? 'المادة الدراسية المسندة: *' : 'Assigned Academic Subject: *'}
+                        </label>
+                        <select
+                          required
+                          value={createFormData.subjectId}
+                          onChange={(e) => setCreateFormData(prev => ({ ...prev, subjectId: e.target.value }))}
+                          style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
+                        >
+                          <option value="">{isAr ? 'اختر المادة الدراسية...' : 'Select Academic Subject...'}</option>
+                          {subjects.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {isAr ? s.name_ar : (s.name_en || s.name_ar)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 7. School Name (if TEACHER) */}
+                {createFormData.targetRole === 'TEACHER' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                      {isAr ? 'اسم المدرسة (اختياري):' : 'School Name (Optional):'}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={isAr ? 'مثال: مدرسة الفارابي' : 'e.g. Farabi School'}
+                      value={createFormData.schoolName}
+                      onChange={(e) => setCreateFormData(prev => ({ ...prev, schoolName: e.target.value }))}
+                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
+                    />
+                  </div>
                 )}
               </div>
 

@@ -272,7 +272,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }}>
           <img
             src="/logo.png"
-            alt={isAr ? 'حزب مستقبل وطن - أمانة التعليم والبحث العلمي المركزية' : 'Official Educational Emblem'}
+            alt={isAr ? 'مدرسة الفارابي - Farabi School' : 'Farabi School Logo'}
             style={{
               width: '100%',
               height: '100%',
@@ -340,18 +340,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '0.35rem', color: 'var(--text-title)' }}>
             {isAr 
-              ? (mode === 'login' ? 'مرحباً بك مجدداً في المنصة' : 'إنشاء حساب جديد (الصف الثالث الإعدادي)')
-              : (mode === 'login' ? 'Welcome Back to the Platform' : 'Create 3rd Prep Student Account')}
+              ? (mode === 'login' ? 'مرحباً بك مجدداً في مدرسة الفارابي' : 'إنشاء حساب جديد (الطلاب)')
+              : (mode === 'login' ? 'Welcome Back to Farabi School' : 'Student Account Registration')}
           </h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
             {isAr
               ? (mode === 'login'
                   ? 'أدخل البريد الإلكتروني أو اسم المستخدم وكلمة المرور للمتابعة.'
-                  : 'أدخل بيانات الطالب للتسجيل المباشر في منصة التقييم من أجل التعلم.')
+                  : 'بيانات تسجيل الطالب في منصة التقييم والتعلم بمدرسة الفارابي.')
               : (mode === 'login'
                   ? 'Enter your email or username to access your learning portal.'
-                  : 'Fill in your student credentials to register for Prep 3.')}
+                  : 'Student credentials and registration details.')}
           </p>
+
+          {mode === 'register' && (
+            <div style={{
+              background: '#FEF2F2',
+              border: '1.5px solid #F87171',
+              color: '#991B1B',
+              padding: '0.85rem 1rem',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.85rem',
+              fontWeight: 800,
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              lineHeight: 1.5
+            }}>
+              <span style={{ fontSize: '1.4rem' }}>🔒</span>
+              <div>
+                {isAr
+                  ? 'تم قفل إنشاء الحساب الذاتي للطلاب. يتم استلام بيانات الحساب (اسم المستخدم وكلمة المرور) حصرياً من مشرف المحافظة أو إدارة المدرسة.'
+                  : 'Student self-registration is closed. Login credentials are provided exclusively by the school / governorate supervisor.'}
+              </div>
+            </div>
+          )}
 
           {error && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#DC2626', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.825rem', marginBottom: '1rem', fontWeight: 700 }}>
@@ -370,8 +394,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <select
                     className="form-select"
+                    disabled={true}
                     value={educationType}
                     onChange={e => setEducationType(e.target.value as any)}
+                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                   >
                     <option value="عربى">{isAr ? 'عربى' : 'Arabic'}</option>
                     <option value="لغات">{isAr ? 'لغات' : 'Languages'}</option>
@@ -386,8 +412,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <select
                     className="form-select"
+                    disabled={true}
                     value={governorate}
                     onChange={e => setGovernorate(e.target.value)}
+                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                   >
                     {EGYPT_GOVERNORATES.map(gov => (
                       <option key={gov} value={gov}>{gov}</option>
@@ -402,45 +430,56 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <select
                     className="form-select"
+                    disabled={true}
                     value={term}
                     onChange={e => setTerm(e.target.value as any)}
+                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                   >
                     <option value="الاول">{isAr ? 'الاول' : 'First Term'}</option>
                     <option value="التانى">{isAr ? 'التانى' : 'Second Term'}</option>
                   </select>
                 </div>
 
-                {/* 3b. الصف الدراسى – full grade dropdown (locked to Prep 3 only) */}
+                {/* 3b. الصف الدراسى – open grades Primary 1 to Secondary 3 */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
                     <GraduationCap size={15} style={{ display: 'inline', marginInlineEnd: '4px' }} />
-                    {isAr ? 'الصف الدراسى' : 'School Grade'}
+                    {isAr ? 'الصف الدراسى (متاح من الابتدائي 1 حتى الثانوي 3)' : 'School Grade (Primary 1 to Secondary 3)'}
                   </label>
                   <select
                     className="form-select"
-                    value="prep3"
-                    onChange={() => {}}
+                    disabled={true}
+                    defaultValue="primary1"
                     style={{
                       fontWeight: 700,
                       color: 'var(--primary-700)',
-                      border: '2px solid var(--primary-300)'
+                      border: '2px solid var(--primary-300)',
+                      opacity: 0.7,
+                      cursor: 'not-allowed',
+                      backgroundColor: '#F8FAFC'
                     }}
                   >
-                    {/* ── ابتدائي ── */}
-                    <option value="primary1" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الأول الابتدائي' : 'Primary Grade 1'}</option>
-                    <option value="primary2" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثاني الابتدائي' : 'Primary Grade 2'}</option>
-                    <option value="primary3" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثالث الابتدائي' : 'Primary Grade 3'}</option>
-                    <option value="primary4" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الرابع الابتدائي' : 'Primary Grade 4'}</option>
-                    <option value="primary5" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الخامس الابتدائي' : 'Primary Grade 5'}</option>
-                    <option value="primary6" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف السادس الابتدائي' : 'Primary Grade 6'}</option>
-                    {/* ── إعدادي ── */}
-                    <option value="prep1" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الأول الإعدادي' : 'Prep Grade 1'}</option>
-                    <option value="prep2" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثاني الإعدادي' : 'Prep Grade 2'}</option>
-                    <option value="prep3" style={{ fontWeight: 800, color: 'var(--primary-800)' }}>✅ {isAr ? 'الصف الثالث الإعدادي' : 'Prep Grade 3'}</option>
-                    {/* ── ثانوي ── */}
-                    <option value="sec1" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الأول الثانوي' : 'Secondary Grade 1'}</option>
-                    <option value="sec2" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثاني الثانوي' : 'Secondary Grade 2'}</option>
-                    <option value="sec3" disabled style={{ color: '#94A3B8' }}>🔒 {isAr ? 'الصف الثالث الثانوي' : 'Secondary Grade 3'}</option>
+                    {/* ── المرحلة الابتدائية ── */}
+                    <optgroup label={isAr ? 'المرحلة الابتدائية' : 'Primary Education'}>
+                      <option value="primary1">📚 {isAr ? 'الصف الأول الابتدائي' : 'Primary Grade 1'}</option>
+                      <option value="primary2">📚 {isAr ? 'الصف الثاني الابتدائي' : 'Primary Grade 2'}</option>
+                      <option value="primary3">📚 {isAr ? 'الصف الثالث الابتدائي' : 'Primary Grade 3'}</option>
+                      <option value="primary4">📚 {isAr ? 'الصف الرابع الابتدائي' : 'Primary Grade 4'}</option>
+                      <option value="primary5">📚 {isAr ? 'الصف الخامس الابتدائي' : 'Primary Grade 5'}</option>
+                      <option value="primary6">📚 {isAr ? 'الصف السادس الابتدائي' : 'Primary Grade 6'}</option>
+                    </optgroup>
+                    {/* ── المرحلة الإعدادية ── */}
+                    <optgroup label={isAr ? 'المرحلة الإعدادية' : 'Preparatory Education'}>
+                      <option value="prep1">📘 {isAr ? 'الصف الأول الإعدادي' : 'Prep Grade 1'}</option>
+                      <option value="prep2">📘 {isAr ? 'الصف الثاني الإعدادي' : 'Prep Grade 2'}</option>
+                      <option value="prep3">📘 {isAr ? 'الصف الثالث الإعدادي' : 'Prep Grade 3'}</option>
+                    </optgroup>
+                    {/* ── المرحلة الثانوية ── */}
+                    <optgroup label={isAr ? 'المرحلة الثانوية' : 'Secondary Education'}>
+                      <option value="sec1">🎓 {isAr ? 'الصف الأول الثانوي' : 'Secondary Grade 1'}</option>
+                      <option value="sec2">🎓 {isAr ? 'الصف الثاني الثانوي' : 'Secondary Grade 2'}</option>
+                      <option value="sec3">🎓 {isAr ? 'الصف الثالث الثانوي' : 'Secondary Grade 3'}</option>
+                    </optgroup>
                   </select>
                 </div>
 
@@ -452,11 +491,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    required
+                    disabled={true}
                     className="form-input"
-                    value={schoolName}
-                    onChange={e => setSchoolName(e.target.value)}
-                    placeholder={isAr ? 'اكتب اسم المدرسة' : 'Enter school name'}
+                    value={schoolName || (isAr ? 'مدرسة الفارابي' : 'Farabi School')}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    readOnly
+                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                   />
                 </div>
 
@@ -470,12 +510,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div style={{ position: 'relative' }}>
                     <input
                       type="email"
-                      required
+                      disabled={true}
                       className="form-input"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
-                      placeholder="student@edu.eg"
-                      style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
+                      placeholder="student@farabischool.edu.eg"
+                      style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem', opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                     />
                     <Mail 
                       size={16} 
@@ -498,11 +538,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    required
+                    disabled={true}
                     className="form-input"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
-                    placeholder={isAr ? 'اكتب اسم مستخدم فريد للدخول به' : 'Choose unique username'}
+                    placeholder={isAr ? 'اسم المستخدم المسجل بالمدرسة' : 'Assigned student username'}
+                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                   />
                 </div>
 
@@ -514,12 +555,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div style={{ position: 'relative' }}>
                     <input
                       type="password"
-                      required
+                      disabled={true}
                       className="form-input"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
+                      style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem', opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
                     />
                     <Lock 
                       size={16} 
@@ -548,7 +589,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       className="form-input"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
-                      placeholder={isAr ? 'student@edu.eg أو اسم المستخدم' : 'email or username'}
+                      placeholder={isAr ? 'student@farabischool.edu.eg أو اسم المستخدم' : 'email or username'}
                       style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
                     />
                     <Mail 
@@ -596,12 +637,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <button
               type="submit"
               className="btn btn-primary btn-lg"
-              disabled={isLoading}
-              style={{ width: '100%', marginTop: '0.5rem', fontWeight: 800 }}
+              disabled={isLoading || mode === 'register'}
+              style={{
+                width: '100%',
+                marginTop: '0.5rem',
+                fontWeight: 800,
+                ...(mode === 'register' ? {
+                  backgroundColor: '#94A3B8',
+                  borderColor: '#94A3B8',
+                  cursor: 'not-allowed',
+                  opacity: 0.85
+                } : {})
+              }}
             >
               {isLoading
                 ? (isAr ? 'جاري الاتصال بقاعدة البيانات...' : 'Processing...')
-                : (mode === 'login' ? (isAr ? 'تسجيل الدخول' : 'Sign In') : (isAr ? 'تأكيد إنشاء الحساب' : 'Confirm & Register'))}
+                : (mode === 'login' 
+                    ? (isAr ? 'تسجيل الدخول' : 'Sign In') 
+                    : (isAr ? '🔒 التسجيل الذاتي مغلق (الحساب يسلم من المشرف)' : '🔒 Registration Blocked'))}
             </button>
           </form>
         </div>

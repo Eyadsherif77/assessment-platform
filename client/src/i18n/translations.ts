@@ -3,7 +3,7 @@ export type Language = 'ar' | 'en';
 export const translations = {
   ar: {
     // Brand & Header
-    brandName: 'منصة التقييم من أجل التعلم',
+    brandName: 'مدرسة الفارابي',
     brandTagline: 'منصة التشخيص والتقويم التربوي الذكي للمناهج المدرسية',
     home: 'الرئيسية',
     login: 'تسجيل الدخول',
@@ -109,7 +109,7 @@ export const translations = {
   },
   en: {
     // Brand & Header
-    brandName: 'Assessment for Learning Platform',
+    brandName: 'Farabi School',
     brandTagline: 'AI-Powered Diagnostic Assessment Linked to Official Curricula',
     home: 'Home',
     login: 'Login',

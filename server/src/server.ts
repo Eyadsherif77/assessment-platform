@@ -16,6 +16,7 @@ import aiRoutes from './routes/ai.js';
 import analyticsRoutes from './routes/analytics.js';
 import adminRoutes from './routes/admin.js';
 import hierarchyRoutes from './routes/hierarchy.js';
+import governorateSupervisorRoutes from './routes/governorateSupervisor.js';
 
 dotenv.config();
 
@@ -70,6 +71,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/hierarchy', hierarchyRoutes);
+app.use('/api/governorate-supervisor', governorateSupervisorRoutes);
 
 // Root welcome & API status
 app.get('/', (req, res) => {

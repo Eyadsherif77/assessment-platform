@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { BookOpen, Globe, LogOut, User, Sparkles, School, Home as HomeIcon } from 'lucide-react';
+import { Globe, LogOut, User, Sparkles, School, Home as HomeIcon } from 'lucide-react';
 
 interface NavbarProps {
   onOpenAuth?: (mode: 'login' | 'register') => void;
@@ -19,6 +19,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
     if (user?.role === 'ADMIN') return language === 'ar' ? 'لوحة الإدارة' : 'Admin Portal';
     if (user?.role === 'CENTRAL_ADMIN') return language === 'ar' ? 'لوحة المدير المركزي' : 'Central Director';
     if (user?.role === 'GOVERNORATE_ADMIN') return language === 'ar' ? 'لوحة مدير المحافظة' : 'Governorate Director';
+    if (user?.role === 'GOVERNORATE_SUPERVISOR') return language === 'ar' ? 'لوحة مشرف المحافظة' : 'Gov Supervisor Portal';
     if (user?.role === 'SUPERVISOR') return language === 'ar' ? 'لوحة الموجه' : 'Supervisor Portal';
     if (user?.role === 'STUDENT') return t.studentDashboard;
     return t.teacherDashboard;
@@ -49,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                 ? `وضع معاينة الإشراف: تتصفح حالياً بصفتك (${
                     user?.role === 'CENTRAL_ADMIN' ? 'المدير المركزي' :
                     user?.role === 'GOVERNORATE_ADMIN' ? `مدير محافظة ${user?.governorate_name || ''}` :
+                    user?.role === 'GOVERNORATE_SUPERVISOR' ? `مشرف محافظة ${user?.governorate_name || ''}` :
                     user?.role === 'SUPERVISOR' ? `موجه مادة ${user?.subject_name || ''}` :
                     user?.role === 'TEACHER' ? 'معلم' :
                     user?.role === 'STUDENT' ? 'طالب' : user?.role
@@ -100,12 +102,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
           className="brand-logo" 
           onClick={(e) => { e.preventDefault(); setActiveView('home'); }}
         >
-          <div className="brand-icon">
-            <BookOpen size={20} />
+          <div className="brand-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', padding: 0 }}>
+            <img src="/logo.png" alt="Farabi School" style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '50%' }} />
           </div>
           <div className="brand-text">
             <div className="brand-title">{t.brandName}</div>
-
           </div>
         </a>
 
@@ -189,6 +190,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                       <span>🏢</span>
                       <span className="badge-text">
                         {language === 'ar' ? `مدير المحافظة (${user.governorate_name || 'المحافظة'})` : `Gov Director (${user.governorate_name || 'Gov'})`}
+                      </span>
+                    </>
+                  )}
+                  {user.role === 'GOVERNORATE_SUPERVISOR' && (
+                    <>
+                      <span>📋</span>
+                      <span className="badge-text">
+                        {language === 'ar' ? `مشرف المحافظة (${user.governorate_name || 'المحافظة'})` : `Gov Supervisor (${user.governorate_name || 'Gov'})`}
                       </span>
                     </>
                   )}

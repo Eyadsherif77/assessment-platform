@@ -121,91 +121,10 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Student Registration: Locked to Prep 3 (المرحلة الإعدادية - الصف الثالث الإعدادي)
-    const prepStageId = '61998777-4c5f-4e51-bc0a-38de938c842a'; // Preparatory
-    const prep3GradeId = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // Prep 3
-    const egyptCountryId = '23d3a886-cb36-4ec3-9e60-627c2193b1bd';
-
-    const effectiveStageId = academicStageId || prepStageId;
-    const effectiveGradeId = gradeId || prep3GradeId;
-    const effectiveSchoolType = educationType || schoolType || school_type || 'عربى';
-    const effectiveTerm = term || 'الاول';
-    const govName = governorate || null;
-
-    // Auto-generate sequential student code (#s000001, #s000002, ...)
-    const studentCountRes = await db.query(`SELECT COUNT(*) as cnt FROM users WHERE role = 'STUDENT'`);
-    const studentCount = parseInt(studentCountRes.rows[0]?.cnt || studentCountRes.rows[0]?.COUNT || '0', 10);
-    const autoStudentCode = `#s${String(studentCount + 1).padStart(6, '0')}`;
-    const effectiveStudentCode = autoStudentCode;
-
-    // Lookup governorate_id if governorate name provided
-    let resolvedGovId = governorateId || null;
-    if (!resolvedGovId && govName) {
-      const govLookup = await db.query('SELECT id FROM governorates WHERE name_ar = $1 LIMIT 1', [govName]);
-      if (govLookup.rows.length > 0) {
-        resolvedGovId = govLookup.rows[0].id;
-      }
-    }
-
-    await db.query(
-      `INSERT INTO users (id, super_id, email, username, password_hash, role, full_name) 
-       VALUES ($1, $2, $3, $4, $5, 'STUDENT', $6)`,
-      [userId, autoStudentCode, cleanEmail, cleanUsername, passwordHash, displayName]
-    );
-
-    await db.query(
-      `INSERT INTO student_profiles (
-         user_id, full_name, country_id, governorate_id, governorate_name, school_id, school_name, 
-         academic_stage_id, grade_id, section, school_type, student_code, term
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-      [
-        userId,
-        displayName,
-        egyptCountryId,
-        resolvedGovId,
-        govName,
-        null,
-        schoolName || null,
-        effectiveStageId,
-        effectiveGradeId,
-        section || null,
-        effectiveSchoolType,
-        effectiveStudentCode,
-        effectiveTerm
-      ]
-    );
-
-    const token = generateToken({
-      id: userId,
-      email: cleanEmail,
-      role: 'STUDENT',
-      fullName: displayName
-    });
-
-    return res.status(201).json({
-      message: 'تم إنشاء حساب الطالب بنجاح',
-      token,
-      user: {
-        id: userId,
-        super_id: autoStudentCode,
-        email: cleanEmail,
-        username: cleanUsername,
-        role: 'STUDENT',
-        fullName: displayName,
-        profile: {
-          user_id: userId,
-          full_name: displayName,
-          school_type: effectiveSchoolType,
-          governorate_name: govName,
-          term: effectiveTerm,
-          student_code: effectiveStudentCode,
-          school_name: schoolName || null,
-          academic_stage_id: effectiveStageId,
-          grade_id: effectiveGradeId,
-          grade_name_ar: 'الصف الثالث الإعدادي',
-          stage_name_ar: 'المرحلة الإعدادية'
-        }
-      }
+    // Student Self-Registration is closed per institutional policy
+    // Student accounts must be provisioned by the Governorate Supervisor (مشرف المحافظة)
+    return res.status(403).json({
+      error: 'تم تعطيل التسجيل الذاتي لحسابات الطلاب. يتم استلام بيانات الحساب (اسم المستخدم وكلمة المرور) حصرياً من مشرف المحافظة أو إدارة المدرسة.'
     });
   } catch (error: any) {
     console.error('Registration error:', error);

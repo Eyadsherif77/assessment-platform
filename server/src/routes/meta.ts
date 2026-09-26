@@ -20,6 +20,22 @@ router.get('/stages', async (req, res) => {
   }
 });
 
+// Get all 12 grades with stage info
+router.get('/grades', async (req, res) => {
+  try {
+    const grades = await db.query(`
+      SELECT g.id, g.stage_id, g.code, g.name_ar, g.name_en, g.sort_order,
+             s.name_ar as stage_name_ar, s.name_en as stage_name_en, s.code as stage_code
+      FROM grades g
+      JOIN academic_stages s ON g.stage_id = s.id
+      ORDER BY s.sort_order ASC, g.sort_order ASC
+    `);
+    return res.json(grades.rows);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب الصفوف الدراسية: ' + err.message });
+  }
+});
+
 // Get grades for a specific stage
 router.get('/stages/:stageId/grades', async (req, res) => {
   try {

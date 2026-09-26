@@ -4,7 +4,7 @@ import { db } from '../db/db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_assessment_platform_jwt_key_2026';
 
-export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'CENTRAL_ADMIN' | 'GOVERNORATE_ADMIN' | 'SUPERVISOR';
+export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'CENTRAL_ADMIN' | 'GOVERNORATE_ADMIN' | 'GOVERNORATE_SUPERVISOR' | 'SUPERVISOR';
 
 export interface AuthUser {
   id: string;

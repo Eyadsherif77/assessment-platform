@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations, type Language } from '../i18n/translations';
 import { apiUrl } from '../utils/api';
 
-export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'CENTRAL_ADMIN' | 'GOVERNORATE_ADMIN' | 'SUPERVISOR';
+export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'CENTRAL_ADMIN' | 'GOVERNORATE_ADMIN' | 'GOVERNORATE_SUPERVISOR' | 'SUPERVISOR';
 
 export interface UserProfile {
   id: string;

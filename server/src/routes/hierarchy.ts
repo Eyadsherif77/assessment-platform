@@ -9,10 +9,10 @@ const router = Router();
 
 // Hierarchy routes are restricted to staff roles (Admin, Central Admin, Governorate Admin, Supervisor)
 router.use(authenticateToken);
-router.use(requireRole(['ADMIN', 'CENTRAL_ADMIN', 'GOVERNORATE_ADMIN', 'SUPERVISOR']));
+router.use(requireRole(['ADMIN', 'CENTRAL_ADMIN', 'GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR']));
 
 /**
- * 1. Meta information: Governorates, Subjects, and caller's allowed scope
+ * 1. Meta information: Governorates, Subjects, Grades, and caller's allowed scope
  */
 router.get('/meta', async (req: AuthenticatedRequest, res) => {
   try {
@@ -32,6 +32,15 @@ router.get('/meta', async (req: AuthenticatedRequest, res) => {
        FROM subjects 
        GROUP BY name_ar 
        ORDER BY MIN(sort_order) ASC, name_ar ASC`
+    );
+
+    // 3. Fetch all 12 grades with stage info
+    const gradeRes = await db.query(
+      `SELECT g.id, g.stage_id, g.code, g.name_ar, g.name_en, g.sort_order,
+              s.name_ar as stage_name_ar, s.code as stage_code
+       FROM grades g
+       JOIN academic_stages s ON g.stage_id = s.id
+       ORDER BY s.sort_order ASC, g.sort_order ASC`
     );
 
     // Determine scope
@@ -72,6 +81,7 @@ router.get('/meta', async (req: AuthenticatedRequest, res) => {
       },
       governorates: govRes.rows,
       subjects: subRes.rows,
+      grades: gradeRes.rows,
       monthlyExamLimit: await getMonthlyExamLimit()
     });
   } catch (err: any) {
@@ -208,6 +218,7 @@ router.get('/exams', async (req: AuthenticatedRequest, res) => {
 
     const reqGov = req.query.governorate_id as string;
     const reqSub = req.query.subject_id as string;
+    const reqGrade = req.query.grade_id as string;
     const search = (req.query.search as string || '').trim();
 
     let sql = `
@@ -263,6 +274,12 @@ router.get('/exams', async (req: AuthenticatedRequest, res) => {
     if ((isMaster || isGovAdmin) && reqSub && reqSub !== 'ALL') {
       params.push(reqSub);
       conditions.push(`e.subject_id = $${params.length}`);
+    }
+
+    // Grade filter for any supervisory role
+    if (reqGrade && reqGrade !== 'ALL') {
+      params.push(reqGrade);
+      conditions.push(`e.grade_id = $${params.length}`);
     }
 
     // Search query
@@ -353,39 +370,70 @@ router.get('/exams/:id', async (req: AuthenticatedRequest, res) => {
 });
 
 /**
- * 5. Subordinates Management (List immediate subordinates)
- * - ADMIN -> sees CENTRAL_ADMIN
- * - CENTRAL_ADMIN -> sees GOVERNORATE_ADMIN
- * - GOVERNORATE_ADMIN -> sees SUPERVISOR in their governorate
+ * 5. Subordinates Management (Cascading Downward Visibility)
+ * - ADMIN -> sees CENTRAL_ADMIN, GOVERNORATE_ADMIN, GOVERNORATE_SUPERVISOR, SUPERVISOR, TEACHER
+ * - CENTRAL_ADMIN -> sees GOVERNORATE_ADMIN, GOVERNORATE_SUPERVISOR, SUPERVISOR, TEACHER
+ * - GOVERNORATE_ADMIN -> sees GOVERNORATE_SUPERVISOR, SUPERVISOR, TEACHER in their governorate
  * - SUPERVISOR -> sees TEACHER in their subject & governorate
  */
 router.get('/subordinates', async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
-    let targetRole: string = '';
+    const filterRole = (req.query.role as string || '').trim().toUpperCase();
+    const filterGrade = (req.query.grade_id as string || '').trim();
     const params: any[] = [];
     const conditions: string[] = [];
 
+    // Determine allowed subordinate roles based on hierarchy tier
+    let allowedRoles: string[] = [];
     if (user.role === 'ADMIN') {
-      targetRole = 'CENTRAL_ADMIN';
-      conditions.push(`u.role = 'CENTRAL_ADMIN'`);
+      allowedRoles = ['CENTRAL_ADMIN', 'GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
     } else if (user.role === 'CENTRAL_ADMIN') {
-      targetRole = 'GOVERNORATE_ADMIN';
-      conditions.push(`u.role = 'GOVERNORATE_ADMIN'`);
+      allowedRoles = ['GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
     } else if (user.role === 'GOVERNORATE_ADMIN') {
-      targetRole = 'SUPERVISOR';
-      conditions.push(`u.role = 'SUPERVISOR'`);
-      params.push(user.governorateId);
-      conditions.push(`u.governorate_id = $${params.length}`);
+      allowedRoles = ['GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
+      if (user.governorateId) {
+        params.push(user.governorateId);
+        conditions.push(`u.governorate_id = $${params.length}`);
+      }
     } else if (user.role === 'SUPERVISOR') {
-      targetRole = 'TEACHER';
-      conditions.push(`u.role = 'TEACHER'`);
-      params.push(user.governorateId);
-      conditions.push(`u.governorate_id = $${params.length}`);
+      allowedRoles = ['TEACHER'];
+      if (user.governorateId) {
+        params.push(user.governorateId);
+        conditions.push(`u.governorate_id = $${params.length}`);
+      }
       if (user.subjectId) {
         params.push(user.subjectId);
         conditions.push(`(u.subject_id = $${params.length} OR u.created_by = '${user.id}')`);
       }
+    } else {
+      allowedRoles = [];
+    }
+
+    if (filterRole && filterRole !== 'ALL' && allowedRoles.includes(filterRole)) {
+      params.push(filterRole);
+      conditions.push(`u.role = $${params.length}`);
+    } else {
+      if (allowedRoles.length > 0) {
+        const placeholders = allowedRoles.map(r => {
+          params.push(r);
+          return `$${params.length}`;
+        }).join(', ');
+        conditions.push(`u.role IN (${placeholders})`);
+      } else {
+        conditions.push('1 = 0');
+      }
+    }
+
+    // Filter by grade_id if provided (applies to teachers and exams)
+    if (filterGrade && filterGrade !== 'ALL') {
+      params.push(filterGrade);
+      const gradeParam = params.length;
+      conditions.push(`(
+        u.role != 'TEACHER' OR 
+        EXISTS (SELECT 1 FROM exams e WHERE e.teacher_id = u.id AND e.grade_id = $${gradeParam}) OR
+        tp.specialization LIKE '%' || (SELECT name_ar FROM grades WHERE id = $${gradeParam}) || '%'
+      )`);
     }
 
     const sql = `
@@ -451,7 +499,7 @@ router.get('/subordinates', async (req: AuthenticatedRequest, res) => {
       };
     });
 
-    return res.json({ targetRole, subordinates });
+    return res.json({ allowedRoles, subordinates });
   } catch (err: any) {
     console.error('Error fetching subordinates:', err);
     return res.status(500).json({ error: 'خطأ في جلب المرؤوسين: ' + err.message });
@@ -460,11 +508,11 @@ router.get('/subordinates', async (req: AuthenticatedRequest, res) => {
 
 /**
  * 6. Create Subordinate Account
- * Enforces strict downward provisioning:
- * - ADMIN creates CENTRAL_ADMIN
- * - CENTRAL_ADMIN creates GOVERNORATE_ADMIN (assigns governorate_id)
- * - GOVERNORATE_ADMIN creates SUPERVISOR (assigns subject_id, locked to caller's governorate)
- * - SUPERVISOR creates TEACHER (locked to caller's governorate & subject)
+ * Multi-tier cascading provisioning:
+ * - ADMIN creates: CENTRAL_ADMIN, GOVERNORATE_ADMIN, GOVERNORATE_SUPERVISOR, SUPERVISOR, TEACHER
+ * - CENTRAL_ADMIN creates: GOVERNORATE_ADMIN, GOVERNORATE_SUPERVISOR, SUPERVISOR, TEACHER
+ * - GOVERNORATE_ADMIN creates: GOVERNORATE_SUPERVISOR, SUPERVISOR, TEACHER (locked to governorate)
+ * - SUPERVISOR creates: TEACHER (locked to governorate & subject)
  */
 router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
   try {
@@ -480,6 +528,8 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
       specialization,
       permissions
     } = req.body;
+
+    const requestedRole = (req.body.targetRole || req.body.role || '').trim().toUpperCase();
 
     if (!fullName || !email || !password) {
       return res.status(400).json({ error: 'الاسم بالكامل والبريد الإلكتروني وكلمة المرور مطلوبة' });
@@ -499,20 +549,29 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
     let assignedSubId: string | null = null;
 
     if (user.role === 'ADMIN') {
-      targetRole = 'CENTRAL_ADMIN';
+      const allowed = ['CENTRAL_ADMIN', 'GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
+      targetRole = allowed.includes(requestedRole) ? requestedRole : 'CENTRAL_ADMIN';
+      assignedGovId = governorateId || null;
+      assignedSubId = subjectId || null;
     } else if (user.role === 'CENTRAL_ADMIN') {
-      targetRole = 'GOVERNORATE_ADMIN';
-      if (!governorateId) {
-        return res.status(400).json({ error: 'يجب اختيار المحافظة التابع لها مدير المحافظة' });
+      const allowed = ['GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
+      targetRole = allowed.includes(requestedRole) ? requestedRole : 'GOVERNORATE_ADMIN';
+      if ((targetRole === 'GOVERNORATE_ADMIN' || targetRole === 'GOVERNORATE_SUPERVISOR') && !governorateId) {
+        return res.status(400).json({ error: 'يجب اختيار المحافظة التابع لها المستخدم' });
       }
-      assignedGovId = governorateId;
+      if ((targetRole === 'SUPERVISOR' || targetRole === 'TEACHER') && (!governorateId || !subjectId)) {
+        return res.status(400).json({ error: 'يجب اختيار المحافظة والمادة التابع لها المستخدم' });
+      }
+      assignedGovId = governorateId || null;
+      assignedSubId = subjectId || null;
     } else if (user.role === 'GOVERNORATE_ADMIN') {
-      targetRole = 'SUPERVISOR';
-      if (!subjectId) {
-        return res.status(400).json({ error: 'يجب اختيار المادة المسندة للموجه' });
+      const allowed = ['GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
+      targetRole = allowed.includes(requestedRole) ? requestedRole : 'GOVERNORATE_SUPERVISOR';
+      assignedGovId = user.governorateId || governorateId || null;
+      if ((targetRole === 'SUPERVISOR' || targetRole === 'TEACHER') && !subjectId) {
+        return res.status(400).json({ error: 'يجب اختيار المادة المسندة' });
       }
-      assignedGovId = user.governorateId || governorateId;
-      assignedSubId = subjectId;
+      assignedSubId = subjectId || null;
     } else if (user.role === 'SUPERVISOR') {
       targetRole = 'TEACHER';
       assignedGovId = user.governorateId || null;
@@ -540,8 +599,8 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
     await db.query(
       `INSERT INTO users (
         id, hybrid_id, email, username, password_hash, role, full_name, 
-        governorate_id, subject_id, created_by, permissions, is_active
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        governorate_id, subject_id, created_by, permissions, initial_password, is_active
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         newUserId,
         hybridId,
@@ -554,6 +613,7 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
         assignedSubId,
         user.id,
         JSON.stringify(defaultPerms),
+        password.trim(),
         activeFlag
       ]
     );
@@ -585,6 +645,7 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
         role: targetRole,
         governorateId: assignedGovId,
         subjectId: assignedSubId,
+        initialPassword: password.trim(),
         permissions: defaultPerms
       }
     });
@@ -620,9 +681,9 @@ router.patch('/subordinates/:id/permissions', async (req: AuthenticatedRequest, 
     // GOVERNORATE_ADMIN can edit SUPERVISOR in their governorate
     // SUPERVISOR can edit TEACHER in their subject/governorate
     let authorized = false;
-    if (caller.role === 'ADMIN' && sub.role === 'CENTRAL_ADMIN') authorized = true;
-    if (caller.role === 'CENTRAL_ADMIN' && sub.role === 'GOVERNORATE_ADMIN') authorized = true;
-    if (caller.role === 'GOVERNORATE_ADMIN' && sub.role === 'SUPERVISOR' && sub.governorate_id === caller.governorateId) authorized = true;
+    if (caller.role === 'ADMIN') authorized = true;
+    if (caller.role === 'CENTRAL_ADMIN' && ['GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'].includes(sub.role)) authorized = true;
+    if (caller.role === 'GOVERNORATE_ADMIN' && ['GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'].includes(sub.role) && (!sub.governorate_id || sub.governorate_id === caller.governorateId)) authorized = true;
     if (caller.role === 'SUPERVISOR' && sub.role === 'TEACHER' && (sub.created_by === caller.id || sub.governorate_id === caller.governorateId)) authorized = true;
 
     // Super Admin can always edit any staff
@@ -704,8 +765,8 @@ router.post('/impersonate/:id', async (req: AuthenticatedRequest, res) => {
     // Check authority:
     let authorized = false;
     if (caller.role === 'ADMIN') authorized = true;
-    if (caller.role === 'CENTRAL_ADMIN' && ['GOVERNORATE_ADMIN', 'SUPERVISOR', 'TEACHER'].includes(target.role)) authorized = true;
-    if (caller.role === 'GOVERNORATE_ADMIN' && ['SUPERVISOR', 'TEACHER'].includes(target.role) && target.governorate_id === caller.governorateId) authorized = true;
+    if (caller.role === 'CENTRAL_ADMIN' && ['GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'].includes(target.role)) authorized = true;
+    if (caller.role === 'GOVERNORATE_ADMIN' && ['GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'].includes(target.role) && (!target.governorate_id || target.governorate_id === caller.governorateId)) authorized = true;
     if (caller.role === 'SUPERVISOR' && target.role === 'TEACHER' && (target.created_by === caller.id || target.governorate_id === caller.governorateId)) authorized = true;
 
     if (!authorized) {

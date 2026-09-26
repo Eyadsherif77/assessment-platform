@@ -217,7 +217,8 @@ class DatabaseManager {
             'ALTER TABLE exams ADD COLUMN governorate_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN governorate_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN subject_id VARCHAR(64) NULL',
-            'ALTER TABLE teacher_profiles ADD COLUMN supervisor_id VARCHAR(64) NULL'
+            'ALTER TABLE teacher_profiles ADD COLUMN supervisor_id VARCHAR(64) NULL',
+            'ALTER TABLE users ADD COLUMN initial_password VARCHAR(255) NULL'
           ];
           for (const colSql of hierarchyUserCols) {
             try {
@@ -283,6 +284,7 @@ class DatabaseManager {
             await this.tidbConn.execute(`CREATE INDEX idx_exams_gov_sub ON exams (governorate_id, subject_id)`);
           } catch (_) {}
 
+          await this.ensureAllGradesAndSubjects();
           console.log('✅ TiDB Cloud schema verified and active with 4-tier hierarchy support.');
         }
         return;
@@ -351,6 +353,10 @@ class DatabaseManager {
           await this.query(`UPDATE exams SET school_type = 'كلاهما' WHERE school_type IS NULL OR school_type = ''`);
         } catch (_) {}
 
+        try {
+          await this.query(`ALTER TABLE users ADD COLUMN initial_password TEXT`);
+        } catch (_) {}
+
         // Ensure platform_settings table
         try {
           await this.query(`
@@ -363,11 +369,76 @@ class DatabaseManager {
           `);
         } catch (_) {}
 
+        await this.ensureAllGradesAndSubjects();
         console.log('✅ Database schema verified and active.');
       }
     } catch (error) {
       console.error('Error applying schema:', error);
       throw error;
+    }
+  }
+
+  public async ensureAllGradesAndSubjects(): Promise<void> {
+    try {
+      const stagesDef = [
+        { code: 'PRIMARY', name_ar: 'المرحلة الابتدائية', name_en: 'Primary Education', sort: 1 },
+        { code: 'PREPARATORY', name_ar: 'المرحلة الإعدادية', name_en: 'Preparatory Education', sort: 2 },
+        { code: 'SECONDARY', name_ar: 'المرحلة الثانوية', name_en: 'Secondary Education', sort: 3 }
+      ];
+
+      const stageMap: Record<string, string> = {};
+      const { v4: uuidv4 } = await import('uuid');
+
+      for (const s of stagesDef) {
+        const existing = await this.query('SELECT id FROM academic_stages WHERE code = $1', [s.code]);
+        if (existing.rows.length > 0) {
+          stageMap[s.code] = existing.rows[0].id;
+        } else {
+          const newId = uuidv4();
+          await this.query(
+            'INSERT INTO academic_stages (id, code, name_ar, name_en, sort_order) VALUES ($1, $2, $3, $4, $5)',
+            [newId, s.code, s.name_ar, s.name_en, s.sort]
+          );
+          stageMap[s.code] = newId;
+        }
+      }
+
+      const gradesDef = [
+        // Primary 1 to 6
+        { stageCode: 'PRIMARY', code: 'PRIM_1', name_ar: 'الصف الأول الابتدائي', name_en: 'Primary 1', sort: 1 },
+        { stageCode: 'PRIMARY', code: 'PRIM_2', name_ar: 'الصف الثاني الابتدائي', name_en: 'Primary 2', sort: 2 },
+        { stageCode: 'PRIMARY', code: 'PRIM_3', name_ar: 'الصف الثالث الابتدائي', name_en: 'Primary 3', sort: 3 },
+        { stageCode: 'PRIMARY', code: 'PRIM_4', name_ar: 'الصف الرابع الابتدائي', name_en: 'Primary 4', sort: 4 },
+        { stageCode: 'PRIMARY', code: 'PRIM_5', name_ar: 'الصف الخامس الابتدائي', name_en: 'Primary 5', sort: 5 },
+        { stageCode: 'PRIMARY', code: 'PRIM_6', name_ar: 'الصف السادس الابتدائي', name_en: 'Primary 6', sort: 6 },
+
+        // Preparatory 1 to 3
+        { stageCode: 'PREPARATORY', code: 'PREP_1', name_ar: 'الصف الأول الإعدادي', name_en: 'Prep 1', sort: 7 },
+        { stageCode: 'PREPARATORY', code: 'PREP_2', name_ar: 'الصف الثاني الإعدادي', name_en: 'Prep 2', sort: 8 },
+        { stageCode: 'PREPARATORY', code: 'PREP_3', name_ar: 'الصف الثالث الإعدادي', name_en: 'Prep 3', sort: 9 },
+
+        // Secondary 1 to 3
+        { stageCode: 'SECONDARY', code: 'SEC_1', name_ar: 'الصف الأول الثانوي', name_en: 'Secondary 1', sort: 10 },
+        { stageCode: 'SECONDARY', code: 'SEC_2', name_ar: 'الصف الثاني الثانوي', name_en: 'Secondary 2', sort: 11 },
+        { stageCode: 'SECONDARY', code: 'SEC_3', name_ar: 'الصف الثالث الثانوي', name_en: 'Secondary 3', sort: 12 }
+      ];
+
+      for (const g of gradesDef) {
+        const stageId = stageMap[g.stageCode];
+        if (!stageId) continue;
+        const existing = await this.query('SELECT id FROM grades WHERE code = $1', [g.code]);
+        if (existing.rows.length === 0) {
+          const newId = uuidv4();
+          await this.query(
+            'INSERT INTO grades (id, stage_id, code, name_ar, name_en, sort_order) VALUES ($1, $2, $3, $4, $5, $6)',
+            [newId, stageId, g.code, g.name_ar, g.name_en, g.sort]
+          );
+        }
+      }
+
+      console.log('✅ Verified all 12 grades from Primary 1 to Secondary 3.');
+    } catch (e) {
+      console.warn('Grades verification notice:', e);
     }
   }
 }
