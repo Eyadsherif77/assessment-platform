@@ -146,7 +146,7 @@ export const HierarchyDashboard: React.FC = () => {
   const { user, token, language, impersonateUser } = useAuth();
   const isAr = language === 'ar';
 
-  const [activeTab, setActiveTab] = useState<'analysis' | 'exams' | 'subordinates'>('analysis');
+  const [activeTab, setActiveTab] = useState<'subordinates' | 'analysis' | 'exams'>('subordinates');
 
   // Supervisory Analysis State
   const [analysisTimeframe, setAnalysisTimeframe] = useState<'monthly' | 'weekly'>('monthly');
@@ -515,18 +515,14 @@ export const HierarchyDashboard: React.FC = () => {
   };
 
   const getSubordinateTabTitle = () => {
-    if (user?.role === 'ADMIN') return isAr ? '🏛️ إدارة الهيكل الإشرافي (المدير المركزي، مدراء المحافظات، مشرفو المحافظات، موجهو المواد، المعلمون)' : '🏛️ Governance Staff (All Ranks)';
-    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '🏢 الكوادر التابعة للمدير المركزي (مدراء المحافظات، مشرفو المحافظات، موجهو المواد، المعلمون)' : '🏢 Central Subordinates';
-    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? `📐 الكوادر التابعة لمحافظة ${user?.governorate_name || ''} (مشرفو المحافظات، موجهو المواد، المعلمون)` : `📐 Governorate Subordinates`;
+    if (user?.role === 'ADMIN') return isAr ? '👥 قائمة المستخدمين والكوادر التعليمية والرقابية' : '👥 Governance & Teaching Staff';
+    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '🏢 الكوادر التابعة للمدير المركزي' : '🏢 Central Subordinates';
+    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? `📐 الكوادر التابعة لمحافظة ${user?.governorate_name || ''}` : `📐 Governorate Subordinates`;
     if (user?.role === 'SUPERVISOR') return isAr ? '👨‍🏫 معلمو المادة التابعون لي' : '👨‍🏫 Subordinate Subject Teachers';
-    return isAr ? '🏛️ إدارة الكوادر والمشرفين' : '🏛️ Staff Management';
+    return isAr ? '👥 قائمة المستخدمين والكوادر' : '👥 Staff Management';
   };
 
   const getAddSubordinateBtnTitle = () => {
-    if (user?.role === 'ADMIN') return isAr ? '➕ إضافة مستخدم (مدير مركزي / مدير محافظة / مشرف / موجه / معلم)' : '➕ Add Staff Member';
-    if (user?.role === 'CENTRAL_ADMIN') return isAr ? '➕ إضافة كادر جديد (مدير محافظة / مشرف / موجه / معلم)' : '➕ Add Subordinate';
-    if (user?.role === 'GOVERNORATE_ADMIN') return isAr ? '➕ إضافة كادر بالمحافظة (مشرف / موجه / معلم)' : '➕ Add Subordinate';
-    if (user?.role === 'SUPERVISOR') return isAr ? '➕ إضافة معلم جديد' : '➕ Add New Teacher';
     return isAr ? '➕ إضافة مستخدم' : '➕ Add User';
   };
 
@@ -549,56 +545,134 @@ export const HierarchyDashboard: React.FC = () => {
         position: 'relative',
         overflow: 'hidden'
       }}>
-        <div style={{ position: 'relative', zIndex: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem', flexWrap: 'wrap' }}>
-            <span style={{
-              background: '#EEF2FF',
-              color: '#4F46E5',
-              padding: '0.3rem 0.75rem',
-              borderRadius: '999px',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              border: '1px solid #C7D2FE'
-            }}>
-              <ShieldCheck size={14} color="#4F46E5" />
-              <span>{isAr ? 'نظام الرقابة والإشراف التراتبي المباشر' : 'Direct Hierarchical Governance & Supervision System'}</span>
-            </span>
-
-            {user?.governorate_name && (
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem', flexWrap: 'wrap' }}>
               <span style={{
-                background: '#FEF3C7',
-                color: '#92400E',
-                border: '1px solid #FDE68A',
+                background: '#EEF2FF',
+                color: '#4F46E5',
                 padding: '0.3rem 0.75rem',
                 borderRadius: '999px',
                 fontSize: '0.78rem',
-                fontWeight: 700
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                border: '1px solid #C7D2FE'
               }}>
-                📍 {user.governorate_name}
+                <ShieldCheck size={14} color="#4F46E5" />
+                <span>{isAr ? 'نظام الرقابة والإشراف التراتبي المباشر' : 'Direct Hierarchical Governance & Supervision System'}</span>
               </span>
-            )}
 
-            {user?.subject_name && (
-              <span style={{
-                background: '#ECFDF5',
-                color: '#065F46',
-                border: '1px solid #A7F3D0',
-                padding: '0.3rem 0.75rem',
-                borderRadius: '999px',
-                fontSize: '0.78rem',
-                fontWeight: 700
-              }}>
-                📚 {isAr ? `مادة ${user.subject_name}` : `Subject: ${user.subject_name}`}
-              </span>
-            )}
+              {user?.governorate_name && (
+                <span style={{
+                  background: '#FEF3C7',
+                  color: '#92400E',
+                  border: '1px solid #FDE68A',
+                  padding: '0.3rem 0.75rem',
+                  borderRadius: '999px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700
+                }}>
+                  📍 {user.governorate_name}
+                </span>
+              )}
+
+              {user?.subject_name && (
+                <span style={{
+                  background: '#ECFDF5',
+                  color: '#065F46',
+                  border: '1px solid #A7F3D0',
+                  padding: '0.3rem 0.75rem',
+                  borderRadius: '999px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700
+                }}>
+                  📚 {isAr ? `مادة ${user.subject_name}` : `Subject: ${user.subject_name}`}
+                </span>
+              )}
+            </div>
+
+            <h1 style={{ fontSize: 'clamp(1.25rem, 3.5vw, 1.85rem)', fontWeight: 900, margin: 0, color: 'var(--text-title)', letterSpacing: '-0.02em', lineHeight: 1.3 }}>
+              {getRoleTitle()}
+            </h1>
           </div>
 
-          <h1 style={{ fontSize: 'clamp(1.25rem, 3.5vw, 1.85rem)', fontWeight: 900, margin: 0, color: 'var(--text-title)', letterSpacing: '-0.02em', lineHeight: 1.3 }}>
-            {getRoleTitle()}
-          </h1>
+          {/* Quick Header Action Buttons */}
+          <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                setActiveTab('subordinates');
+                setCreateSubError(null);
+                setCreateFormData({
+                  fullName: '',
+                  email: '',
+                  username: '',
+                  password: '',
+                  targetRole: 'TEACHER',
+                  governorateId: user?.governorate_id || '',
+                  subjectId: user?.subject_id || '',
+                  gradeId: '',
+                  schoolName: '',
+                  specialization: ''
+                });
+                setCreateSubModalOpen(true);
+              }}
+              style={{
+                background: 'linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '0.75rem 1.35rem',
+                borderRadius: '0.75rem',
+                fontWeight: 900,
+                fontSize: '0.925rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
+                transition: 'all 0.15s'
+              }}
+            >
+              <Plus size={18} />
+              <span>{isAr ? '➕ إضافة مستخدم' : '➕ Add User'}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('subordinates');
+                setCreateSubError(null);
+                setCreateFormData({
+                  fullName: '',
+                  email: '',
+                  username: '',
+                  password: '',
+                  targetRole: 'TEACHER',
+                  governorateId: user?.governorate_id || '',
+                  subjectId: user?.subject_id || '',
+                  gradeId: '',
+                  schoolName: '',
+                  specialization: ''
+                });
+                setCreateSubModalOpen(true);
+              }}
+              style={{
+                background: '#EEF2FF',
+                color: '#4F46E5',
+                border: '1.5px solid #C7D2FE',
+                padding: '0.75rem 1.1rem',
+                borderRadius: '0.75rem',
+                fontWeight: 800,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem'
+              }}
+            >
+              <span>🎓 {isAr ? 'إسناد معلم لصف دراسي' : 'Assign Teacher to Grade'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -754,6 +828,43 @@ export const HierarchyDashboard: React.FC = () => {
                   email: '',
                   username: '',
                   password: '',
+                  targetRole: 'TEACHER',
+                  governorateId: '',
+                  subjectId: '',
+                  gradeId: '',
+                  schoolName: '',
+                  specialization: ''
+                });
+                setCreateSubModalOpen(true);
+              }}
+              style={{
+                background: '#4F46E5',
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '0.75rem 1.35rem',
+                borderRadius: '0.75rem',
+                fontWeight: 900,
+                fontSize: '0.925rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.35)'
+              }}
+            >
+              <Plus size={18} />
+              <span>{isAr ? '➕ إضافة مستخدم' : '➕ Add User'}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('subordinates');
+                setCreateSubError(null);
+                setCreateFormData({
+                  fullName: '',
+                  email: '',
+                  username: '',
+                  password: '',
                   targetRole: 'CENTRAL_ADMIN',
                   governorateId: '',
                   subjectId: '',
@@ -797,7 +908,7 @@ export const HierarchyDashboard: React.FC = () => {
                 boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
               }}
             >
-              {isAr ? `عرض قائمة المدراء المركزيين (${subordinates.length})` : `View Central Directors (${subordinates.length})`}
+              {isAr ? `عرض قائمة المستخدمين والكوادر (${subordinates.length})` : `View Staff Members (${subordinates.length})`}
             </button>
           </div>
         </div>
@@ -814,6 +925,39 @@ export const HierarchyDashboard: React.FC = () => {
         paddingBottom: '2px',
         scrollbarWidth: 'none'
       }}>
+        {/* Tab 1: Staff / Subordinates */}
+        <button
+          onClick={() => setActiveTab('subordinates')}
+          style={{
+            padding: '0.75rem 1.25rem',
+            fontWeight: 800,
+            fontSize: '0.9rem',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            borderBottom: activeTab === 'subordinates' ? '3px solid #4F46E5' : '3px solid transparent',
+            color: activeTab === 'subordinates' ? '#4F46E5' : 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
+          }}
+        >
+          <Users size={17} />
+          <span>{getSubordinateTabTitle()}</span>
+          <span style={{
+            background: activeTab === 'subordinates' ? '#EEF2FF' : '#F3F4F6',
+            color: activeTab === 'subordinates' ? '#4F46E5' : 'var(--text-muted)',
+            padding: '0.15rem 0.5rem',
+            borderRadius: '999px',
+            fontSize: '0.75rem'
+          }}>
+            {subordinates.length}
+          </span>
+        </button>
+
+        {/* Tab 2: Supervisory Analytics */}
         <button
           onClick={() => setActiveTab('analysis')}
           style={{
@@ -845,6 +989,7 @@ export const HierarchyDashboard: React.FC = () => {
           </span>
         </button>
 
+        {/* Tab 3: Interactive Exams */}
         <button
           onClick={() => setActiveTab('exams')}
           style={{
@@ -873,37 +1018,6 @@ export const HierarchyDashboard: React.FC = () => {
             fontSize: '0.75rem'
           }}>
             {exams.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('subordinates')}
-          style={{
-            padding: '0.75rem 1.25rem',
-            fontWeight: 800,
-            fontSize: '0.9rem',
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            borderBottom: activeTab === 'subordinates' ? '3px solid #4F46E5' : '3px solid transparent',
-            color: activeTab === 'subordinates' ? '#4F46E5' : 'var(--text-muted)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.45rem',
-            whiteSpace: 'nowrap',
-            flexShrink: 0
-          }}
-        >
-          <Users size={17} />
-          <span>{getSubordinateTabTitle()}</span>
-          <span style={{
-            background: activeTab === 'subordinates' ? '#EEF2FF' : '#F3F4F6',
-            color: activeTab === 'subordinates' ? '#4F46E5' : 'var(--text-muted)',
-            padding: '0.15rem 0.5rem',
-            borderRadius: '999px',
-            fontSize: '0.75rem'
-          }}>
-            {subordinates.length}
           </span>
         </button>
       </div>
@@ -1941,49 +2055,77 @@ export const HierarchyDashboard: React.FC = () => {
               </h2>
             </div>
 
-            <button
-              onClick={() => {
-                const defaultRole = user?.role === 'ADMIN'
-                  ? 'CENTRAL_ADMIN'
-                  : user?.role === 'CENTRAL_ADMIN' 
-                  ? 'GOVERNORATE_ADMIN' 
-                  : user?.role === 'GOVERNORATE_ADMIN' 
-                  ? 'GOVERNORATE_SUPERVISOR' 
-                  : 'TEACHER';
+            <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                onClick={() => {
+                  setCreateSubError(null);
+                  setCreateFormData({
+                    fullName: '',
+                    email: '',
+                    username: '',
+                    password: '',
+                    targetRole: 'TEACHER',
+                    governorateId: user?.governorate_id || '',
+                    subjectId: user?.subject_id || '',
+                    gradeId: '',
+                    schoolName: '',
+                    specialization: ''
+                  });
+                  setCreateSubModalOpen(true);
+                }}
+                style={{
+                  background: '#4F46E5',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '0.65rem',
+                  fontWeight: 800,
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.25)'
+                }}
+              >
+                <Plus size={16} />
+                <span>{getAddSubordinateBtnTitle()}</span>
+              </button>
 
-                setCreateSubError(null);
-                setCreateFormData({
-                  fullName: '',
-                  email: '',
-                  username: '',
-                  password: '',
-                  targetRole: defaultRole,
-                  governorateId: user?.governorate_id || '',
-                  subjectId: user?.subject_id || '',
-                  gradeId: '',
-                  schoolName: '',
-                  specialization: ''
-                });
-                setCreateSubModalOpen(true);
-              }}
-              style={{
-                background: '#4F46E5',
-                color: '#FFFFFF',
-                border: 'none',
-                padding: '0.65rem 1.25rem',
-                borderRadius: '0.65rem',
-                fontWeight: 800,
-                fontSize: '0.875rem',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.25)'
-              }}
-            >
-              <Plus size={16} />
-              <span>{getAddSubordinateBtnTitle()}</span>
-            </button>
+              <button
+                onClick={() => {
+                  setCreateSubError(null);
+                  setCreateFormData({
+                    fullName: '',
+                    email: '',
+                    username: '',
+                    password: '',
+                    targetRole: 'TEACHER',
+                    governorateId: user?.governorate_id || '',
+                    subjectId: user?.subject_id || '',
+                    gradeId: '',
+                    schoolName: '',
+                    specialization: ''
+                  });
+                  setCreateSubModalOpen(true);
+                }}
+                style={{
+                  background: '#EEF2FF',
+                  color: '#4F46E5',
+                  border: '1.5px solid #C7D2FE',
+                  padding: '0.65rem 1rem',
+                  borderRadius: '0.65rem',
+                  fontWeight: 800,
+                  fontSize: '0.825rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem'
+                }}
+              >
+                <span>🎓 {isAr ? 'إسناد معلم لصف دراسي' : 'Assign Teacher to Grade'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Subordinates Filters: By Role & Grade */}
@@ -2510,26 +2652,26 @@ export const HierarchyDashboard: React.FC = () => {
                     >
                       {user?.role === 'ADMIN' && (
                         <>
+                          <option value="TEACHER">{isAr ? '👨‍🏫 معلم (مع تحديد الصف الدراسي والمادة)' : 'Teacher (with Grade & Subject)'}</option>
+                          <option value="SUPERVISOR">{isAr ? '📐 موجه مادة' : 'Subject Supervisor'}</option>
+                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرف محافظة (كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
+                          <option value="GOVERNORATE_ADMIN">{isAr ? '🏢 مدير محافظة' : 'Governorate Director'}</option>
                           <option value="CENTRAL_ADMIN">{isAr ? '🏛️ المدير المركزي' : 'Central Admin'}</option>
-                          <option value="GOVERNORATE_ADMIN">{isAr ? '🏢 مدراء المحافظات (مدير محافظة)' : 'Governorate Director'}</option>
-                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرفو المحافظات (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
-                          <option value="SUPERVISOR">{isAr ? '📐 موجهو المواد (موجه مادة)' : 'Subject Supervisor'}</option>
-                          <option value="TEACHER">{isAr ? '👨‍🏫 المعلمون (معلم)' : 'Teacher'}</option>
                         </>
                       )}
                       {user?.role === 'CENTRAL_ADMIN' && (
                         <>
-                          <option value="GOVERNORATE_ADMIN">{isAr ? '🏢 مدراء المحافظات (مدير محافظة)' : 'Governorate Director'}</option>
-                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرفو المحافظات (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
-                          <option value="SUPERVISOR">{isAr ? '📐 موجهو المواد (موجه مادة)' : 'Subject Supervisor'}</option>
-                          <option value="TEACHER">{isAr ? '👨‍🏫 المعلمون (معلم)' : 'Teacher'}</option>
+                          <option value="TEACHER">{isAr ? '👨‍🏫 معلم (مع تحديد الصف الدراسي والمادة)' : 'Teacher (with Grade & Subject)'}</option>
+                          <option value="SUPERVISOR">{isAr ? '📐 موجه مادة' : 'Subject Supervisor'}</option>
+                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرف محافظة (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
+                          <option value="GOVERNORATE_ADMIN">{isAr ? '🏢 مدير محافظة' : 'Governorate Director'}</option>
                         </>
                       )}
                       {user?.role === 'GOVERNORATE_ADMIN' && (
                         <>
-                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرفو المحافظات (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
-                          <option value="SUPERVISOR">{isAr ? '📐 موجهو المواد (موجه مادة بالمحافظة)' : 'Subject Supervisor'}</option>
-                          <option value="TEACHER">{isAr ? '👨‍🏫 المعلمون (معلم بالمحافظة)' : 'Teacher'}</option>
+                          <option value="TEACHER">{isAr ? '👨‍🏫 معلم بالمحافظة (مع تحديد الصف الدراسي والمادة)' : 'Teacher (with Grade & Subject)'}</option>
+                          <option value="SUPERVISOR">{isAr ? '📐 موجه مادة بالمحافظة' : 'Subject Supervisor'}</option>
+                          <option value="GOVERNORATE_SUPERVISOR">{isAr ? '📋 مشرف محافظة (إنشاء كشوف الطلاب وتصديرها Excel)' : 'Gov Supervisor (Student Accounts & Excel)'}</option>
                         </>
                       )}
                     </select>
@@ -2653,24 +2795,40 @@ export const HierarchyDashboard: React.FC = () => {
 
                 {/* 6.5 Grade Selection (if TEACHER) */}
                 {(createFormData.targetRole === 'TEACHER' || user?.role === 'SUPERVISOR') && (
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      {isAr ? 'الصف الدراسي المسند للمعلم: *' : 'Assigned Grade for Teacher: *'}
+                  <div style={{
+                    background: '#F5F3FF',
+                    border: '2px solid #818CF8',
+                    borderRadius: '0.75rem',
+                    padding: '1rem',
+                    margin: '0.25rem 0'
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', fontWeight: 800, color: '#4338CA', marginBottom: '0.45rem' }}>
+                      <span style={{ fontSize: '1.15rem' }}>🎓</span>
+                      <span>{isAr ? 'الصف الدراسي المسند للمعلم (إجباري لربطه بالطلاب والمناهج): *' : 'Assigned Grade for Teacher: *'}</span>
                     </label>
                     <select
                       required
                       value={createFormData.gradeId}
                       onChange={(e) => setCreateFormData(prev => ({ ...prev, gradeId: e.target.value }))}
-                      style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid #4F46E5', fontSize: '0.9rem', background: '#F5F3FF', fontWeight: 700 }}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 0.85rem',
+                        borderRadius: '0.5rem',
+                        border: '2px solid #6366F1',
+                        fontSize: '0.925rem',
+                        background: '#FFFFFF',
+                        fontWeight: 800,
+                        color: '#1E1B4B'
+                      }}
                     >
-                      <option value="">{isAr ? 'اختر الصف الدراسي للمادة...' : 'Select Assigned Grade...'}</option>
+                      <option value="">{isAr ? '⚡ اضغط هنا لاختيار الصف الدراسي للمعلم...' : 'Select Assigned Grade...'}</option>
                       {grades.map(g => (
                         <option key={g.id} value={g.id}>
                           {isAr ? `${g.name_ar} - ${g.stage_name_ar || ''}` : `${g.name_en || g.name_ar} (${g.code})`}
                         </option>
                       ))}
                     </select>
-                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#4F46E5', fontWeight: 600 }}>
+                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.78rem', color: '#4338CA', fontWeight: 600, lineHeight: 1.4 }}>
                       {isAr
                         ? '🔗 ربط المعلم بالصف يضمن وصول كتبه واختباراته واختبارات الذكاء الاصطناعي المولدة منها حصراً لطلاب هذا الصف الدراسي.'
                         : 'Linking teacher to this grade ensures student textbooks, teacher exams, and AI-generated exams link directly to students of that grade.'}

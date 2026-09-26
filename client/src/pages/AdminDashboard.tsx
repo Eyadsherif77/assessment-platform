@@ -29,6 +29,8 @@ interface TeacherItem {
   fullName: string;
   schoolName: string;
   specialization: string;
+  gradeId?: string | null;
+  gradeNameAr?: string | null;
   isActive: boolean;
   booksCount: number;
   examsCount: number;
@@ -87,6 +89,7 @@ export const AdminDashboard: React.FC = () => {
   const [editPermissions, setEditPermissions] = useState<any>({});
   const [savingPerms, setSavingPerms] = useState(false);
 
+  const [grades, setGrades] = useState<any[]>([]);
   const [addTeacherModalOpen, setAddTeacherModalOpen] = useState(false);
   const [newTeacherData, setNewTeacherData] = useState({
     fullName: '',
@@ -94,6 +97,7 @@ export const AdminDashboard: React.FC = () => {
     password: '',
     specialization: 'معلم أول علوم',
     schoolName: 'مدرسة المتفوقين الرسمية',
+    gradeId: '',
     can_upload_books: true,
     can_create_exams: true,
     can_delete_content: true,
@@ -208,10 +212,23 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const fetchGrades = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/meta/grades'));
+      if (res.ok) {
+        const data = await res.json();
+        setGrades(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching grades in AdminDashboard:', err);
+    }
+  };
+
   useEffect(() => {
     fetchOverview();
     fetchTeachers();
     fetchStudents();
+    fetchGrades();
   }, [token]);
 
   // Handle "Go inside teacher account" (Impersonation)
@@ -306,6 +323,7 @@ export const AdminDashboard: React.FC = () => {
           password: newTeacherData.password,
           specialization: newTeacherData.specialization,
           schoolName: newTeacherData.schoolName,
+          gradeId: newTeacherData.gradeId,
           permissions: {
             can_upload_books: newTeacherData.can_upload_books,
             can_create_exams: newTeacherData.can_create_exams,
@@ -327,6 +345,7 @@ export const AdminDashboard: React.FC = () => {
         password: '',
         specialization: 'معلم أول علوم',
         schoolName: 'مدرسة المتفوقين الرسمية',
+        gradeId: '',
         can_upload_books: true,
         can_create_exams: true,
         can_delete_content: true,
@@ -808,6 +827,24 @@ export const AdminDashboard: React.FC = () => {
                         <BookOpen size={14} color="var(--primary-600)" />
                         <span style={{ fontWeight: 600 }}>{teacher.specialization}</span>
                       </div>
+                      {teacher.gradeNameAr && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.15rem' }}>
+                          <span style={{
+                            background: '#EEF2FF',
+                            color: '#4F46E5',
+                            border: '1px solid #C7D2FE',
+                            padding: '0.2rem 0.6rem',
+                            borderRadius: '6px',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem'
+                          }}>
+                            🎓 {language === 'ar' ? `الصف: ${teacher.gradeNameAr}` : `Grade: ${teacher.gradeNameAr}`}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Stats */}
@@ -1228,6 +1265,39 @@ export const AdminDashboard: React.FC = () => {
                     placeholder={language === 'ar' ? 'مدرسة النيل الإعدادية' : 'Nile Prep School'}
                   />
                 </div>
+              </div>
+
+              {/* Grade Selection for Teacher */}
+              <div style={{
+                background: '#F5F3FF',
+                border: '1.5px solid #818CF8',
+                borderRadius: '0.75rem',
+                padding: '0.9rem',
+                marginBottom: '1rem'
+              }}>
+                <label className="form-label" style={{ color: '#4338CA', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                  <span>🎓</span>
+                  <span>{language === 'ar' ? 'الصف الدراسي المسند للمعلم (إجباري لربطه بالطلاب والمناهج): *' : 'Assigned Grade: *'}</span>
+                </label>
+                <select
+                  required
+                  className="form-input"
+                  value={newTeacherData.gradeId}
+                  onChange={(e) => setNewTeacherData({ ...newTeacherData, gradeId: e.target.value })}
+                  style={{ borderColor: '#6366F1', fontWeight: 800, color: '#312E81', background: '#FFFFFF' }}
+                >
+                  <option value="">{language === 'ar' ? '⚡ اختر الصف الدراسي الذي يدرّسه المعلم...' : 'Select Grade...'}</option>
+                  {grades.map(g => (
+                    <option key={g.id} value={g.id}>
+                      {language === 'ar' ? `${g.name_ar} (${g.stage_name_ar || ''})` : `${g.name_en || g.name_ar}`}
+                    </option>
+                  ))}
+                </select>
+                <p style={{ margin: '0.4rem 0 0', fontSize: '0.75rem', color: '#4338CA', fontWeight: 600 }}>
+                  {language === 'ar'
+                    ? '🔗 يربط المعلم بطلابه: لن يتمكن المعلم من رفع كتب أو إنشاء اختبارات إلا لهذا الصف المحدد، وستصل مواده واختباراته واختبارات الذكاء الاصطناعي لطلاب هذا الصف فقط.'
+                    : 'Restricts book uploads and exams exclusively to students of this grade.'}
+                </p>
               </div>
 
               <div style={{ marginTop: '0.5rem', marginBottom: '1.25rem' }}>

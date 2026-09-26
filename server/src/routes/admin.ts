@@ -78,10 +78,13 @@ router.get('/teachers', async (req: AuthenticatedRequest, res) => {
         u.created_at,
         tp.school_name, 
         tp.specialization,
+        tp.grade_id,
+        grd.name_ar as grade_name_ar,
         (SELECT COUNT(*) FROM books b WHERE b.teacher_id = u.id) as books_count,
         (SELECT COUNT(*) FROM exams e WHERE e.teacher_id = u.id) as exams_count
       FROM users u
       LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+      LEFT JOIN grades grd ON tp.grade_id = grd.id
       WHERE u.role = 'TEACHER'
       ORDER BY u.created_at DESC
     `;
@@ -109,6 +112,8 @@ router.get('/teachers', async (req: AuthenticatedRequest, res) => {
         fullName: row.full_name,
         schoolName: row.school_name || 'غير محدد',
         specialization: row.specialization || 'معلم متخصص',
+        gradeId: row.grade_id || null,
+        gradeNameAr: row.grade_name_ar || null,
         isActive: row.is_active !== 0,
         booksCount: Number(row.books_count || 0),
         examsCount: Number(row.exams_count || 0),
@@ -129,7 +134,7 @@ router.get('/teachers', async (req: AuthenticatedRequest, res) => {
  */
 router.post('/teachers', async (req: AuthenticatedRequest, res) => {
   try {
-    const { email, password, fullName, specialization, schoolName, permissions } = req.body;
+    const { email, password, fullName, specialization, schoolName, permissions, gradeId } = req.body;
 
     if (!email || !password || !fullName) {
       return res.status(400).json({ error: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور واسم المعلم' });
@@ -138,6 +143,14 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
     const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
+    }
+
+    let stageId = null;
+    if (gradeId) {
+      const grRes = await db.query('SELECT stage_id FROM grades WHERE id = $1', [gradeId]);
+      if (grRes.rows.length > 0) {
+        stageId = grRes.rows[0].stage_id;
+      }
     }
 
     const teacherId = uuidv4();
@@ -169,9 +182,9 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
     );
 
     await db.query(
-      `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization)
-       VALUES ($1, $2, $3, $4)`,
-      [teacherId, fullName.trim(), schoolName || null, specialization || null]
+      `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization, grade_id, academic_stage_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [teacherId, fullName.trim(), schoolName || null, specialization || null, gradeId || null, stageId]
     );
 
     return res.status(201).json({
@@ -183,6 +196,7 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
         fullName: fullName.trim(),
         specialization,
         schoolName,
+        gradeId: gradeId || null,
         permissions: defaultPerms
       }
     });
