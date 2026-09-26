@@ -271,8 +271,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           overflow: 'hidden'
         }}>
           <img
-            src="/logo.png"
-            alt={isAr ? 'منصة التقييم من أجل التعلم' : 'Assessment Platform Logo'}
+            src="/farabi-logo.png"
+            alt={isAr ? 'مدرسة الفارابي | Farabi School' : 'Farabi School Logo'}
             style={{
               width: '100%',
               height: '100%',
@@ -337,6 +337,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <X size={20} />
             </button>
           </div>
+
+          {/* New Logo Card in Create Account */}
+          {mode === 'register' && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.85rem',
+              marginBottom: '1rem',
+              background: '#F8FAFC',
+              padding: '0.65rem 0.9rem',
+              borderRadius: 'var(--radius-lg)',
+              border: '1.5px solid #E2E8F0'
+            }}>
+              <img 
+                src="/farabi-logo.png" 
+                alt="Farabi School Logo" 
+                style={{ width: '46px', height: '46px', objectFit: 'contain', borderRadius: '50%', background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '2px', flexShrink: 0 }} 
+              />
+              <div>
+                <div style={{ fontWeight: 900, color: '#1E293B', fontSize: '0.925rem' }}>
+                  {isAr ? 'مدرسة الفارابي | Farabi School' : 'Farabi School'}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {isAr ? 'منظومة حسابات الطلاب المعتمدة' : 'Official Student Accounts Portal'}
+                </div>
+              </div>
+            </div>
+          )}
 
           <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '0.35rem', color: 'var(--text-title)' }}>
             {isAr 
