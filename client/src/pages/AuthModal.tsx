@@ -329,13 +329,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {isAr ? 'حساب جديد' : 'New Account'}
               </button>
             </div>
-
-            <button
-              onClick={onClose}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem' }}
-            >
-              <X size={20} />
-            </button>
           </div>
 
           {/* New Logo Card in Create Account */}

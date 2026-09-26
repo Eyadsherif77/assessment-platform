@@ -1277,7 +1277,7 @@ export const AdminDashboard: React.FC = () => {
               }}>
                 <label className="form-label" style={{ color: '#4338CA', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
                   <span>🎓</span>
-                  <span>{language === 'ar' ? 'الصف الدراسي المسند للمعلم (إجباري لربطه بالطلاب والمناهج): *' : 'Assigned Grade: *'}</span>
+                  <span>{language === 'ar' ? 'الصف الدراسي: *' : 'Assigned Grade: *'}</span>
                 </label>
                 <select
                   required
@@ -1286,18 +1286,13 @@ export const AdminDashboard: React.FC = () => {
                   onChange={(e) => setNewTeacherData({ ...newTeacherData, gradeId: e.target.value })}
                   style={{ borderColor: '#6366F1', fontWeight: 800, color: '#312E81', background: '#FFFFFF' }}
                 >
-                  <option value="">{language === 'ar' ? '⚡ اختر الصف الدراسي الذي يدرّسه المعلم...' : 'Select Grade...'}</option>
+                  <option value="">{language === 'ar' ? 'اختر الصف الدراسي...' : 'Select Grade...'}</option>
                   {grades.map(g => (
                     <option key={g.id} value={g.id}>
                       {language === 'ar' ? `${g.name_ar} (${g.stage_name_ar || ''})` : `${g.name_en || g.name_ar}`}
                     </option>
                   ))}
                 </select>
-                <p style={{ margin: '0.4rem 0 0', fontSize: '0.75rem', color: '#4338CA', fontWeight: 600 }}>
-                  {language === 'ar'
-                    ? '🔗 يربط المعلم بطلابه: لن يتمكن المعلم من رفع كتب أو إنشاء اختبارات إلا لهذا الصف المحدد، وستصل مواده واختباراته واختبارات الذكاء الاصطناعي لطلاب هذا الصف فقط.'
-                    : 'Restricts book uploads and exams exclusively to students of this grade.'}
-                </p>
               </div>
 
               <div style={{ marginTop: '0.5rem', marginBottom: '1.25rem' }}>
