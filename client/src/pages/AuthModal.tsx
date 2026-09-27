@@ -25,7 +25,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onSuccess
 }) => {
-  const { login, language } = useAuth();
+  const { user, login, language } = useAuth();
   const isAr = language === 'ar';
 
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
@@ -39,7 +39,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [term] = useState<'الاول' | 'التانى'>('الاول');
   // 4. إسم المدرسة
   const [schoolName, setSchoolName] = useState<string>('');
-  // 5. email
+  // 5. email or code
   const [email, setEmail] = useState<string>('');
   // 7. username
   const [username, setUsername] = useState<string>('');
@@ -50,11 +50,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [registeredCode, setRegisteredCode] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMode(initialMode);
+  const resetForm = () => {
+    setEmail('');
+    setPassword('');
+    setUsername('');
     setError(null);
-    setRegisteredCode(null);
-  }, [initialMode, isOpen]);
+  };
+
+  // Reset fields on modal open or when user logs out
+  useEffect(() => {
+    if (isOpen || !user) {
+      setMode(initialMode);
+      setRegisteredCode(null);
+      resetForm();
+    }
+  }, [initialMode, isOpen, user]);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -101,7 +116,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           setRegisteredCode(code);
         } else {
           onSuccess();
-          onClose();
+          handleClose();
         }
       } else {
         // Login mode
@@ -124,6 +139,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
 
         login(data.token, data.user);
+        resetForm();
         onSuccess();
         onClose();
       }
@@ -209,7 +225,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             {/* CTA Button */}
             <button
-              onClick={() => { onSuccess(); onClose(); }}
+              onClick={() => { onSuccess(); handleClose(); }}
               style={{
                 marginTop: '0.5rem',
                 background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
@@ -233,7 +249,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Floating Close Button */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           aria-label={isAr ? 'إغلاق' : 'Close'}
           style={{
             position: 'absolute',
@@ -404,7 +420,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+          <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
             {mode === 'register' ? (
               <>
                 {/* 1. نوع التعليم (عربى / لغات) */}
@@ -590,6 +606,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       className="form-input"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
@@ -617,6 +634,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <input
                       type="password"
                       required
+                      autoComplete="new-password"
                       className="form-input"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
