@@ -218,14 +218,20 @@ router.post('/login', async (req, res) => {
 
     const cleanIdent = email.toLowerCase().trim();
     const userRes = await db.query(
-      `SELECT id, super_id, hybrid_id, email, username, password_hash, role, full_name, permissions, is_active, governorate_id, subject_id, created_by 
-       FROM users 
-       WHERE LOWER(email) = $1 OR LOWER(username) = $2`,
-      [cleanIdent, cleanIdent]
+      `SELECT u.id, u.super_id, u.hybrid_id, u.email, u.username, u.password_hash, u.role, u.full_name, u.permissions, u.is_active, u.governorate_id, u.subject_id, u.created_by 
+       FROM users u
+       LEFT JOIN student_profiles sp ON sp.user_id = u.id
+       WHERE LOWER(u.email) = $1 
+          OR LOWER(u.username) = $2 
+          OR LOWER(u.super_id) = $3 
+          OR LOWER(u.hybrid_id) = $4
+          OR LOWER(sp.student_code) = $5
+       LIMIT 1`,
+      [cleanIdent, cleanIdent, cleanIdent, cleanIdent, cleanIdent]
     );
 
     if (userRes.rows.length === 0) {
-      return res.status(401).json({ error: 'البريد الإلكتروني أو اسم المستخدم أو كلمة المرور غير صحيحة' });
+      return res.status(401).json({ error: 'البيانات المدخلة غير صحيحة (تأكد من البريد أو اسم المستخدم أو الكود وكلمة المرور)' });
     }
 
     const user = userRes.rows[0];

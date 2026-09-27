@@ -106,7 +106,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       } else {
         // Login mode
         if (!email.trim() || !password) {
-          throw new Error(isAr ? 'الرجاء إدخال البريد الإلكتروني أو اسم المستخدم وكلمة المرور' : 'Please enter credentials');
+          throw new Error(isAr ? 'الرجاء إدخال البريد الإلكتروني أو اسم المستخدم أو الكود وكلمة المرور' : 'Please enter credentials');
         }
 
         const res = await fetch(apiUrl('/api/auth/login'), {
@@ -584,7 +584,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
-                    {isAr ? 'البريد الإلكتروني أو اسم المستخدم' : 'Email or Username'}
+                    {isAr ? 'البريد الإلكتروني أو اسم المستخدم أو الكود التعريفي' : 'Email, Username or ID Code'}
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
@@ -593,7 +593,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       className="form-input"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
-                      placeholder={isAr ? 'البريد الإلكتروني أو اسم المستخدم' : 'email or username'}
+                      placeholder={isAr ? 'البريد الإلكتروني أو اسم المستخدم أو الكود (مثال: HYB-SUP-...)' : 'Email, username, or code'}
                       style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
                     />
                     <Mail 
