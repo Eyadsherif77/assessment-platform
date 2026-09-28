@@ -23,7 +23,8 @@
     "mysql2": "^3.24.4",
     "pdf-parse": "^1.1.1",
     "pg": "^8.13.1",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

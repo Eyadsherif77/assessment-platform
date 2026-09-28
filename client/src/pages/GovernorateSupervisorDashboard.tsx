@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
+import * as XLSX from 'xlsx';
 import { 
   UserPlus, 
   FileSpreadsheet, 
@@ -15,16 +16,30 @@ import {
   EyeOff, 
   RefreshCw, 
   Sparkles,
-  Filter
+  Filter,
+  Upload
 } from 'lucide-react';
 
 interface StudentItem {
   id: string;
+  imported?: string;
   studentCode: string;
   email: string;
   username: string;
   fullName: string;
   initialPassword?: string;
+  password?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  arabicName?: string;
+  gender?: string;
+  birthDate?: string;
+  religion?: string;
+  nationality?: string;
+  batchCode?: string;
+  electiveSubjects?: string;
+  familyCode?: string;
   gradeId: string;
   gradeName: string;
   gradeCode?: string;
@@ -58,10 +73,13 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('ALL');
 
+  // Excel File Input Ref & State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+
   // Form State for creating student
   const [fullName, setFullName] = useState<string>('');
   const [username, setUsername] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
   const [selectedGradeId, setSelectedGradeId] = useState<string>('');
   const [schoolType, setSchoolType] = useState<'عربى' | 'لغات'>('عربى');
   const [schoolName, setSchoolName] = useState<string>('المدرسة الرسمية');
@@ -128,16 +146,6 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
     }
   };
 
-  // Auto-generate random password
-  const generateRandomPassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let p = 'Edu@';
-    for (let i = 0; i < 4; i++) {
-      p += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setPassword(p);
-  };
-
   // Auto-generate unique username based on full name or timestamp
   const generateUsernameFromFullName = (name: string) => {
     if (!name.trim()) {
@@ -160,10 +168,14 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
     setFormError(null);
     setFormSuccess(null);
 
-    if (!fullName.trim() || !username.trim() || !password.trim() || !selectedGradeId) {
-      setFormError(isAr ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+    const cleanUname = username.trim();
+    if (!fullName.trim() || !cleanUname || !selectedGradeId) {
+      setFormError(isAr ? 'يرجى إدخال اسم الطالب واسم المستخدم واختيار الصف الدراسي' : 'Please fill all required fields');
       return;
     }
+
+    // Password is ALWAYS strictly username + Aa@1
+    const autoPassword = `${cleanUname}Aa@1`;
 
     setFormLoading(true);
     try {
@@ -175,8 +187,8 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         },
         body: JSON.stringify({
           fullName: fullName.trim(),
-          username: username.trim(),
-          password: password.trim(),
+          username: cleanUname,
+          password: autoPassword,
           gradeId: selectedGradeId,
           schoolType,
           schoolName: schoolName.trim() || 'المدرسة الرسمية'
@@ -188,10 +200,9 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         throw new Error(data.error || 'فشل إنشاء حساب الطالب');
       }
 
-      setFormSuccess(isAr ? `✅ تم إنشاء حساب الطالب بنجاح! اسم الدخول: ${username}` : 'Student account created successfully!');
+      setFormSuccess(isAr ? `✅ تم إنشاء حساب الطالب بنجاح! اسم الدخول: ${cleanUname} • كلمة المرور: ${autoPassword}` : `Student account created successfully! Password: ${autoPassword}`);
       setFullName('');
       setUsername('');
-      setPassword('');
       fetchStudents();
       fetchMeta();
     } catch (err: any) {
@@ -237,58 +248,124 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
     setVisiblePasswords(prev => ({ ...prev, [studentId]: !prev[studentId] }));
   };
 
-  // EXCEL / CSV EXPORT WITH UTF-8 BOM
+  // EXCEL EXPORT (Exactly matching New_Student_Parent_Import_Template.xlsx on Desktop)
   const handleExportToExcel = () => {
     if (students.length === 0) {
       alert(isAr ? 'لا يوجد طلاب لتصديرهم حالياً' : 'No students to export');
       return;
     }
 
-    // Prepare CSV header
-    const headers = [
-      'م',
-      'كود الطالب',
-      'اسم الطالب',
-      'اسم المستخدم (Username)',
-      'كلمة المرور (Password)',
-      'المرحلة الدراسية',
-      'الصف الدراسي',
-      'نوع التعليم',
-      'المدرسة',
-      'المحافظة',
-      'تاريخ الإنشاء'
-    ];
+    try {
+      const wb = XLSX.utils.book_new();
 
-    const rows = students.map((s, index) => [
-      index + 1,
-      `"${s.studentCode || ''}"`,
-      `"${s.fullName.replace(/"/g, '""')}"`,
-      `"${s.username || s.email}"`,
-      `"${s.initialPassword || '********'}"`,
-      `"${s.stageName || ''}"`,
-      `"${s.gradeName || ''}"`,
-      `"${s.schoolType || 'عربى'}"`,
-      `"${s.schoolName || 'المدرسة الرسمية'}"`,
-      `"${s.governorateName || governorateName}"`,
-      `"${new Date(s.createdAt).toLocaleDateString('ar-EG')}"`
-    ]);
+      // Sheet 1: Students (Exact columns in exact arrangement as desktop template)
+      const studentsRows = students.map((s, idx) => ({
+        'imported': s.imported || s.studentCode || (idx + 1).toString(),
+        'Username': s.username || '',
+        'Name': s.fullName || '',
+        'First name': s.firstName || s.fullName.split(' ')[0] || '',
+        'student middle name': s.middleName || s.fullName.split(' ').slice(1, -1).join(' ') || '',
+        'Last name': s.lastName || s.fullName.split(' ').slice(-1)[0] || '',
+        'Gender': s.gender || 'Male',
+        'Arabic Name': s.arabicName || s.fullName || '',
+        'Birth Date': s.birthDate || '',
+        'Religion': s.religion || 'Muslims',
+        'Nationality': s.nationality || 'Egypt',
+        'Email': s.email || `${s.username}@school.edu.eg`,
+        'Batch Code': s.batchCode || s.gradeName || '',
+        'elective subjects string': s.electiveSubjects || '',
+        'Family Code': s.familyCode || `F${String(idx + 1).padStart(4, '0')}`
+      }));
 
-    // Add UTF-8 BOM (\uFEFF) for perfect Arabic Excel rendering
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const wsStudents = XLSX.utils.json_to_sheet(studentsRows);
+      XLSX.utils.book_append_sheet(wb, wsStudents, 'Students');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const gradeNameSuffix = selectedGradeFilter !== 'ALL' 
-      ? `_${grades.find(g => g.id === selectedGradeFilter)?.name_ar || ''}`
-      : '_جميع_الصفوف';
-    const filename = `بيانات_حسابات_الطلاب_المعتمدة${gradeNameSuffix}_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      // Sheet 2: Parents (Exact columns as desktop template)
+      const parentsRows = students.map((s, idx) => ({
+        'Family Code': s.familyCode || `F${String(idx + 1).padStart(4, '0')}`,
+        'Name': `ولي أمر ${s.fullName}`,
+        'Username': `P${String(idx + 1).padStart(5, '0')}`,
+        'Email': `parent_${s.username}@school.edu.eg`,
+        'Relation with Student': 'Father',
+        'Is Emergency Contact': 'Yes',
+        'mobile': ''
+      }));
+
+      const wsParents = XLSX.utils.json_to_sheet(parentsRows);
+      XLSX.utils.book_append_sheet(wb, wsParents, 'Parents');
+
+      XLSX.writeFile(wb, 'New_Student_Parent_Import_Template.xlsx');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      alert(isAr ? 'حدث خطأ أثناء تصدير ملف الإكسيل' : 'Failed to export excel file');
+    }
+  };
+
+  // EXCEL IMPORT (Matching New_Student_Parent_Import_Template.xlsx)
+  const handleImportExcelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      // Find Students sheet or first sheet
+      const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('student')) || workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '' });
+
+      if (rows.length === 0) {
+        throw new Error(isAr ? 'ملف الإكسيل فارغ أو لا يحتوي على صفوف بيانات' : 'Excel file is empty');
+      }
+
+      // Convert date serials if any
+      const cleanedRows = rows.map(r => {
+        const rawDate = r['Birth Date'] || r['birthDate'];
+        let formattedDate = rawDate;
+        if (typeof rawDate === 'number' || (!isNaN(Number(rawDate)) && !String(rawDate).includes('-') && !String(rawDate).includes('/'))) {
+          const num = Number(rawDate);
+          if (num > 1000 && num < 60000) {
+            const date = new Date((num - (25567 + 2)) * 86400 * 1000);
+            if (!isNaN(date.getTime())) {
+              formattedDate = date.toISOString().split('T')[0];
+            }
+          }
+        }
+        return {
+          ...r,
+          'Birth Date': formattedDate
+        };
+      });
+
+      const res = await fetch(apiUrl('/api/governorate-supervisor/students/bulk'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          students: cleanedRows,
+          defaultGradeId: selectedGradeId || undefined
+        })
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'فشل استيراد الطلاب');
+      }
+
+      alert(result.message || (isAr ? 'تم استيراد كشوف الطلاب بنجاح!' : 'Students imported successfully!'));
+      fetchStudents();
+      fetchMeta();
+    } catch (err: any) {
+      console.error('Import error:', err);
+      alert(err.message || (isAr ? 'حدث خطأ أثناء معالجة ملف الإكسيل' : 'Failed to import excel file'));
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -376,29 +453,68 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Upper Export to Excel Button (Requirement 4) */}
+        {/* Upper Export & Import Buttons */}
         <div style={{ zIndex: 2, display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Import Button */}
           <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="btn"
+            disabled={isImporting}
+            style={{
+              background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+              color: '#FFFFFF',
+              border: 'none',
+              padding: '0.85rem 1.5rem',
+              borderRadius: 'var(--radius-xl)',
+              fontSize: '0.95rem',
+              fontWeight: 900,
+              cursor: isImporting ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              boxShadow: '0 8px 20px rgba(37, 99, 235, 0.35)',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Upload size={19} />
+            <span>
+              {isImporting
+                ? (isAr ? 'جاري الاستيراد...' : 'Importing...')
+                : (isAr ? '📤 استيراد كشوف الطلاب (Excel)' : '📤 Import Students (Excel)')}
+            </span>
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".xlsx, .xls, .csv"
+            style={{ display: 'none' }}
+            onChange={handleImportExcelFile}
+          />
+
+          {/* Export Button */}
+          <button
+            type="button"
             onClick={handleExportToExcel}
             className="btn"
             style={{
               background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
               color: '#FFFFFF',
               border: 'none',
-              padding: '0.85rem 1.6rem',
+              padding: '0.85rem 1.5rem',
               borderRadius: 'var(--radius-xl)',
-              fontSize: '1rem',
+              fontSize: '0.95rem',
               fontWeight: 900,
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.65rem',
+              gap: '0.6rem',
               boxShadow: '0 8px 20px rgba(16, 185, 129, 0.35)',
               transition: 'all 0.2s ease'
             }}
           >
-            <FileSpreadsheet size={20} />
-            <span>{isAr ? '📥 تصدير كشوف الطلاب إلى Excel' : '📥 Export Students to Excel'}</span>
+            <FileSpreadsheet size={19} />
+            <span>{isAr ? '📥 تصدير كشوف الطلاب (Excel)' : '📥 Export Students (Excel)'}</span>
           </button>
         </div>
       </div>
@@ -597,39 +713,23 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
               />
             </div>
 
-            {/* 3. Password with Generate Helper */}
+            {/* 3. Password Auto-Generated strictly as username + Aa@1 */}
             <div className="form-group">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                <label className="form-label" style={{ fontWeight: 800, margin: 0 }}>
-                  {isAr ? 'كلمة المرور (Password)' : 'Password'} *
-                </label>
-                <button
-                  type="button"
-                  onClick={generateRandomPassword}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--primary-600)',
-                    fontSize: '0.75rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem'
-                  }}
-                >
-                  <Key size={12} />
-                  <span>{isAr ? 'توليد كلمة سر' : 'Generate Password'}</span>
-                </button>
-              </div>
+              <label className="form-label" style={{ fontWeight: 800, margin: '0 0 0.35rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <Key size={14} />
+                <span>{isAr ? 'كلمة المرور (تُولد تلقائياً: اسم_المستخدمAa@1)' : 'Password (Auto: usernameAa@1)'}</span>
+              </label>
               <input
                 type="text"
-                required
+                readOnly
+                disabled
                 className="form-input"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Edu@2026"
+                style={{ backgroundColor: 'var(--bg-card-hover)', cursor: 'not-allowed', color: 'var(--primary-700)', fontWeight: 800 }}
+                value={username ? `${username}Aa@1` : (isAr ? 'اسم_المستخدمAa@1' : 'usernameAa@1')}
               />
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                {isAr ? '🔒 تُنشأ كلمة السر آلياً فوراً كـ: اسم المستخدم متبوعاً بـ Aa@1 (لا يمكن إدخال كلمة سر يدوية)' : '🔒 Password is auto-generated as username + Aa@1'}
+              </span>
             </div>
 
             {/* 4. Grade Selection (Primary 1 to Secondary 3) */}
@@ -782,44 +882,61 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
           </div>
 
           {/* Table Container */}
-          <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-light)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left', fontSize: '0.85rem' }}>
+          <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-light)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left', fontSize: '0.825rem', whiteSpace: 'nowrap' }}>
               <thead>
-                <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1.5px solid var(--border-light)', color: 'var(--text-title)' }}>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{isAr ? 'كود الطالب' : 'Code'}</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{isAr ? 'اسم الطالب' : 'Full Name'}</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{isAr ? 'اسم المستخدم' : 'Username'}</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{isAr ? 'كلمة المرور' : 'Password'}</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{isAr ? 'الصف الدراسي' : 'Grade'}</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{isAr ? 'تاريخ الإنشاء' : 'Date'}</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 800, textAlign: 'center' }}>{isAr ? 'إجراءات' : 'Actions'}</th>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid var(--border-light)', color: '#334155' }}>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>imported</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Username</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Name</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>First name</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>student middle name</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Last name</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Gender</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Arabic Name</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Birth Date</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Religion</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Nationality</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Email</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Batch Code</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>elective subjects string</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800 }}>Family Code</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800, background: '#FEF3C7', color: '#92400E' }}>Password</th>
+                  <th style={{ padding: '0.85rem 0.9rem', fontWeight: 800, textAlign: 'center' }}>{isAr ? 'إجراءات' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.5rem' }} />
-                      <div>{isAr ? 'جاري تحميل قائمة الطلاب...' : 'Loading students...'}</div>
+                    <td colSpan={17} style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <RefreshCw size={26} className="animate-spin" style={{ margin: '0 auto 0.5rem', color: 'var(--primary-600)' }} />
+                      <div style={{ fontWeight: 700 }}>{isAr ? 'جاري تحميل قائمة الطلاب...' : 'Loading students...'}</div>
                     </td>
                   </tr>
                 ) : students.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan={17} style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                       <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🎓</div>
                       <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', marginBottom: '0.25rem' }}>
                         {isAr ? 'لا يوجد طلاب مسجلون بعد' : 'No students found'}
                       </div>
                       <p style={{ margin: 0, fontSize: '0.825rem' }}>
                         {isAr
-                          ? 'استخدم النموذج لإنشاء أول حساب طالب واختيار صفه الدراسي'
-                          : 'Use the form to create your first student account'}
+                          ? 'استخدم زر الاستيراد أو نموذج الإنشاء لإضافة الطلاب'
+                          : 'Use Excel import or the creation form to register students'}
                       </p>
                     </td>
                   </tr>
                 ) : (
                   students.map(s => {
                     const isVisible = visiblePasswords[s.id];
+                    const autoPassword = `${s.username}Aa@1`;
+
+                    // Parse name components if not individually present
+                    const nameParts = (s.fullName || '').trim().split(/\s+/);
+                    const fName = s.firstName || nameParts[0] || '';
+                    const mName = s.middleName || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : (nameParts[1] || ''));
+                    const lName = s.lastName || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '');
 
                     return (
                       <tr
@@ -829,104 +946,150 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                           transition: 'background 0.15s ease'
                         }}
                       >
-                        {/* Student Code */}
-                        <td style={{ padding: '0.75rem 1rem' }}>
+                        {/* 1. imported */}
+                        <td style={{ padding: '0.65rem 0.9rem' }}>
                           <span style={{
                             background: '#EFF6FF',
                             color: '#1D4ED8',
                             fontFamily: 'monospace',
                             fontWeight: 800,
-                            padding: '0.2rem 0.5rem',
+                            padding: '0.2rem 0.45rem',
                             borderRadius: 'var(--radius-sm)',
-                            fontSize: '0.8rem'
+                            fontSize: '0.75rem'
                           }}>
-                            {s.studentCode}
+                            {s.imported || s.studentCode || `IMP-${s.id.substring(0, 6)}`}
                           </span>
                         </td>
 
-                        {/* Full Name */}
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 800, color: 'var(--text-title)' }}>
-                          {s.fullName}
-                          <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                            {s.schoolName} ({s.schoolType})
-                          </div>
-                        </td>
-
-                        {/* Username */}
-                        <td style={{ padding: '0.75rem 1rem' }}>
+                        {/* 2. Username */}
+                        <td style={{ padding: '0.65rem 0.9rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-body)' }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary-700)' }}>
                               {s.username}
                             </span>
                             <button
                               onClick={() => handleCopyCredentials(s.username, `${s.id}-user`)}
                               title={isAr ? 'نسخ اسم المستخدم' : 'Copy Username'}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.2rem' }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.15rem' }}
                             >
-                              {copiedId === `${s.id}-user` ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
+                              {copiedId === `${s.id}-user` ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
                             </button>
                           </div>
                         </td>
 
-                        {/* Password */}
-                        <td style={{ padding: '0.75rem 1rem' }}>
+                        {/* 3. Name */}
+                        <td style={{ padding: '0.65rem 0.9rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                          {s.fullName}
+                        </td>
+
+                        {/* 4. First name */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-body)' }}>
+                          {fName || '-'}
+                        </td>
+
+                        {/* 5. student middle name */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-body)' }}>
+                          {mName || '-'}
+                        </td>
+
+                        {/* 6. Last name */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-body)' }}>
+                          {lName || '-'}
+                        </td>
+
+                        {/* 7. Gender */}
+                        <td style={{ padding: '0.65rem 0.9rem' }}>
+                          <span style={{
+                            padding: '0.15rem 0.45rem',
+                            borderRadius: 'var(--radius-full)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            background: s.gender === 'Female' || s.gender === 'أنثى' ? '#FCE7F3' : '#E0E7FF',
+                            color: s.gender === 'Female' || s.gender === 'أنثى' ? '#9D174D' : '#3730A3'
+                          }}>
+                            {s.gender || 'Male'}
+                          </span>
+                        </td>
+
+                        {/* 8. Arabic Name */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-title)', fontWeight: 600 }}>
+                          {s.arabicName || s.fullName}
+                        </td>
+
+                        {/* 9. Birth Date */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                          {s.birthDate || '-'}
+                        </td>
+
+                        {/* 10. Religion */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-body)' }}>
+                          {s.religion || 'مسلم'}
+                        </td>
+
+                        {/* 11. Nationality */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-body)' }}>
+                          {s.nationality || 'مصر'}
+                        </td>
+
+                        {/* 12. Email */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                          {s.email || '-'}
+                        </td>
+
+                        {/* 13. Batch Code */}
+                        <td style={{ padding: '0.65rem 0.9rem' }}>
+                          <span style={{
+                            background: '#F1F5F9',
+                            color: '#475569',
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '0.75rem',
+                            fontWeight: 700
+                          }}>
+                            {s.batchCode || s.gradeName}
+                          </span>
+                        </td>
+
+                        {/* 14. elective subjects string */}
+                        <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                          {s.electiveSubjects || '-'}
+                        </td>
+
+                        {/* 15. Family Code */}
+                        <td style={{ padding: '0.65rem 0.9rem', fontFamily: 'monospace', color: '#6366F1', fontWeight: 700 }}>
+                          {s.familyCode || '-'}
+                        </td>
+
+                        {/* 16. Password (Strictly username + Aa@1) */}
+                        <td style={{ padding: '0.65rem 0.9rem', background: '#FFFBEB' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <span style={{
                               fontFamily: 'monospace',
-                              fontWeight: 800,
-                              color: isVisible ? '#B45309' : 'var(--text-muted)',
-                              background: '#FFFBEB',
-                              padding: '0.15rem 0.45rem',
-                              borderRadius: 'var(--radius-sm)'
+                              fontWeight: 900,
+                              color: '#B45309',
+                              fontSize: '0.825rem'
                             }}>
-                              {isVisible ? (s.initialPassword || 'Edu@123') : '••••••••'}
+                              {isVisible ? autoPassword : '••••••••'}
                             </span>
                             <button
                               onClick={() => togglePasswordVisibility(s.id)}
                               title={isVisible ? (isAr ? 'إخفاء' : 'Hide') : (isAr ? 'إظهار' : 'Show')}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.2rem' }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B45309', padding: '0.15rem' }}
                             >
-                              {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                              {isVisible ? <EyeOff size={13} /> : <Eye size={13} />}
                             </button>
                             <button
-                              onClick={() => handleCopyCredentials(s.initialPassword || 'Edu@123', `${s.id}-pass`)}
+                              onClick={() => handleCopyCredentials(autoPassword, `${s.id}-pass`)}
                               title={isAr ? 'نسخ كلمة المرور' : 'Copy Password'}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.2rem' }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B45309', padding: '0.15rem' }}
                             >
-                              {copiedId === `${s.id}-pass` ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
+                              {copiedId === `${s.id}-pass` ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
                             </button>
                           </div>
                         </td>
 
-                        {/* Grade Badge */}
-                        <td style={{ padding: '0.75rem 1rem' }}>
-                          <span style={{
-                            padding: '0.25rem 0.65rem',
-                            borderRadius: 'var(--radius-full)',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
-                            background: s.gradeCode?.startsWith('PRIM') 
-                              ? '#FEF3C7' 
-                              : s.gradeCode?.startsWith('PREP') 
-                                ? '#E0E7FF' 
-                                : '#FCE7F3',
-                            color: s.gradeCode?.startsWith('PRIM') 
-                              ? '#92400E' 
-                              : s.gradeCode?.startsWith('PREP') 
-                                ? '#3730A3' 
-                                : '#9D174D'
-                          }}>
-                            {s.gradeName}
-                          </span>
-                        </td>
-
-                        {/* Created Date */}
-                        <td style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                          {new Date(s.createdAt).toLocaleDateString('ar-EG')}
-                        </td>
-
-                        {/* Action Buttons */}
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                        {/* 17. Actions */}
+                        <td style={{ padding: '0.65rem 0.9rem', textAlign: 'center' }}>
                           <button
                             onClick={() => handleDeleteStudent(s.id, s.fullName)}
                             title={isAr ? 'حذف الطالب' : 'Delete Student'}
@@ -935,17 +1098,17 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                               color: '#DC2626',
                               border: 'none',
                               borderRadius: 'var(--radius-md)',
-                              padding: '0.35rem 0.65rem',
+                              padding: '0.3rem 0.55rem',
                               cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '0.25rem',
-                              fontSize: '0.75rem',
+                              fontSize: '0.72rem',
                               fontWeight: 700,
                               transition: 'all 0.15s ease'
                             }}
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
                             <span>{isAr ? 'حذف' : 'Delete'}</span>
                           </button>
                         </td>
