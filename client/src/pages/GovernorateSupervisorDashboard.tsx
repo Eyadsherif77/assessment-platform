@@ -555,8 +555,8 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
             </h1>
             <p style={{ margin: '0.35rem 0 0', color: '#BFDBFE', fontSize: '0.825rem' }}>
               {isAr
-                ? 'استيراد وتصدير كشوف الطلاب بنمط الإكسيل المعتمد وتوليد كلمات المرور آلياً بنمط اسم_المستخدمAa@1.'
-                : 'Import & export students matching Excel template with strict usernameAa@1 password.'}
+                ? 'استيراد وتصدير كشوف الطلاب بنمط الإكسيل المعتمد وتوليد كلمات المرور آلياً.'
+                : 'Import & export students matching Excel template with auto-generated passwords.'}
             </p>
           </div>
         </div>
@@ -846,11 +846,11 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
               />
             </div>
 
-            {/* 3. Password Auto-Generated strictly as username + Aa@1 */}
+            {/* 3. Password Auto-Generated */}
             <div className="form-group">
               <label className="form-label" style={{ fontWeight: 800, margin: '0 0 0.35rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <Key size={14} />
-                <span>{isAr ? 'كلمة المرور (تُولد تلقائياً: اسم_المستخدمAa@1)' : 'Password (Auto: usernameAa@1)'}</span>
+                <span>{isAr ? 'كلمة المرور (تُولد تلقائياً)' : 'Password (Auto-generated)'}</span>
               </label>
               <input
                 type="text"
@@ -858,10 +858,10 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                 disabled
                 className="form-input"
                 style={{ backgroundColor: 'var(--bg-card-hover)', cursor: 'not-allowed', color: 'var(--primary-700)', fontWeight: 800 }}
-                value={username ? `${username}Aa@1` : (isAr ? 'اسم_المستخدمAa@1' : 'usernameAa@1')}
+                value={username ? `${username}Aa@1` : '••••••••'}
               />
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                {isAr ? '🔒 تُنشأ كلمة السر آلياً فوراً كـ: اسم المستخدم متبوعاً بـ Aa@1 (لا يمكن تعديلها)' : '🔒 Password is auto-generated as username + Aa@1'}
+                {isAr ? '🔒 تُنشأ كلمة السر آلياً فوراً ومحمية' : '🔒 Password is automatically generated'}
               </span>
             </div>
 
@@ -1147,35 +1147,6 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                   }}
                 />
               </div>
-            </div>
-          </div>
-
-          {/* Table Horizontal Scroll Banner Notice */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '0.5rem',
-            background: '#EFF6FF',
-            border: '1.5px solid #BFDBFE',
-            padding: '0.55rem 0.9rem',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: '0.85rem',
-            fontSize: '0.78rem',
-            color: '#1E40AF',
-            fontWeight: 700
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '1.1rem' }}>↔️</span>
-              <span>
-                {isAr
-                  ? 'اسحب أفقياً (أو استخدم شريط التمرير بالأسفل) لعرض كافة أعمدة الإكسيل الـ 17 عموداً بالكامل'
-                  : 'Scroll horizontally to view all 17 Excel template columns'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#2563EB', fontSize: '0.75rem' }}>
-              <span>(imported • Username • Name • Password Aa@1 • Batch • ...)</span>
             </div>
           </div>
 
@@ -1520,7 +1491,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                         {/* Password */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400E' }}>
-                            {isAr ? 'كلمة المرور (Aa@1):' : 'Password:'}
+                            {isAr ? 'كلمة المرور:' : 'Password:'}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <span style={{ fontFamily: 'monospace', fontWeight: 900, color: '#B45309' }}>
