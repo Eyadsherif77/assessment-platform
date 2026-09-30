@@ -49,10 +49,31 @@ const PREP_STAGE_ID = '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة 
 const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
 
   // Metadata - Linked to Teacher's assigned Grade & Stage
+  const [allGrades, setAllGrades] = useState<any[]>([]);
   const [selectedStageId, setSelectedStageId] = useState(user?.profile?.academic_stage_id || PREP_STAGE_ID);
   const [selectedGradeId, setSelectedGradeId] = useState(user?.profile?.grade_id || PREP_3_GRADE_ID);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
+
+  // Fetch all grades so teacher can freely choose between all grades
+  useEffect(() => {
+    fetch(apiUrl('/api/meta/grades'))
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setAllGrades(data);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const handleGradeChange = (newGradeId: string) => {
+    setSelectedGradeId(newGradeId);
+    const gr = allGrades.find(g => g.id === newGradeId);
+    if (gr?.stage_id) {
+      setSelectedStageId(gr.stage_id);
+    }
+  };
 
   useEffect(() => {
     if (user?.profile?.grade_id) {
@@ -263,64 +284,6 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
   const teacherSpecialization = (user?.profile?.specialization || '').trim();
 
-  const isBookMatchingSpecialization = (book: any, spec: string) => {
-    if (!spec) return true;
-    const specClean = spec.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase();
-    const subjAr = (book.subject_name_ar || '').replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
-    const subjEn = (book.subject_name_en || '').toLowerCase();
-    const titleAr = (book.title_ar || '').toLowerCase();
-    const titleEn = (book.title_en || '').toLowerCase();
-
-    if (specClean.includes('عرب') || specClean.includes('arabic')) {
-      // Exclude books with conflicting titles
-      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
-          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
-          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض') ||
-          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
-        return false;
-      }
-      return subjAr.includes('عرب') || subjEn.includes('arabic') || titleAr.includes('عرب') || titleEn.includes('arabic');
-    }
-    if (specClean.includes('رياض') || specClean.includes('math')) {
-      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
-          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
-          titleAr.includes('عرب') || titleEn.includes('arabic') ||
-          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
-        return false;
-      }
-      return subjAr.includes('رياض') || subjEn.includes('math') || titleAr.includes('رياض') || titleEn.includes('math');
-    }
-    if (specClean.includes('علوم') || specClean.includes('science')) {
-      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
-          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
-          titleAr.includes('عرب') || titleEn.includes('arabic') ||
-          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض')) {
-        return false;
-      }
-      return subjAr.includes('علوم') || subjEn.includes('science') || titleAr.includes('علوم') || titleEn.includes('science');
-    }
-    if (specClean.includes('انجليز') || specClean.includes('إنجليز') || specClean.includes('english')) {
-      if (titleAr.includes('social') || titleEn.includes('social') || titleAr.includes('دراسات') ||
-          titleAr.includes('عرب') || titleEn.includes('arabic') ||
-          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض') ||
-          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
-        return false;
-      }
-      return subjAr.includes('إنجليز') || subjAr.includes('انجليز') || subjEn.includes('english') || titleAr.includes('انجليز') || titleEn.includes('english');
-    }
-    if (specClean.includes('دراسات') || specClean.includes('social')) {
-      if (titleAr.includes('عرب') || titleEn.includes('arabic') ||
-          titleAr.includes('english') || titleEn.includes('english') || titleAr.includes('انجليز') ||
-          titleAr.includes('math') || titleEn.includes('math') || titleAr.includes('رياض') ||
-          titleAr.includes('science') || titleEn.includes('science') || titleAr.includes('علوم')) {
-        return false;
-      }
-      return subjAr.includes('دراسات') || subjEn.includes('social') || titleAr.includes('دراسات') || titleEn.includes('social');
-    }
-
-    return subjAr.includes(specClean) || specClean.includes(subjAr) || subjEn.includes(specClean);
-  };
-
   const isExamMatchingSpecialization = (exam: any, spec: string, subjId?: string) => {
     if (subjId && exam.subject_id && exam.subject_id !== subjId) return false;
     if (!spec) return true;
@@ -389,15 +352,12 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
     const currentSubjectId = subjId || selectedSubjectId;
     const subjectParam = currentSubjectId ? `&subject_id=${encodeURIComponent(currentSubjectId)}` : '';
 
-    // Load Books (strictly filtered to this teacher's subject)
-    fetch(apiUrl(`/api/books?my_only=true${subjectParam}`), { headers: { Authorization: `Bearer ${token}` } })
+    // Load Books (Display all textbooks uploaded by this teacher)
+    fetch(apiUrl(`/api/books?my_only=true`), { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
-          const matchedSubj = subjects.find(s => s.id === currentSubjectId);
-          const spec = matchedSubj?.name_ar || (user?.profile?.specialization || '').trim();
-          const filtered = spec ? data.filter(b => isBookMatchingSpecialization(b, spec)) : data;
-          setBooks(filtered);
+          setBooks(data);
         }
       })
       .catch(console.error);
@@ -462,10 +422,9 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
         .then(r => r.json())
         .then(data => {
           if (Array.isArray(data)) {
+            // Keep all subjects available for this grade so teacher can choose any subject
+            setSubjects(data);
             const target = getMatchedSubject(data);
-            // Strictly isolate subjects array to teacher's own subject ONLY
-            const teacherOnlySubjects = target ? [target] : (data.length > 0 ? [data[0]] : []);
-            setSubjects(teacherOnlySubjects);
             const initialId = target ? target.id : (data.length > 0 ? data[0].id : '');
             if (initialId) {
               setSelectedSubjectId(initialId);
@@ -847,22 +806,31 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   </span>
                 </div>
 
-                {/* Assigned Grade Badge */}
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.08)', padding: '0.4rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.18)', flexWrap: 'wrap', marginInlineStart: '0.5rem' }}>
+                {/* Grade Switcher (Choose between all grades) */}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.08)', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.18)', flexWrap: 'wrap', marginInlineStart: '0.5rem' }}>
                   <span style={{ fontSize: '0.82rem', color: '#CBD5E1', fontWeight: 700 }}>
-                    {isAr ? '🎓 الصف الدراسي المسند:' : '🎓 Assigned Grade:'}
+                    {isAr ? '🎓 الصف الدراسي النشط:' : '🎓 Active Grade:'}
                   </span>
-                  <span style={{
-                    background: 'rgba(16, 185, 129, 0.35)',
-                    color: '#FFFFFF',
-                    border: '1px solid rgba(110, 231, 183, 0.45)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '0.25rem 0.75rem',
-                    fontWeight: 800,
-                    fontSize: '0.85rem'
-                  }}>
-                    {user?.profile?.grade_name_ar || (isAr ? 'الصف الثالث الإعدادي' : 'Grade 9')}
-                  </span>
+                  <select
+                    value={selectedGradeId}
+                    onChange={(e) => handleGradeChange(e.target.value)}
+                    style={{
+                      background: '#1E293B',
+                      color: '#FFFFFF',
+                      border: '1px solid #475569',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.25rem 0.65rem',
+                      fontWeight: 800,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {allGrades.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {isAr ? `${g.name_ar} (${g.stage_name_ar || ''})` : (g.name_en || g.name_ar)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1080,95 +1048,53 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
               <form onSubmit={handleUploadBook}>
                 <div className="responsive-form-grid-2">
                   <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 800 }}>{isAr ? 'المرحلة الدراسية (مثبتة للمنصة)' : 'Academic Stage (Locked)'}</label>
-                    <div style={{
-                      padding: '0.65rem 0.9rem',
-                      background: 'var(--bg-subtle)',
-                      border: '1.5px solid var(--border-light)',
-                      borderRadius: 'var(--radius-md)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontWeight: 800,
-                      color: 'var(--primary-700)',
-                      minHeight: '44px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span>🔒</span>
-                        <span>{isAr ? 'المرحلة الإعدادية' : 'Preparatory Stage'}</span>
-                      </div>
-                      <span className="badge badge-primary" style={{ fontSize: '0.72rem' }}>
-                        {isAr ? 'إعدادي' : 'Prep'}
-                      </span>
+                    <label className="form-label" style={{ fontWeight: 800 }}>
+                      {isAr ? 'الصف الدراسي المستهدف للكتاب' : 'Target Grade'}
+                    </label>
+                    <select
+                      className="form-select"
+                      value={selectedGradeId}
+                      onChange={(e) => handleGradeChange(e.target.value)}
+                      style={{ fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      {allGrades.map(g => (
+                        <option key={g.id} value={g.id}>
+                          {isAr ? `${g.name_ar} (${g.stage_name_ar || ''})` : (g.name_en || g.name_ar)}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--primary-700)', marginTop: '0.3rem', fontWeight: 700 }}>
+                      {isAr ? '🎯 يربط الكتاب تلقائياً بطلاب هذا الصف' : '🎯 Links book to students of this grade'}
                     </div>
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 800 }}>{isAr ? 'الصف الدراسي (مثبت للطلاب)' : 'Target Grade (Locked to Prep 3)'}</label>
-                    <div style={{
-                      padding: '0.65rem 0.9rem',
-                      background: 'var(--bg-subtle)',
-                      border: '1.5px solid var(--border-light)',
-                      borderRadius: 'var(--radius-md)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontWeight: 800,
-                      color: 'var(--primary-700)',
-                      minHeight: '44px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span>🔒</span>
-                        <span>{isAr ? 'الصف الثالث الإعدادي (Prep 3)' : '3rd Preparatory (Prep 3)'}</span>
-                      </div>
-                      <span className="badge badge-primary" style={{ fontSize: '0.72rem' }}>
-                        {isAr ? 'مربوط بالطلاب مباشرة 🎯' : 'Direct Student Link 🎯'}
-                      </span>
+                    <label className="form-label" style={{ fontWeight: 800 }}>
+                      {isAr ? 'المادة الدراسية للكتاب' : 'Subject'}
+                    </label>
+                    <select
+                      className="form-select"
+                      value={selectedSubjectId}
+                      onChange={(e) => setSelectedSubjectId(e.target.value)}
+                      required
+                      style={{ fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      {subjects.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {isAr ? s.name_ar : (s.name_en || s.name_ar)}
+                        </option>
+                      ))}
+                    </select>
+                    <input type="hidden" name="subject_id" value={selectedSubjectId} />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                      {isAr 
+                        ? 'اختر المادة المناسبة للكتاب (لغة عربية، علوم، رياضيات، دراسات، إلخ)' 
+                        : 'Choose the subject (Arabic, Science, Math, etc.)'}
                     </div>
                   </div>
                 </div>
 
                 <div className="responsive-form-grid-2">
-                  <div className="form-group">
-                    <label className="form-label">
-                      {isAr ? 'المادة الدراسية (مثبتة تلقائياً وفق تخصصك)' : 'Subject (Locked to Specialization)'}
-                    </label>
-                    <div style={{
-                      padding: '0.75rem 1rem',
-                      background: 'var(--bg-subtle)',
-                      border: '1.5px solid var(--border-light)',
-                      borderRadius: 'var(--radius-md)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontWeight: 800,
-                      color: 'var(--primary-700)'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span>🔒</span>
-                        <span>
-                          {(() => {
-                            const matched = getMatchedSubject(subjects);
-                            if (matched) {
-                              return isAr ? matched.name_ar : (matched.name_en || matched.name_ar);
-                            }
-                            return teacherSpecialization || (isAr ? 'المادة التخصصية' : 'Specialization');
-                          })()}
-                        </span>
-                      </div>
-                      <span className="badge badge-primary" style={{ fontSize: '0.72rem', fontWeight: 800 }}>
-                        {isAr ? 'تخصصك المعتمد' : 'Your Subject'}
-                      </span>
-                    </div>
-                    {/* Hidden input to ensure form submission has the selected subject id */}
-                    <input type="hidden" name="subject_id" value={selectedSubjectId} />
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                      {isAr 
-                        ? '🔒 المادة مثبتة تلقائياً وفقاً لتخصصك المسجل ولا يمكن رفع كتب لمادة أخرى.' 
-                        : '🔒 Subject is locked to your registered specialization.'}
-                    </div>
-                  </div>
-
                   <div className="form-group">
                     <label className="form-label">{isAr ? 'نوع المدرسة الموجه لها الكتاب' : 'Target School Type'}</label>
                     <select className="form-select" value={schoolTypeTarget} onChange={e => setSchoolTypeTarget(e.target.value as any)}>
@@ -1182,18 +1108,18 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         : '🔗 Strictly linked only to students of matching grade & school type.'}
                     </div>
                   </div>
-                </div>
 
-                <div className="form-group">
-                  <label className="form-label">{isAr ? 'عنوان الكتاب المنهجي' : 'Textbook Title'}</label>
-                  <input
-                    type="text"
-                    required
-                    className="form-input"
-                    value={bookTitleAr}
-                    onChange={e => setBookTitleAr(e.target.value)}
-                    placeholder={isAr ? 'كتاب العلوم - الصف الأول الإعدادي - الفصل الدراسي الأول' : 'Science Book - Prep 1 - Term 1'}
-                  />
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 800 }}>{isAr ? 'عنوان الكتاب المنهجي' : 'Textbook Title'}</label>
+                    <input
+                      type="text"
+                      required
+                      className="form-input"
+                      value={bookTitleAr}
+                      onChange={e => setBookTitleAr(e.target.value)}
+                      placeholder={isAr ? 'مثال: كتاب اللغة العربية - الصف الأول الإعدادي' : 'e.g. Arabic Book - Prep 1'}
+                    />
+                  </div>
                 </div>
 
                 <div className="responsive-form-grid-2">
@@ -1627,7 +1553,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         <Users size={16} color="var(--primary-600)" />
                       </div>
                       <div style={{ fontSize: '1.9rem', fontWeight: 900, color: 'var(--primary-800)' }}>
-                        {teacherAnalytics?.stats?.total_students || 1}
+                        {teacherAnalytics?.stats?.total_students ?? 0}
                       </div>
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                         {isAr ? 'في المرحلة المعتمدة' : 'In prep grade'}
@@ -1642,10 +1568,10 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         <TrendingUp size={16} color="#16A34A" />
                       </div>
                       <div style={{ fontSize: '1.9rem', fontWeight: 900, color: '#16A34A' }}>
-                        {teacherAnalytics?.stats?.avg_score != null ? `${Math.round(teacherAnalytics.stats.avg_score)}%` : '86%'}
+                        {teacherAnalytics?.stats?.avg_score != null ? `${Math.round(teacherAnalytics.stats.avg_score)}%` : '0%'}
                       </div>
                       <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 700 }}>
-                        {isAr ? '✓ مؤشر استيعاب ممتاز' : '✓ Strong Comprehension'}
+                        {isAr ? '✓ مؤشر استيعاب تقييمي' : '✓ Assessment metric'}
                       </span>
                     </div>
 
@@ -1657,7 +1583,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         <FileText size={16} color="var(--primary-600)" />
                       </div>
                       <div style={{ fontSize: '1.9rem', fontWeight: 900, color: 'var(--primary-700)' }}>
-                        {teacherAnalytics?.stats?.total_attempts || 24}
+                        {teacherAnalytics?.stats?.total_attempts ?? 0}
                       </div>
                       <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 700 }}>
                         {isAr ? '✓ تفاعل ونشاط مستمر' : '✓ Active participation'}

@@ -366,6 +366,17 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         };
       });
 
+      // Filter out blank or empty rows
+      const validRows = cleanedRows.filter(r => {
+        const u = r['Username'] || r['username'] || r['اسم المستخدم'];
+        const n = r['Name'] || r['name'] || r['الاسم'] || r['First name'] || r['firstName'] || r['Arabic Name'] || r['arabicName'];
+        return (u && String(u).trim().length > 0) || (n && String(n).trim().length > 0);
+      });
+
+      if (validRows.length === 0) {
+        throw new Error(isAr ? 'لم يتم العثور على بيانات طلاب صالحة في ملف الإكسيل' : 'No valid student data found in the Excel file');
+      }
+
       const res = await fetch(apiUrl('/api/governorate-supervisor/students/bulk'), {
         method: 'POST',
         headers: {
@@ -373,7 +384,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          students: cleanedRows,
+          students: validRows,
           defaultGradeId: selectedGradeId || undefined
         })
       });

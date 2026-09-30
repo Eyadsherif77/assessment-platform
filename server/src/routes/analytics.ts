@@ -401,7 +401,7 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
           book_title: ch.book_title,
           mastery_percentage: pct,
           status: pct >= 80 ? 'MASTERED' : pct >= 50 ? 'DEVELOPING' : 'NEEDS_WORK',
-          attempts_count: Math.max(matchingAttempts.length, 12 + ((idx * 5) % 17))
+          attempts_count: matchingAttempts.length
         };
       });
     }
@@ -417,9 +417,9 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         name_ar: subjectNameAr
       },
       stats: {
-        total_students: Math.max(totalStudents, 1),
+        total_students: totalStudents,
         total_my_exams: totalMyExams,
-        total_attempts: Math.max(recentAttempts.length, 24),
+        total_attempts: recentAttempts.length,
         avg_score: avgScore
       },
       top_chapter: topChapter,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../utils/api';
 import { 
@@ -13,7 +13,8 @@ import {
   User, 
   BookOpen, 
   Building2, 
-  CheckCircle2 
+  CheckCircle2,
+  GraduationCap
 } from 'lucide-react';
 
 interface Props {
@@ -49,11 +50,27 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
   const [regPassword, setRegPassword] = useState('');
   const [specialization, setSpecialization] = useState('اللغة العربية');
   const [schoolName, setSchoolName] = useState('');
+  const [grades, setGrades] = useState<any[]>([]);
+  const [selectedGradeId, setSelectedGradeId] = useState<string>('');
 
   // Feedback states
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/meta/grades'))
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setGrades(data);
+          if (data.length > 0 && !selectedGradeId) {
+            setSelectedGradeId(data[0].id);
+          }
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   // Handle Login
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -117,7 +134,8 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
           email: regEmail.trim(),
           password: regPassword,
           specialization: specialization.trim(),
-          schoolName: schoolName.trim() || (isAr ? 'مدرسة المتفوقين' : 'STEM School')
+          schoolName: schoolName.trim() || (isAr ? 'مدرسة المتفوقين' : 'STEM School'),
+          gradeId: selectedGradeId || undefined
         })
       });
 
@@ -570,6 +588,36 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
                     {spec}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Grade Selection (All grades available) */}
+            <div>
+              <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <GraduationCap size={16} style={{ color: 'var(--primary-600)', flexShrink: 0 }} />
+                <span>{isAr ? 'الصف الدراسي المستهدف (متاح لكافة المراحل والصفوف):' : 'Target Grade (All Grades Available):'}</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <select
+                  className="form-select"
+                  value={selectedGradeId}
+                  onChange={(e) => setSelectedGradeId(e.target.value)}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="">{isAr ? 'اختر الصف الدراسي...' : 'Select Grade...'}</option>
+                  {grades.map(g => (
+                    <option key={g.id} value={g.id}>
+                      {isAr ? `${g.name_ar} (${g.stage_name_ar || ''})` : (g.name_en || g.name_ar)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                {isAr ? '💡 يتم ربط حسابك بطلاب هذا الصف مباشرة، مع إمكانية التبديل بين كافة الصفوف في أي وقت.' : '💡 Links your account directly to students in this grade, with ability to switch grades anytime.'}
               </div>
             </div>
 

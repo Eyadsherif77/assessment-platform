@@ -135,7 +135,7 @@ router.post('/register', async (req, res) => {
 // Dedicated Register Teacher Endpoint
 router.post('/register-teacher', async (req, res) => {
   try {
-    const { email, password, fullName, specialization, schoolName } = req.body;
+    const { email, password, fullName, specialization, schoolName, gradeId } = req.body;
 
     if (!email || !password || !fullName) {
       return res.status(400).json({ error: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور واسم المعلم بالكامل' });
@@ -144,6 +144,16 @@ router.post('/register-teacher', async (req, res) => {
     const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
+    }
+
+    let stageId = null;
+    let gradeNameAr = null;
+    if (gradeId) {
+      const grRes = await db.query('SELECT stage_id, name_ar FROM grades WHERE id = $1', [gradeId]);
+      if (grRes.rows.length > 0) {
+        stageId = grRes.rows[0].stage_id;
+        gradeNameAr = grRes.rows[0].name_ar;
+      }
     }
 
     const userId = uuidv4();
@@ -172,9 +182,9 @@ router.post('/register-teacher', async (req, res) => {
     );
 
     await db.query(
-      `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization)
-       VALUES ($1, $2, $3, $4)`,
-      [userId, fullName.trim(), schoolName || null, specialization || null]
+      `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization, grade_id, academic_stage_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, fullName.trim(), schoolName || null, specialization || null, gradeId || null, stageId]
     );
 
     const token = generateToken({
@@ -198,7 +208,10 @@ router.post('/register-teacher', async (req, res) => {
           user_id: userId,
           full_name: fullName.trim(),
           school_name: schoolName || null,
-          specialization: specialization || null
+          specialization: specialization || null,
+          grade_id: gradeId || null,
+          academic_stage_id: stageId,
+          grade_name_ar: gradeNameAr
         }
       }
     });
