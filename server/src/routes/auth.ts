@@ -622,12 +622,12 @@ router.get('/me', authenticateToken, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// Update Student Profile (Grade, Stage, School Type)
+// Update Student Profile (Grade, Stage, School Type) - RESTRICTED
 router.put('/profile', authenticateToken, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
-    if (user.role !== 'STUDENT') {
-      return res.status(403).json({ error: 'تعديل الملف الشخصي مخصص للطلاب حالياً' });
+    if (user.role === 'STUDENT') {
+      return res.status(403).json({ error: 'غير مصرح للطلاب بتعديل الصف الدراسي أو نوع المدرسة. تعديل البيانات يتم حصرياً من خلال إدارة المنظومة أو المشرف.' });
     }
 
     const { academicStageId, gradeId, schoolType, schoolName, section } = req.body;

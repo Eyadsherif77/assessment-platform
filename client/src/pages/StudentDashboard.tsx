@@ -18,7 +18,6 @@ import {
   Flame,
   Target,
   LayoutDashboard,
-  Edit3,
   ExternalLink,
   X,
   Calendar,
@@ -26,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export const StudentDashboard: React.FC = () => {
-  const { user, token, language, updateUserProfile } = useAuth();
+  const { user, token, language } = useAuth();
   const { activeTerm } = usePlatformSettings();
   const isAr = language === 'ar';
   const ArrowIcon = isAr ? ArrowLeft : ArrowRight;
@@ -420,14 +419,6 @@ export const StudentDashboard: React.FC = () => {
     }).sort((a, b) => b.examsCount - a.examsCount);
   }, [analytics?.completed_exams]);
 
-  // Profile edit modal state
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [allStages, setAllStages] = useState<any[]>([]);
-  const [editStageId, setEditStageId] = useState(user?.profile?.academic_stage_id || '');
-  const [editGradeId, setEditGradeId] = useState(user?.profile?.grade_id || '');
-  const [editSchoolType, setEditSchoolType] = useState<'عربي' | 'لغات'>((user?.profile?.school_type as any) || 'عربي');
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-
   // Reload student restricted books and exams
   const reloadStudentContent = (termToUse?: number) => {
     if (!token) return;
@@ -463,62 +454,6 @@ export const StudentDashboard: React.FC = () => {
       reloadStudentContent(selectedTerm);
     }
   }, [token, selectedTerm]);
-
-  const handleOpenProfileModal = () => {
-    setEditStageId(user?.profile?.academic_stage_id || '');
-    setEditGradeId(user?.profile?.grade_id || '');
-    setEditSchoolType((user?.profile?.school_type as any) || 'عربي');
-    setShowProfileModal(true);
-
-    if (allStages.length === 0) {
-      fetch(apiUrl('/api/meta/stages'))
-        .then(r => r.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            setAllStages(data);
-            if (!editStageId && data.length > 0) {
-              setEditStageId(data[0].id);
-            }
-          }
-        })
-        .catch(console.error);
-    }
-  };
-
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editStageId || !editGradeId) return;
-
-    setIsSavingProfile(true);
-    try {
-      const res = await fetch(apiUrl('/api/auth/profile'), {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          academicStageId: editStageId,
-          gradeId: editGradeId,
-          schoolType: editSchoolType
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل تحديث البيانات');
-
-      if (data.profile) {
-        updateUserProfile(data.profile);
-      }
-      setShowProfileModal(false);
-      reloadStudentContent();
-      alert(isAr ? 'تم تحديث الصف الدراسي ونوع المدرسة بنجاح! تم تحديث المناهج والاختبارات المطابقة.' : 'Grade and school type updated successfully!');
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setIsSavingProfile(false);
-    }
-  };
 
   // Fetch books & exams on mount
   useEffect(() => {
@@ -766,13 +701,6 @@ export const StudentDashboard: React.FC = () => {
                 <span style={{ fontSize: '0.7rem', color: 'var(--primary-700)', fontWeight: 700 }}>
                   {user?.profile?.school_type === 'لغات' ? (isAr ? '🌐 مدارس لغات' : '🌐 Language School') : (isAr ? '🏫 مدارس عربي' : '🏫 Arabic School')}
                 </span>
-                <button
-                  onClick={handleOpenProfileModal}
-                  title={isAr ? 'تغيير الصف أو نوع المدرسة' : 'Change grade or school type'}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-600)', padding: '2px', display: 'flex' }}
-                >
-                  <Edit3 size={13} />
-                </button>
               </div>
             </div>
           </div>
@@ -893,17 +821,6 @@ export const StudentDashboard: React.FC = () => {
                     ? <>{user?.profile?.grade_name_ar || 'الصف الثالث الإعدادي'} • <strong>{user?.profile?.school_type === 'لغات' ? '🌐 مدارس لغات' : '🏫 مدارس عربي'}</strong></>
                     : <>Enrolled in <strong>{user?.profile?.grade_name_en || 'Prep 1'}</strong> • <strong>{user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'}</strong></>}
                 </p>
-
-                <div style={{ marginTop: '0.6rem' }}>
-                  <button
-                    onClick={handleOpenProfileModal}
-                    className="btn btn-outline btn-sm"
-                    style={{ color: '#FFFFFF', borderColor: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', padding: '0.25rem 0.65rem' }}
-                  >
-                    <Edit3 size={12} style={{ marginInlineEnd: '4px' }} />
-                    <span>{isAr ? 'تعديل الصف أو نوع المدرسة ⚙️' : 'Change Grade / School Type ⚙️'}</span>
-                  </button>
-                </div>
               </div>
 
               <button
@@ -3386,123 +3303,6 @@ export const StudentDashboard: React.FC = () => {
           <span>{isAr ? 'تحليلات النتائج' : 'Results Analytics'}</span>
         </button>
       </nav>
-
-      {/* Quick Profile Edit Modal (Grade & School Type) */}
-      {showProfileModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.75)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem'
-        }}>
-          <div className="card" style={{
-            maxWidth: '520px',
-            width: '100%',
-            background: 'var(--bg-card)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '2rem',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            border: '1px solid var(--border-light)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-light)' }}>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 900, margin: 0 }}>
-                  {isAr ? '⚙️ تعديل الصف الدراسي ونوع المدرسة' : '⚙️ Change Grade & School Type'}
-                </h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  {isAr ? 'يتم ربط وتحديث الكتب والاختبارات فوراً بناءً على اختيارك' : 'Textbooks & exams update immediately based on selection'}
-                </span>
-              </div>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setShowProfileModal(false)}
-                style={{ fontSize: '1.2rem', padding: '0.2rem 0.5rem' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 700 }}>{isAr ? 'المرحلة الدراسية' : 'Academic Stage'}</label>
-                <select
-                  className="form-select"
-                  value={editStageId}
-                  onChange={e => {
-                    const newStageId = e.target.value;
-                    setEditStageId(newStageId);
-                    const stage = allStages.find(s => s.id === newStageId);
-                    if (stage && stage.grades && stage.grades.length > 0) {
-                      setEditGradeId(stage.grades[0].id);
-                    }
-                  }}
-                >
-                  {allStages.map(s => (
-                    <option key={s.id} value={s.id}>{isAr ? s.name_ar : (s.name_en || s.name_ar)}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 700 }}>{isAr ? 'الصف الدراسي' : 'Grade Level'}</label>
-                <select
-                  className="form-select"
-                  value={editGradeId}
-                  onChange={e => setEditGradeId(e.target.value)}
-                >
-                  {(() => {
-                    const currentStage = allStages.find(s => s.id === editStageId) || allStages[0];
-                    const gradesList = currentStage?.grades || [];
-                    return gradesList.map((g: any) => (
-                      <option key={g.id} value={g.id}>{isAr ? g.name_ar : (g.name_en || g.name_ar)}</option>
-                    ));
-                  })()}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 700 }}>{isAr ? 'نوع المدرسة' : 'School Type'}</label>
-                <select
-                  className="form-select"
-                  value={editSchoolType}
-                  onChange={e => setEditSchoolType(e.target.value as any)}
-                >
-                  <option value="عربي">{isAr ? '🏫 مدارس عربي (حكومي / خاص عربي)' : '🏫 Arabic Schools'}</option>
-                  <option value="لغات">{isAr ? '🌐 مدارس لغات (تجريبي / متميز / دولي)' : '🌐 Language Schools'}</option>
-                </select>
-                <div style={{ fontSize: '0.75rem', color: 'var(--primary-700)', marginTop: '0.35rem', lineHeight: 1.4 }}>
-                  {editSchoolType === 'عربي'
-                    ? (isAr ? '✓ ستظهر لك الكتب باللغة العربية (مثل العلوم والرياضيات بالعربي) والمناهج المشتركة كاللغة العربية والتربية الدينية.' : '✓ Shows Arabic curriculum & common textbooks.')
-                    : (isAr ? '✓ ستظهر لك كتب اللغات الإنجليزية (مثل Math و Science) والمناهج المشتركة كاللغة العربية والتربية الدينية.' : '✓ Shows English curriculum (Math/Science) & common textbooks.')}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => setShowProfileModal(false)}
-                >
-                  {isAr ? 'إلغاء' : 'Cancel'}
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSavingProfile}
-                  style={{ fontWeight: 800 }}
-                >
-                  {isSavingProfile ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ وتحديث المناهج 💾' : 'Save & Update Curricula 💾')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* =========================================================
           AI ASSESSMENT GENERATOR DEBUG PANEL (DEVELOPMENT ONLY)
