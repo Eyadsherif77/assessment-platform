@@ -236,17 +236,17 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
   try {
     const teacherId = req.user!.id;
 
-    // 1. Get teacher specialization
-    const profileRes = await db.query(`SELECT specialization FROM teacher_profiles WHERE user_id = $1`, [teacherId]);
-    let specialization = (profileRes.rows[0]?.specialization || '').trim();
-    if (!specialization && req.teacherProfile?.specialization) {
-      specialization = req.teacherProfile.specialization.trim();
-    }
+    // 1. Get teacher profile details
+    const profileRes = await db.query(`SELECT specialization, subject_id, grade_id, academic_stage_id FROM teacher_profiles WHERE user_id = $1`, [teacherId]);
+    const teacherProfileRow = profileRes.rows[0];
+    let specialization = (teacherProfileRow?.specialization || req.teacherProfile?.specialization || '').trim();
+    let profileSubjectId = teacherProfileRow?.subject_id || req.teacherProfile?.subjectId || null;
+    let profileGradeId = teacherProfileRow?.grade_id || req.teacherProfile?.gradeId || null;
 
     // 2. Identify corresponding subject
-    let subjectId: string | null = (req.query.subject_id as string) || null;
+    let subjectId: string | null = (req.query.subject_id as string) || profileSubjectId || null;
     let subjectNameAr = specialization;
-    const allSubjects = await db.query(`SELECT id, name_ar, name_en, code FROM subjects`);
+    const allSubjects = await db.query(`SELECT id, name_ar, name_en, code, grade_id FROM subjects`);
 
     if (subjectId) {
       const found = allSubjects.rows.find((s: any) => s.id === subjectId);
@@ -255,8 +255,10 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         if (!specialization) specialization = found.name_ar;
       }
     } else if (specialization && allSubjects.rows.length > 0) {
-      const specClean = specialization.replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
+      const specClean = specialization.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase();
+      // Match candidate subjects, prioritizing teacher's assigned grade
       const matched = allSubjects.rows.find((s: any) => {
+        if (profileGradeId && s.grade_id && s.grade_id !== profileGradeId) return false;
         const ar = (s.name_ar || '').trim().toLowerCase();
         const en = (s.name_en || '').trim().toLowerCase();
         const code = (s.code || '').toUpperCase();
@@ -268,7 +270,13 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         if ((specClean.includes('علوم') || specClean.includes('science')) && (code === 'SCIENCE' || ar.includes('علوم'))) return true;
         if ((specClean.includes('انجليز') || specClean.includes('english')) && (code === 'ENGLISH' || ar.includes('انجليز'))) return true;
         return false;
+      }) || allSubjects.rows.find((s: any) => {
+        const ar = (s.name_ar || '').trim().toLowerCase();
+        const en = (s.name_en || '').trim().toLowerCase();
+        const code = (s.code || '').toUpperCase();
+        return (ar.includes(specClean) || en.includes(specClean) || (specClean.includes('انجليز') && code === 'ENGLISH'));
       });
+
       if (matched) {
         subjectId = matched.id;
         subjectNameAr = matched.name_ar;
@@ -279,10 +287,12 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
     const totalStudentsRes = await db.query(`SELECT COUNT(*) as count FROM student_profiles`);
     const totalStudents = Number(totalStudentsRes.rows[0]?.count) || 0;
 
-    let myExamsSql = `SELECT COUNT(*) as count FROM exams WHERE teacher_id = $1`;
+    let myExamsSql = `SELECT COUNT(*) as count FROM exams WHERE (teacher_id = $1 OR teacher_id = 'admin-owner-001')`;
     const myExamsParams: any[] = [teacherId];
     if (subjectId) {
-      myExamsSql += ` AND subject_id = $2`;
+      myExamsSql += ` AND (subject_id = $2 OR subject_id IN (
+        SELECT s2.id FROM subjects s1 JOIN subjects s2 ON (s1.code = s2.code OR s1.name_ar = s2.name_ar) WHERE s1.id = $2
+      ))`;
       myExamsParams.push(subjectId);
     }
     const myExamsRes = await db.query(myExamsSql, myExamsParams);
@@ -291,18 +301,21 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
     // 4. Student attempts on teacher exams in this subject
     let examAttemptsSql = `
       SELECT ea.id, ea.exam_id, ea.score, ea.total_points, ea.completed_at,
-             u.full_name as student_name, e.title_ar as exam_title
+             u.full_name as student_name, sp.student_code, e.title_ar as exam_title
       FROM exam_attempts ea
       JOIN exams e ON ea.exam_id = e.id
       JOIN users u ON ea.student_id = u.id
-      WHERE e.teacher_id = $1
+      LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      WHERE (e.teacher_id = $1 OR e.teacher_id = 'admin-owner-001' OR e.teacher_id IS NULL)
     `;
     const examAttemptsParams: any[] = [teacherId];
     if (subjectId) {
-      examAttemptsSql += ` AND e.subject_id = $2`;
+      examAttemptsSql += ` AND (e.subject_id = $2 OR e.subject_id IN (
+        SELECT s2.id FROM subjects s1 JOIN subjects s2 ON (s1.code = s2.code OR s1.name_ar = s2.name_ar) WHERE s1.id = $2
+      ))`;
       examAttemptsParams.push(subjectId);
     }
-    examAttemptsSql += ` ORDER BY ea.completed_at DESC LIMIT 25`;
+    examAttemptsSql += ` ORDER BY ea.completed_at DESC LIMIT 50`;
     const examAttemptsRes = await db.query(examAttemptsSql, examAttemptsParams);
 
     // 5. Student AI/Chapter evaluations in this teacher's subject
@@ -311,14 +324,23 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
       aiAttemptsRes = await db.query(`
         SELECT ae.id, ae.score, ae.total_questions, ae.created_at,
                u.full_name as student_name,
-               COALESCE(bc.title_ar, b.title_ar, 'تقييم تشخيصي معتمد') as exam_title
+               sp.student_code,
+               COALESCE(bc.title_ar, b.title_ar, s.name_ar, 'تقييم تشخيصي معتمد') as exam_title
         FROM ai_evaluations ae
         JOIN users u ON ae.student_id = u.id
+        LEFT JOIN student_profiles sp ON u.id = sp.user_id
         LEFT JOIN book_chapters bc ON ae.chapter_id = bc.id
         LEFT JOIN books b ON ae.book_id = b.id
+        LEFT JOIN subjects s ON ae.subject_id = s.id
         WHERE ae.subject_id = $1
+           OR ae.subject_id IN (
+             SELECT s2.id FROM subjects s1 
+             JOIN subjects s2 ON (s1.code = s2.code OR s1.name_ar = s2.name_ar) 
+             WHERE s1.id = $1
+           )
+           OR b.subject_id = $1
         ORDER BY ae.created_at DESC
-        LIMIT 25
+        LIMIT 50
       `, [subjectId]);
     }
 
@@ -334,6 +356,7 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
           exam_id: r.exam_id,
           attempt_type: 'EXAM',
           student_name: r.student_name,
+          student_code: r.student_code || '',
           exam_title: r.exam_title,
           score,
           total_points: total,
@@ -351,6 +374,7 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
           attempt_id: r.id,
           attempt_type: 'AI_EVALUATION',
           student_name: r.student_name,
+          student_code: r.student_code || '',
           exam_title: r.exam_title,
           score,
           total_points: total,
@@ -376,7 +400,9 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
                b.title_ar as book_title
         FROM book_chapters bc
         JOIN books b ON bc.book_id = b.id
-        WHERE b.subject_id = $1
+        WHERE b.subject_id = $1 OR b.subject_id IN (
+          SELECT s2.id FROM subjects s1 JOIN subjects s2 ON (s1.code = s2.code OR s1.name_ar = s2.name_ar) WHERE s1.id = $1
+        )
       `;
       const specClean = specialization ? specialization.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase() : '';
       if (specClean.includes('عرب') || specClean.includes('arabic')) {

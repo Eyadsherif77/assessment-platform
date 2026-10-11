@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { usePlatformSettings } from '../context/PlatformSettingsContext';
 import { X, Lock, Mail, User, School, MapPin, GraduationCap } from 'lucide-react';
 import { apiUrl } from '../utils/api';
+import { getDeviceId } from '../utils/device';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -26,6 +28,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSuccess
 }) => {
   const { user, login, language } = useAuth();
+  const { platformLogo, allowStudentRegistration } = usePlatformSettings();
   const isAr = language === 'ar';
 
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
@@ -46,9 +49,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // 8. password
   const [password, setPassword] = useState<string>('');
 
+  const [gradesList, setGradesList] = useState<any[]>([]);
+  const [selectedGradeId, setSelectedGradeId] = useState<string>('');
+
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [registeredCode, setRegisteredCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/meta/grades'))
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setGradesList(data);
+          const prep1 = data.find((g: any) => g.name_ar?.includes('الأول الإعدادي') || g.code?.toLowerCase().includes('prep1'));
+          setSelectedGradeId(prep1 ? prep1.id : data[0].id);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const resetForm = () => {
     setEmail('');
@@ -84,18 +103,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           throw new Error(isAr ? 'يرجى ملء البريد الإلكتروني واسم المستخدم وكلمة المرور' : 'Please fill in email, username, and password');
         }
 
-        // Locked strictly to Prep 3
+        const chosenGrade = gradesList.find(g => g.id === selectedGradeId) || gradesList[0];
         const payload = {
           role: 'STUDENT',
           educationType,
           governorate,
           term,
-          schoolName: schoolName.trim(),
+          schoolName: schoolName.trim() || (isAr ? 'المدرسة الرسمية' : 'Official School'),
           email: email.trim(),
           username: username.trim(),
           password,
-          academicStageId: '61998777-4c5f-4e51-bc0a-38de938c842a', // Preparatory
-          gradeId: '2f0f4f5a-7c5c-4136-a935-33c79effca3d' // Prep 3 (الصف الثالث الإعدادي)
+          academicStageId: chosenGrade?.stage_id || '61998777-4c5f-4e51-bc0a-38de938c842a',
+          gradeId: chosenGrade?.id || '2f0f4f5a-7c5c-4136-a935-33c79effca3d',
+          device_id: getDeviceId(),
+          deviceId: getDeviceId()
         };
 
         const res = await fetch(apiUrl('/api/auth/register'), {
@@ -124,17 +145,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           throw new Error(isAr ? 'الرجاء إدخال البريد الإلكتروني أو اسم المستخدم أو الكود وكلمة المرور' : 'Please enter credentials');
         }
 
+        const deviceId = getDeviceId();
         const res = await fetch(apiUrl('/api/auth/login'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: email.trim(),
-            password
+            password,
+            device_id: deviceId,
+            deviceId: deviceId
           })
         });
 
         const data = await res.json();
         if (!res.ok) {
+          if (data.code === 'DEVICE_LIMIT_EXCEEDED' || data.error?.includes('الحد الأقصى للأجهزة') || data.error === 'DEVICE_LIMIT_EXCEEDED') {
+            throw new Error(data.error || data.message || (isAr 
+              ? 'عذراً، لقد تجاوزت الحد الأقصى للأجهزة المسموح بها لهذا الحساب (جهازان فقط). يُرجى تسجيل الخروج من جهازك السابق أو مراجعة إدارة المنصة.' 
+              : 'Maximum active devices limit reached (max 2 devices). Please logout from other devices or contact support.'));
+          }
           throw new Error(data.error || (isAr ? 'البيانات غير صحيحة' : 'Invalid credentials'));
         }
 
@@ -287,7 +316,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           overflow: 'hidden'
         }}>
           <img
-            src="/farabi-logo.png"
+            src={platformLogo || '/farabi-logo.png'}
             alt={isAr ? 'مدرسة الفارابي | Farabi School' : 'Farabi School Logo'}
             style={{
               width: '100%',
@@ -327,23 +356,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               >
                 {isAr ? 'تسجيل الدخول' : 'Sign In'}
               </button>
-              <button
-                type="button"
-                onClick={() => { setMode('register'); setError(null); }}
-                style={{
-                  background: mode === 'register' ? '#FFFFFF' : 'transparent',
-                  color: mode === 'register' ? 'var(--primary-800)' : 'var(--text-muted)',
-                  fontWeight: 800,
-                  fontSize: '0.825rem',
-                  border: 'none',
-                  padding: '0.45rem 1.1rem',
-                  borderRadius: 'var(--radius-full)',
-                  cursor: 'pointer',
-                  boxShadow: mode === 'register' ? 'var(--shadow-xs)' : 'none'
-                }}
-              >
-                {isAr ? 'حساب جديد' : 'New Account'}
-              </button>
+              {allowStudentRegistration ? (
+                <button
+                  type="button"
+                  onClick={() => { setMode('register'); setError(null); }}
+                  style={{
+                    background: mode === 'register' ? '#FFFFFF' : 'transparent',
+                    color: mode === 'register' ? 'var(--primary-800)' : 'var(--text-muted)',
+                    fontWeight: 800,
+                    fontSize: '0.825rem',
+                    border: 'none',
+                    padding: '0.45rem 1.1rem',
+                    borderRadius: 'var(--radius-full)',
+                    cursor: 'pointer',
+                    boxShadow: mode === 'register' ? 'var(--shadow-xs)' : 'none'
+                  }}
+                >
+                  {isAr ? 'حساب جديد' : 'New Account'}
+                </button>
+              ) : (
+                <span style={{ fontSize: '0.75rem', color: '#DC2626', padding: '0.45rem 0.75rem', fontWeight: 800 }}>
+                  {isAr ? 'التسجيل مغلق' : 'Registration Closed'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -360,7 +395,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               border: '1.5px solid #E2E8F0'
             }}>
               <img 
-                src="/farabi-logo.png" 
+                src={platformLogo || '/farabi-logo.png'} 
                 alt="Farabi School Logo" 
                 style={{ width: '46px', height: '46px', objectFit: 'contain', borderRadius: '50%', background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '2px', flexShrink: 0 }} 
               />
@@ -368,29 +403,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div style={{ fontWeight: 900, color: '#1E293B', fontSize: '0.925rem' }}>
                   {isAr ? 'مدرسة الفارابي | Farabi School' : 'Farabi School'}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {isAr ? 'منظومة حسابات الطلاب المعتمدة' : 'Official Student Accounts Portal'}
-                </div>
               </div>
             </div>
           )}
 
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '0.35rem', color: 'var(--text-title)' }}>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '1.25rem', color: 'var(--text-title)' }}>
             {isAr 
               ? (mode === 'login' ? 'مرحباً بك مجدداً في منصة التقييم من أجل التعلم' : 'إنشاء حساب جديد (الطلاب)')
               : (mode === 'login' ? 'Welcome Back to Assessment Platform' : 'Student Account Registration')}
           </h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-            {isAr
-              ? (mode === 'login'
-                  ? 'أدخل البريد الإلكتروني أو اسم المستخدم وكلمة المرور للمتابعة.'
-                  : 'بيانات تسجيل الطالب في منصة التقييم من أجل التعلم.')
-              : (mode === 'login'
-                  ? 'Enter your email or username to access your learning portal.'
-                  : 'Student credentials and registration details.')}
-          </p>
 
-          {mode === 'register' && (
+          {mode === 'register' && !allowStudentRegistration && (
             <div style={{
               background: '#FEF2F2',
               border: '1.5px solid #F87171',
@@ -408,8 +431,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <span style={{ fontSize: '1.4rem' }}>🔒</span>
               <div>
                 {isAr
-                  ? 'تم قفل إنشاء الحساب الذاتي للطلاب. يتم استلام بيانات الحساب (اسم المستخدم وكلمة المرور) حصرياً من مشرف المحافظة أو إدارة المدرسة.'
-                  : 'Student self-registration is closed. Login credentials are provided exclusively by the school / governorate supervisor.'}
+                  ? 'تم قفل إنشاء الحساب الذاتي للطلاب بقرار الإدارة. يتم استلام بيانات الحساب (اسم المستخدم وكلمة المرور) حصرياً من مشرف المحافظة أو إدارة المدرسة.'
+                  : 'Student self-registration is currently closed by administration. Login credentials are provided exclusively by the school / governorate supervisor.'}
               </div>
             </div>
           )}
@@ -431,10 +454,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <select
                     className="form-select"
-                    disabled={true}
+                    disabled={!allowStudentRegistration}
                     value={educationType}
                     onChange={e => setEducationType(e.target.value as any)}
-                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
+                    style={{
+                      opacity: !allowStudentRegistration ? 0.7 : 1,
+                      cursor: !allowStudentRegistration ? 'not-allowed' : 'pointer',
+                      backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
+                    }}
                   >
                     <option value="عربى">{isAr ? 'عربى' : 'Arabic'}</option>
                     <option value="لغات">{isAr ? 'لغات' : 'Languages'}</option>
@@ -449,10 +476,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <select
                     className="form-select"
-                    disabled={true}
+                    disabled={!allowStudentRegistration}
                     value={governorate}
                     onChange={e => setGovernorate(e.target.value)}
-                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
+                    style={{
+                      opacity: !allowStudentRegistration ? 0.7 : 1,
+                      cursor: !allowStudentRegistration ? 'not-allowed' : 'pointer',
+                      backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
+                    }}
                   >
                     {EGYPT_GOVERNORATES.map(gov => (
                       <option key={gov} value={gov}>{gov}</option>
@@ -460,46 +491,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </select>
                 </div>
 
-                {/* 3. الصف الدراسى – open grades Primary 1 to Secondary 3 */}
+                {/* 3. الصف الدراسى – Dynamic grades */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
                     <GraduationCap size={15} style={{ display: 'inline', marginInlineEnd: '4px' }} />
-                    {isAr ? 'الصف الدراسى (متاح من الابتدائي 1 حتى الثانوي 3)' : 'School Grade (Primary 1 to Secondary 3)'}
+                    {isAr ? 'الصف الدراسى' : 'School Grade'}
                   </label>
                   <select
                     className="form-select"
-                    disabled={true}
-                    defaultValue="primary1"
+                    disabled={!allowStudentRegistration}
+                    value={selectedGradeId}
+                    onChange={e => setSelectedGradeId(e.target.value)}
                     style={{
                       fontWeight: 700,
                       color: 'var(--primary-700)',
                       border: '2px solid var(--primary-300)',
-                      opacity: 0.7,
-                      cursor: 'not-allowed',
-                      backgroundColor: '#F8FAFC'
+                      opacity: !allowStudentRegistration ? 0.7 : 1,
+                      cursor: !allowStudentRegistration ? 'not-allowed' : 'pointer',
+                      backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
                     }}
                   >
-                    {/* ── المرحلة الابتدائية ── */}
-                    <optgroup label={isAr ? 'المرحلة الابتدائية' : 'Primary Education'}>
-                      <option value="primary1">📚 {isAr ? 'الصف الأول الابتدائي' : 'Primary Grade 1'}</option>
-                      <option value="primary2">📚 {isAr ? 'الصف الثاني الابتدائي' : 'Primary Grade 2'}</option>
-                      <option value="primary3">📚 {isAr ? 'الصف الثالث الابتدائي' : 'Primary Grade 3'}</option>
-                      <option value="primary4">📚 {isAr ? 'الصف الرابع الابتدائي' : 'Primary Grade 4'}</option>
-                      <option value="primary5">📚 {isAr ? 'الصف الخامس الابتدائي' : 'Primary Grade 5'}</option>
-                      <option value="primary6">📚 {isAr ? 'الصف السادس الابتدائي' : 'Primary Grade 6'}</option>
-                    </optgroup>
-                    {/* ── المرحلة الإعدادية ── */}
-                    <optgroup label={isAr ? 'المرحلة الإعدادية' : 'Preparatory Education'}>
-                      <option value="prep1">📘 {isAr ? 'الصف الأول الإعدادي' : 'Prep Grade 1'}</option>
-                      <option value="prep2">📘 {isAr ? 'الصف الثاني الإعدادي' : 'Prep Grade 2'}</option>
-                      <option value="prep3">📘 {isAr ? 'الصف الثالث الإعدادي' : 'Prep Grade 3'}</option>
-                    </optgroup>
-                    {/* ── المرحلة الثانوية ── */}
-                    <optgroup label={isAr ? 'المرحلة الثانوية' : 'Secondary Education'}>
-                      <option value="sec1">🎓 {isAr ? 'الصف الأول الثانوي' : 'Secondary Grade 1'}</option>
-                      <option value="sec2">🎓 {isAr ? 'الصف الثاني الثانوي' : 'Secondary Grade 2'}</option>
-                      <option value="sec3">🎓 {isAr ? 'الصف الثالث الثانوي' : 'Secondary Grade 3'}</option>
-                    </optgroup>
+                    {gradesList.length > 0 ? (
+                      gradesList.map((g: any) => (
+                        <option key={g.id} value={g.id}>
+                          📚 {isAr ? `${g.stage_name_ar || ''} - ${g.name_ar}` : `${g.stage_name_en || ''} - ${g.name_en}`}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="2f0f4f5a-7c5c-4136-a935-33c79effca3d">
+                        📘 {isAr ? 'المرحلة الإعدادية - الصف الأول الإعدادي' : 'Prep 1'}
+                      </option>
+                    )}
                   </select>
                 </div>
 
@@ -511,18 +533,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    disabled={true}
+                    disabled={!allowStudentRegistration}
                     className="form-input"
-                    value={schoolName || (isAr ? 'المدرسة الرسمية' : 'Official School')}
+                    value={schoolName}
                     onChange={(e) => setSchoolName(e.target.value)}
-                    readOnly
-                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
+                    placeholder={isAr ? 'أدخل اسم مدرستك' : 'Official School'}
+                    style={{
+                      opacity: !allowStudentRegistration ? 0.7 : 1,
+                      cursor: !allowStudentRegistration ? 'not-allowed' : 'auto',
+                      backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
+                    }}
                   />
                 </div>
-
-
-
-                {/* 6. email */}
+                     {/* 5. email */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
                     {isAr ? 'البريد الإلكتروني (email)' : 'Email Address'}
@@ -530,12 +553,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div style={{ position: 'relative' }}>
                     <input
                       type="email"
-                      disabled={true}
+                      required
+                      disabled={!allowStudentRegistration}
                       className="form-input"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       placeholder="student@school.edu.eg"
-                      style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem', opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
+                      style={{
+                        [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem',
+                        [isAr ? 'paddingLeft' : 'paddingRight']: '1rem',
+                        opacity: !allowStudentRegistration ? 0.7 : 1,
+                        cursor: !allowStudentRegistration ? 'not-allowed' : 'auto',
+                        backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
+                      }}
                     />
                     <Mail 
                       size={16} 
@@ -550,7 +580,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                 </div>
 
-                {/* 7. username */}
+                {/* 6. username */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
                     <User size={15} style={{ display: 'inline', marginInlineEnd: '4px' }} />
@@ -558,16 +588,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    disabled={true}
+                    required
+                    disabled={!allowStudentRegistration}
                     className="form-input"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
-                    placeholder={isAr ? 'اسم المستخدم المسجل بالمدرسة' : 'Assigned student username'}
-                    style={{ opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
+                    placeholder={isAr ? 'اسم المستخدم للدخول' : 'Student username'}
+                    style={{
+                      opacity: !allowStudentRegistration ? 0.7 : 1,
+                      cursor: !allowStudentRegistration ? 'not-allowed' : 'auto',
+                      backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
+                    }}
                   />
                 </div>
 
-                {/* 8. password */}
+                {/* 7. password */}
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 800 }}>
                     {isAr ? 'كلمة المرور (password)' : 'Password'}
@@ -575,12 +610,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div style={{ position: 'relative' }}>
                     <input
                       type="password"
-                      disabled={true}
+                      required
+                      disabled={!allowStudentRegistration}
                       className="form-input"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem', opacity: 0.7, cursor: 'not-allowed', backgroundColor: '#F8FAFC' }}
+                      style={{
+                        [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem',
+                        [isAr ? 'paddingLeft' : 'paddingRight']: '1rem',
+                        opacity: !allowStudentRegistration ? 0.7 : 1,
+                        cursor: !allowStudentRegistration ? 'not-allowed' : 'auto',
+                        backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
+                      }}
                     />
                     <Lock 
                       size={16} 
@@ -659,12 +701,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <button
               type="submit"
               className="btn btn-primary btn-lg"
-              disabled={isLoading || mode === 'register'}
+              disabled={isLoading || (mode === 'register' && !allowStudentRegistration)}
               style={{
                 width: '100%',
                 marginTop: '0.5rem',
                 fontWeight: 800,
-                ...(mode === 'register' ? {
+                ...(mode === 'register' && !allowStudentRegistration ? {
                   backgroundColor: '#94A3B8',
                   borderColor: '#94A3B8',
                   cursor: 'not-allowed',
@@ -676,7 +718,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 ? (isAr ? 'جاري الاتصال بقاعدة البيانات...' : 'Processing...')
                 : (mode === 'login' 
                     ? (isAr ? 'تسجيل الدخول' : 'Sign In') 
-                    : (isAr ? '🔒 التسجيل الذاتي مغلق (الحساب يسلم من المشرف)' : '🔒 Registration Blocked'))}
+                    : (allowStudentRegistration
+                        ? (isAr ? 'إنشاء حساب طالب جديد' : 'Create Student Account')
+                        : (isAr ? '🔒 التسجيل الذاتي مغلق (الحساب يسلم من المشرف)' : '🔒 Registration Blocked')))}
             </button>
           </form>
         </div>

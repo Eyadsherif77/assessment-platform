@@ -392,6 +392,20 @@ router.get('/exams/:id', async (req: AuthenticatedRequest, res) => {
 router.get('/subordinates', async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
+
+    if (user.role !== 'ADMIN') {
+      const visSetting = await db.query(`SELECT setting_value FROM platform_settings WHERE setting_key = 'allow_subordinate_visibility'`);
+      const isVisibilityEnabled = visSetting.rows.length === 0 || visSetting.rows[0].setting_value === 'true' || visSetting.rows[0].setting_value === '1';
+      if (!isVisibilityEnabled) {
+        return res.json({
+          subordinates: [],
+          total: 0,
+          visibility_disabled: true,
+          message: 'تم إيقاف صلاحية رؤية الحسابات التابعة مؤقتاً من قبل الإدارة العامة للمنظومة'
+        });
+      }
+    }
+
     const filterRole = (req.query.role as string || '').trim().toUpperCase();
     const filterGrade = (req.query.grade_id as string || '').trim();
     const params: any[] = [];
@@ -546,7 +560,12 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
       password,
       governorateId,
       subjectId,
+      subjectIds,
+      assignedSubjects,
       gradeId,
+      gradeIds,
+      assignedGrades,
+      teachingAssignments,
       schoolName,
       specialization,
       permissions
@@ -567,38 +586,69 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
     }
 
+    // Resolve assigned subjects list (supports per-subject teaching assignments)
+    let finalAssignedSubjects: string[] = [];
+    if (Array.isArray(teachingAssignments) && teachingAssignments.length > 0) {
+      finalAssignedSubjects = teachingAssignments.map((a: any) => String(a.subjectName || '').trim()).filter(Boolean);
+    }
+    if (finalAssignedSubjects.length === 0) {
+      if (Array.isArray(assignedSubjects) && assignedSubjects.length > 0) {
+        finalAssignedSubjects = assignedSubjects.map(s => String(s).trim()).filter(Boolean);
+      } else if (Array.isArray(subjectIds) && subjectIds.length > 0) {
+        const sRows = await db.query('SELECT name_ar FROM subjects WHERE id = ANY($1)', [subjectIds]);
+        finalAssignedSubjects = sRows.rows.map(r => r.name_ar);
+      } else if (subjectId) {
+        const sRow = await db.query('SELECT name_ar FROM subjects WHERE id = $1', [subjectId]);
+        finalAssignedSubjects = [sRow.rows[0]?.name_ar || specialization || 'عام'];
+      } else if (specialization) {
+        finalAssignedSubjects = specialization.split(/[,،]+/).map((s: string) => s.trim()).filter(Boolean);
+      }
+    }
+
+    // Resolve assigned grades list
+    let finalAssignedGrades: string[] = [];
+    if (Array.isArray(teachingAssignments) && teachingAssignments.length > 0) {
+      finalAssignedGrades = Array.from(new Set(teachingAssignments.flatMap((a: any) => a.gradeIds || []))).map(g => String(g).trim()).filter(Boolean);
+    }
+    if (finalAssignedGrades.length === 0) {
+      if (Array.isArray(assignedGrades) && assignedGrades.length > 0) {
+        finalAssignedGrades = assignedGrades.map(g => String(g).trim()).filter(Boolean);
+      } else if (Array.isArray(gradeIds) && gradeIds.length > 0) {
+        finalAssignedGrades = gradeIds.map(g => String(g).trim()).filter(Boolean);
+      } else if (gradeId) {
+        finalAssignedGrades = [String(gradeId).trim()];
+      }
+    }
+
     let targetRole: string = '';
     let assignedGovId: string | null = null;
-    let assignedSubId: string | null = null;
+    let assignedSubId: string | null = subjectId || (Array.isArray(subjectIds) && subjectIds[0]) || null;
 
     if (user.role === 'ADMIN') {
       const allowed = ['CENTRAL_ADMIN', 'GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
       targetRole = allowed.includes(requestedRole) ? requestedRole : 'CENTRAL_ADMIN';
       assignedGovId = governorateId || null;
-      assignedSubId = subjectId || null;
     } else if (user.role === 'CENTRAL_ADMIN') {
       const allowed = ['GOVERNORATE_ADMIN', 'GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
       targetRole = allowed.includes(requestedRole) ? requestedRole : 'GOVERNORATE_ADMIN';
       if ((targetRole === 'GOVERNORATE_ADMIN' || targetRole === 'GOVERNORATE_SUPERVISOR') && !governorateId) {
         return res.status(400).json({ error: 'يجب اختيار المحافظة التابع لها المستخدم' });
       }
-      if ((targetRole === 'SUPERVISOR' || targetRole === 'TEACHER') && (!governorateId || !subjectId)) {
+      if ((targetRole === 'SUPERVISOR' || targetRole === 'TEACHER') && (!governorateId || (!assignedSubId && finalAssignedSubjects.length === 0))) {
         return res.status(400).json({ error: 'يجب اختيار المحافظة والمادة التابع لها المستخدم' });
       }
       assignedGovId = governorateId || null;
-      assignedSubId = subjectId || null;
     } else if (user.role === 'GOVERNORATE_ADMIN') {
       const allowed = ['GOVERNORATE_SUPERVISOR', 'SUPERVISOR', 'TEACHER'];
       targetRole = allowed.includes(requestedRole) ? requestedRole : 'GOVERNORATE_SUPERVISOR';
       assignedGovId = user.governorateId || governorateId || null;
-      if ((targetRole === 'SUPERVISOR' || targetRole === 'TEACHER') && !subjectId) {
+      if ((targetRole === 'SUPERVISOR' || targetRole === 'TEACHER') && (!assignedSubId && finalAssignedSubjects.length === 0)) {
         return res.status(400).json({ error: 'يجب اختيار المادة المسندة' });
       }
-      assignedSubId = subjectId || null;
     } else if (user.role === 'SUPERVISOR') {
       targetRole = 'TEACHER';
       assignedGovId = user.governorateId || null;
-      assignedSubId = user.subjectId || subjectId || null;
+      assignedSubId = user.subjectId || assignedSubId || null;
     } else {
       return res.status(403).json({ error: 'غير مصرح لك بإنشاء مستخدمين' });
     }
@@ -641,31 +691,38 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
       ]
     );
 
-    // If teacher, create profile with grade and stage link
+    // If teacher, create profile with grade and stage link, plus multi-subject and multi-grade
     if (targetRole === 'TEACHER') {
+      const primaryGradeId = finalAssignedGrades[0] || gradeId || null;
       let assignedStageId: string | null = null;
-      if (gradeId) {
-        const gr = await db.query('SELECT stage_id FROM grades WHERE id = $1', [gradeId]);
+      if (primaryGradeId) {
+        const gr = await db.query('SELECT stage_id FROM grades WHERE id = $1', [primaryGradeId]);
         if (gr.rows.length > 0) {
           assignedStageId = gr.rows[0].stage_id;
         }
       }
 
+      const finalSpec = finalAssignedSubjects.join('، ') || specialization || null;
+
       await db.query(
         `INSERT INTO teacher_profiles (
           user_id, full_name, school_name, specialization, 
-          governorate_id, subject_id, supervisor_id, grade_id, academic_stage_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          governorate_id, subject_id, supervisor_id, grade_id, academic_stage_id,
+          assigned_subjects, assigned_grades, teaching_assignments
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           newUserId,
           fullName.trim(),
           schoolName || null,
-          specialization || null,
+          finalSpec,
           assignedGovId,
           assignedSubId,
           user.id,
-          gradeId || null,
-          assignedStageId
+          primaryGradeId,
+          assignedStageId,
+          JSON.stringify(finalAssignedSubjects),
+          JSON.stringify(finalAssignedGrades),
+          JSON.stringify(teachingAssignments || [])
         ]
       );
     }

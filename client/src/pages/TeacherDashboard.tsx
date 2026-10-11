@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { usePlatformSettings } from '../context/PlatformSettingsContext';
 import { apiUrl } from '../utils/api';
 import { 
-  Upload, 
   FileText, 
   PlusCircle, 
   BarChart2, 
@@ -20,22 +20,31 @@ import {
 
 export const TeacherDashboard: React.FC = () => {
   const { user, token, language } = useAuth();
+  const { activeTerm } = usePlatformSettings();
   const isAr = language === 'ar';
 
-  const getInitialTeacherTab = (): 'overview' | 'books' | 'upload' | 'exams' | 'builder' | 'analytics' => {
+  const [selectedTerm, setSelectedTerm] = useState<number>(activeTerm || 1);
+
+  useEffect(() => {
+    if (activeTerm) {
+      setSelectedTerm(activeTerm);
+    }
+  }, [activeTerm]);
+
+  const getInitialTeacherTab = (): 'overview' | 'books' | 'exams' | 'builder' | 'analytics' => {
     try {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab');
-      if (tab === 'overview' || tab === 'books' || tab === 'upload' || tab === 'exams' || tab === 'builder' || tab === 'analytics') return tab as any;
+      if (tab === 'overview' || tab === 'books' || tab === 'exams' || tab === 'builder' || tab === 'analytics') return tab as any;
       const saved = localStorage.getItem('teacher_active_tab');
-      if (saved === 'overview' || saved === 'books' || saved === 'upload' || saved === 'exams' || saved === 'builder' || saved === 'analytics') return saved as any;
+      if (saved === 'overview' || saved === 'books' || saved === 'exams' || saved === 'builder' || saved === 'analytics') return saved as any;
     } catch (_) {}
     return 'overview';
   };
 
-  const [activeTab, setActiveTabState] = useState<'overview' | 'books' | 'upload' | 'exams' | 'builder' | 'analytics'>(getInitialTeacherTab);
+  const [activeTab, setActiveTabState] = useState<'overview' | 'books' | 'exams' | 'builder' | 'analytics'>(getInitialTeacherTab);
 
-  const setActiveTab = (tab: 'overview' | 'books' | 'upload' | 'exams' | 'builder' | 'analytics') => {
+  const setActiveTab = (tab: 'overview' | 'books' | 'exams' | 'builder' | 'analytics') => {
     setActiveTabState(tab);
     try {
       const url = new URL(window.location.href);
@@ -48,24 +57,66 @@ export const TeacherDashboard: React.FC = () => {
 const PREP_STAGE_ID = '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
 const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
 
-  // Metadata - Linked to Teacher's assigned Grade & Stage
+  // Teacher's assigned grades and subjects memoization
+  const teacherAssignedGrades: string[] = React.useMemo(() => {
+    const raw = user?.profile?.assigned_grades;
+    if (Array.isArray(raw) && raw.length > 0) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (_) {}
+      return [raw];
+    }
+    if (user?.profile?.grade_id) return [user.profile.grade_id];
+    return [];
+  }, [user?.profile?.assigned_grades, user?.profile?.grade_id]);
+
+  const teacherAssignedSubjects: string[] = React.useMemo(() => {
+    const raw = user?.profile?.assigned_subjects;
+    if (Array.isArray(raw) && raw.length > 0) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (_) {}
+      return raw.split(/[,،]+/).map(s => s.trim()).filter(Boolean);
+    }
+    const spec = user?.profile?.specialization;
+    if (spec) return spec.split(/[,،]+/).map((s: string) => s.trim()).filter(Boolean);
+    return [];
+  }, [user?.profile?.assigned_subjects, user?.profile?.specialization]);
+
+  // Metadata - Linked strictly to Teacher's assigned Grade & Stage
   const [allGrades, setAllGrades] = useState<any[]>([]);
   const [selectedStageId, setSelectedStageId] = useState(user?.profile?.academic_stage_id || PREP_STAGE_ID);
   const [selectedGradeId, setSelectedGradeId] = useState(user?.profile?.grade_id || PREP_3_GRADE_ID);
   const [subjects, setSubjects] = useState<any[]>([]);
-  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState(user?.profile?.subject_id || '');
 
-  // Fetch all grades so teacher can freely choose between all grades
+  // Fetch grades strictly locked to teacher's authorized grades
   useEffect(() => {
     fetch(apiUrl('/api/meta/grades'))
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
-          setAllGrades(data);
+          let accessibleGrades = data;
+          if (user?.role === 'TEACHER' && teacherAssignedGrades.length > 0) {
+            accessibleGrades = data.filter(g => teacherAssignedGrades.includes(g.id));
+            if (accessibleGrades.length === 0) accessibleGrades = data;
+          }
+          setAllGrades(accessibleGrades);
+          if (accessibleGrades.length > 0) {
+            const hasCurrent = accessibleGrades.some(g => g.id === selectedGradeId);
+            if (!hasCurrent) {
+              setSelectedGradeId(accessibleGrades[0].id);
+              setSelectedStageId(accessibleGrades[0].stage_id);
+            }
+          }
         }
       })
       .catch(console.error);
-  }, []);
+  }, [teacherAssignedGrades]);
 
   const handleGradeChange = (newGradeId: string) => {
     setSelectedGradeId(newGradeId);
@@ -86,16 +137,6 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
   // Books State
   const [books, setBooks] = useState<any[]>([]);
-  const [bookTitleAr, setBookTitleAr] = useState('');
-  const [chapterNumber, setChapterNumber] = useState('1');
-  const [chapterTitleAr, setChapterTitleAr] = useState('');
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [schoolTypeTarget, setSchoolTypeTarget] = useState<'عربي' | 'لغات' | 'كلاهما'>('كلاهما');
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [jobProgress, setJobProgress] = useState<number>(0);
-  const [jobStatusText, setJobStatusText] = useState<string>('');
 
   // Exams State
   const [exams, setExams] = useState<any[]>([]);
@@ -347,13 +388,15 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
     return true;
   };
 
-  const loadTeacherData = (subjId?: string) => {
+  const loadTeacherData = (subjId?: string, termToUse?: number) => {
     if (!token) return;
     const currentSubjectId = subjId || selectedSubjectId;
     const subjectParam = currentSubjectId ? `&subject_id=${encodeURIComponent(currentSubjectId)}` : '';
+    const currentTerm = termToUse || selectedTerm || activeTerm || 1;
 
-    // Load Books (Display all textbooks uploaded by this teacher)
-    fetch(apiUrl(`/api/books?my_only=true`), { headers: { Authorization: `Bearer ${token}` } })
+    // Load Books (Display all curriculum textbooks for this grade, subject & term)
+    const gradeParam = selectedGradeId ? `&grade_id=${selectedGradeId}` : '';
+    fetch(apiUrl(`/api/books?term=${currentTerm}${gradeParam}${subjectParam}`), { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -362,8 +405,8 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
       })
       .catch(console.error);
 
-    // Load Exams (strictly filtered to this teacher's subject)
-    fetch(apiUrl(`/api/exams?my_only=true${subjectParam}`), { headers: { Authorization: `Bearer ${token}` } })
+    // Load Exams (strictly filtered to this teacher's subject & term)
+    fetch(apiUrl(`/api/exams?my_only=true${subjectParam}&term=${currentTerm}`), { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -386,11 +429,15 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
   };
 
   useEffect(() => {
-    loadTeacherData();
-  }, [token, user?.profile?.specialization]);
+    loadTeacherData(undefined, selectedTerm);
+  }, [token, user?.profile?.specialization, selectedGradeId, selectedTerm]);
 
   const getMatchedSubject = (subjectList: any[]) => {
     if (!subjectList || subjectList.length === 0) return null;
+    if (user?.profile?.subject_id) {
+      const byId = subjectList.find(s => s.id === user?.profile?.subject_id);
+      if (byId) return byId;
+    }
     if (!teacherSpecialization) return subjectList[0];
 
     const specClean = teacherSpecialization.replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
@@ -415,17 +462,57 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
     return matched || subjectList[0];
   };
 
-  // Load subjects for selected grade
+  // Load subjects for selected grade strictly locked to teacher's authorized subjects
   useEffect(() => {
     if (selectedGradeId) {
       fetch(apiUrl(`/api/meta/grades/${selectedGradeId}/subjects`))
         .then(r => r.json())
         .then(data => {
           if (Array.isArray(data)) {
-            // Keep all subjects available for this grade so teacher can choose any subject
-            setSubjects(data);
-            const target = getMatchedSubject(data);
-            const initialId = target ? target.id : (data.length > 0 ? data[0].id : '');
+            let accessibleSubjects = data;
+            if (user?.role === 'TEACHER') {
+              const rawAssignments = (user?.profile as any)?.teaching_assignments;
+              let teachingAssignments: Array<{ subjectId: string; subjectName: string; gradeIds: string[] }> = [];
+              if (Array.isArray(rawAssignments)) {
+                teachingAssignments = rawAssignments;
+              } else if (typeof rawAssignments === 'string') {
+                try { teachingAssignments = JSON.parse(rawAssignments); } catch (_) {}
+              }
+
+              const gradeAssignments = teachingAssignments.filter(a => Array.isArray(a.gradeIds) && a.gradeIds.includes(selectedGradeId));
+
+              if (gradeAssignments.length > 0) {
+                accessibleSubjects = data.filter(s => {
+                  const sNameAr = (s.name_ar || '').replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
+                  const sNameEn = (s.name_en || '').trim().toLowerCase();
+                  return gradeAssignments.some(a => {
+                    const cleanA = (a.subjectName || '').replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
+                    return a.subjectId === s.id || sNameAr.includes(cleanA) || cleanA.includes(sNameAr) || sNameEn.includes(cleanA);
+                  });
+                });
+              } else if (teacherAssignedSubjects.length > 0) {
+                accessibleSubjects = data.filter(s => {
+                  const sNameAr = (s.name_ar || '').replace(/^(اللغة|مادة)\s+/i, '').trim().toLowerCase();
+                  const sNameEn = (s.name_en || '').trim().toLowerCase();
+                  const sCode = (s.code || '').toUpperCase();
+                  return teacherAssignedSubjects.some(t => {
+                    const cleanT = t.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase();
+                    if (sNameAr.includes(cleanT) || cleanT.includes(sNameAr)) return true;
+                    if (sNameEn.includes(cleanT) || cleanT.includes(sNameEn)) return true;
+                    if (cleanT.includes('عرب') && (sCode === 'ARABIC' || sNameAr.includes('عرب'))) return true;
+                    if (cleanT.includes('رياض') && (sCode === 'MATH' || sNameAr.includes('رياض'))) return true;
+                    if (cleanT.includes('علوم') && (sCode === 'SCIENCE' || sNameAr.includes('علوم'))) return true;
+                    if ((cleanT.includes('انجليز') || cleanT.includes('إنجليز')) && (sCode === 'ENGLISH' || sNameAr.includes('انجليز'))) return true;
+                    if (cleanT.includes('دراسات') && (sCode === 'SOCIAL' || sNameAr.includes('دراسات'))) return true;
+                    return false;
+                  });
+                });
+              }
+              if (accessibleSubjects.length === 0) accessibleSubjects = data;
+            }
+            setSubjects(accessibleSubjects);
+            const target = getMatchedSubject(accessibleSubjects);
+            const initialId = target ? target.id : (accessibleSubjects.length > 0 ? accessibleSubjects[0].id : '');
             if (initialId) {
               setSelectedSubjectId(initialId);
               loadTeacherData(initialId);
@@ -434,151 +521,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
         })
         .catch(console.error);
     }
-  }, [selectedGradeId, teacherSpecialization]);
-
-  // Poll background job progress if an active upload exists
-  useEffect(() => {
-    if (!activeJobId) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(apiUrl(`/api/books/status/${activeJobId}`), {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        setJobProgress(data.progress || 0);
-        setJobStatusText(data.status);
-
-        if (data.status === 'COMPLETED' || data.status === 'FAILED') {
-          clearInterval(interval);
-          setActiveJobId(null);
-          loadTeacherData();
-        }
-      } catch (e) {
-        clearInterval(interval);
-      }
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, [activeJobId]);
-
-  // Upload book handler using 2MB chunked streaming (completely bypasses Vercel 4.5MB payload limits on all mobile & desktop browsers)
-  const handleUploadBook = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!bookTitleAr || !selectedStageId || !selectedGradeId || !selectedSubjectId || !pdfFile) {
-      alert(isAr ? 'الرجاء إدخال كافة بيانات الكتاب واختيار الملف' : 'Please enter all book details and select a file');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadMessage(null);
-    setJobProgress(5);
-    setJobStatusText('UPLOADING');
-
-    try {
-      const CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB per chunk (well below Vercel's 4.5 MB limit)
-      const totalChunks = Math.ceil(pdfFile.size / CHUNK_SIZE);
-      const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
-
-      for (let i = 0; i < totalChunks; i++) {
-        const chunkStart = i * CHUNK_SIZE;
-        const chunkEnd = Math.min(pdfFile.size, (i + 1) * CHUNK_SIZE);
-        const chunkBlob = pdfFile.slice(chunkStart, chunkEnd);
-
-        const chunkFormData = new FormData();
-        chunkFormData.append('uploadId', uploadId);
-        chunkFormData.append('chunkIndex', String(i));
-        chunkFormData.append('totalChunks', String(totalChunks));
-        chunkFormData.append('chunk', chunkBlob, `${pdfFile.name}.part_${i}`);
-
-        const pct = Math.min(85, Math.round(((i + 1) / totalChunks) * 80) + 5);
-        setJobProgress(pct);
-        setUploadMessage(
-          isAr
-            ? `جاري رفع الكتاب بدون قيود: جزء ${i + 1} من ${totalChunks} (${pct}%)...`
-            : `Uploading textbook: chunk ${i + 1} of ${totalChunks} (${pct}%)...`
-        );
-
-        const chunkRes = await fetch(apiUrl('/api/books/upload-chunk'), {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: chunkFormData
-        });
-
-        if (!chunkRes.ok) {
-          const errText = await chunkRes.text();
-          let parsedErr = errText;
-          try {
-            parsedErr = JSON.parse(errText).error || errText;
-          } catch {}
-          throw new Error((isAr ? `فشل رفع الجزء ${i + 1} من الكتاب: ` : `Failed to upload chunk ${i + 1}: `) + parsedErr);
-        }
-      }
-
-      // Finalize and trigger server-side text extraction & semantic vector indexing
-      setJobProgress(88);
-      setJobStatusText('PROCESSING');
-      setUploadMessage(
-        isAr
-          ? 'تم اكتمال رفع جميع الأجزاء! جاري استخراج النصوص وتوليد الفهرسة الدلالية بالذكاء الاصطناعي...'
-          : 'All chunks uploaded! Extracting text and indexing semantic vectors with AI...'
-      );
-
-      const finalRes = await fetch(apiUrl('/api/books/finalize-chunked'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          uploadId,
-          title_ar: bookTitleAr,
-          title_en: bookTitleAr,
-          academic_stage_id: selectedStageId,
-          grade_id: selectedGradeId,
-          subject_id: selectedSubjectId,
-          chapter_number: chapterNumber,
-          chapter_title_ar: chapterTitleAr || 'الوحدة الأولى',
-          school_type: schoolTypeTarget,
-          fileName: pdfFile.name,
-          fileSize: pdfFile.size,
-          totalChunks
-        })
-      });
-
-      let data: any = {};
-      const responseText = await finalRes.text();
-      try {
-        data = JSON.parse(responseText);
-      } catch {
-        if (!finalRes.ok) {
-          throw new Error(responseText.slice(0, 250) || (isAr ? 'فشل معالجة الكتاب على الخادم.' : 'Server processing failed.'));
-        }
-      }
-
-      if (!finalRes.ok) {
-        throw new Error(data.error || (isAr ? 'فشل معالجة أجزاء الكتاب.' : 'Failed to finalize textbook.'));
-      }
-
-      setUploadMessage(data.message || (isAr ? 'تم رفع ومعالجة الكتاب وفهرسته دلالياً بنجاح!' : 'Textbook uploaded and indexed successfully!'));
-      setJobProgress(100);
-      setJobStatusText('COMPLETED');
-      setActiveJobId(null);
-      loadTeacherData();
-      setBookTitleAr('');
-      setPdfFile(null);
-      const fileInput = document.getElementById('book-pdf-input') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
-    } catch (err: any) {
-      console.error('Upload book error:', err);
-      const msg = err.message || (isAr ? 'حدث خطأ أثناء رفع ومعالجة الكتاب' : 'An error occurred while uploading textbook');
-      setUploadMessage(msg);
-      setJobStatusText('FAILED');
-      alert(msg);
-    } finally {
-      setIsUploading(false);
-    }
-  };
+  }, [selectedGradeId, teacherAssignedSubjects, teacherSpecialization]);
 
   // Toggle publish exam
   const handleTogglePublish = async (examId: string, currentStatus: boolean) => {
@@ -704,14 +647,6 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
           </button>
 
           <button
-            className={`sidebar-btn ${activeTab === 'upload' ? 'active' : ''}`}
-            onClick={() => setActiveTab('upload')}
-          >
-            <Upload size={18} />
-            <span>{isAr ? 'رفع الكتاب (PDF)' : 'Upload Textbook (PDF)'}</span>
-          </button>
-
-          <button
             className={`sidebar-btn ${activeTab === 'exams' ? 'active' : ''}`}
             onClick={() => setActiveTab('exams')}
           >
@@ -749,6 +684,59 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
           WORKSPACE MAIN CONTENT
           ========================================================= */}
       <main className="workspace-content">
+
+        {/* Mobile Quick Horizontal Tab Bar */}
+        <div className="teacher-mobile-tab-bar" style={{
+          display: 'none',
+          gap: '0.45rem',
+          overflowX: 'auto',
+          paddingBottom: '0.6rem',
+          marginBottom: '1.25rem',
+          WebkitOverflowScrolling: 'touch',
+          whiteSpace: 'nowrap',
+          maxWidth: '100%'
+        }}>
+          <button
+            className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+            style={{ padding: '0.5rem 0.85rem', fontSize: '0.82rem', fontWeight: 700 }}
+          >
+            <LayoutDashboard size={15} />
+            <span>{isAr ? 'نظرة عامة' : 'Overview'}</span>
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'books' ? 'active' : ''}`}
+            onClick={() => setActiveTab('books')}
+            style={{ padding: '0.5rem 0.85rem', fontSize: '0.82rem', fontWeight: 700 }}
+          >
+            <BookOpen size={15} />
+            <span>{isAr ? `الكتب (${books.length})` : `Books (${books.length})`}</span>
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'exams' ? 'active' : ''}`}
+            onClick={() => setActiveTab('exams')}
+            style={{ padding: '0.5rem 0.85rem', fontSize: '0.82rem', fontWeight: 700 }}
+          >
+            <FileText size={15} />
+            <span>{isAr ? `الامتحانات (${exams.length})` : `Exams (${exams.length})`}</span>
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'builder' ? 'active' : ''}`}
+            onClick={() => setActiveTab('builder')}
+            style={{ padding: '0.5rem 0.85rem', fontSize: '0.82rem', fontWeight: 700 }}
+          >
+            <PlusCircle size={15} />
+            <span>{isAr ? 'مصمم الامتحانات' : 'Builder'}</span>
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+            style={{ padding: '0.5rem 0.85rem', fontSize: '0.82rem', fontWeight: 700 }}
+          >
+            <BarChart2 size={15} />
+            <span>{isAr ? 'أداء الطلاب' : 'Analytics'}</span>
+          </button>
+        </div>
 
         {/* MODULE 1: OVERVIEW & RECENT ACTIVITY */}
         {activeTab === 'overview' && (
@@ -837,19 +825,11 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button
                   className="btn btn-primary banner-action-btn"
-                  onClick={() => setActiveTab('upload')}
-                  style={{ fontWeight: 800 }}
-                >
-                  <Upload size={16} />
-                  <span>{isAr ? 'رفع كتاب جديد' : 'Upload Textbook'}</span>
-                </button>
-                <button
-                  className="btn btn-secondary banner-action-btn"
                   onClick={() => setActiveTab('builder')}
                   style={{ fontWeight: 800 }}
                 >
                   <PlusCircle size={16} />
-                  <span>{isAr ? 'تصميم امتحان' : 'Build Exam'}</span>
+                  <span>{isAr ? 'تصميم امتحان جديد' : 'Build New Exam'}</span>
                 </button>
               </div>
             </div>
@@ -945,23 +925,52 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
                   {isAr ? 'إدارة الكتب والمناهج المرفوعة' : 'Manage Curriculum Textbooks'}
                 </h2>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {isAr ? 'قائمة الكتب المفهرسة دلالياً لأسئلة الاختبارات والتقييمات' : 'Curriculum indexed for interactive assessment generation'}
-                </span>
               </div>
-              <button className="btn btn-primary" onClick={() => setActiveTab('upload')}>
-                <Upload size={16} />
-                <span>{isAr ? 'رفع كتاب جديد' : 'Upload Textbook'}</span>
-              </button>
+              {/* Term Switcher */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#F1F5F9', padding: '0.35rem', borderRadius: 'var(--radius-lg)', border: '1px solid #E2E8F0' }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${selectedTerm === 1 ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => {
+                    setSelectedTerm(1);
+                    loadTeacherData(undefined, 1);
+                  }}
+                  style={{ fontWeight: 800, padding: '0.4rem 1rem' }}
+                >
+                  📘 {isAr ? 'الفصل الدراسي الأول (الترم 1)' : 'Term 1'}
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${selectedTerm === 2 ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => {
+                    setSelectedTerm(2);
+                    loadTeacherData(undefined, 2);
+                  }}
+                  style={{ fontWeight: 800, padding: '0.4rem 1rem' }}
+                >
+                  📙 {isAr ? 'الفصل الدراسي الثاني (الترم 2)' : 'Term 2'}
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
               {books.map(book => (
                 <div key={book.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
-                    <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
-                      {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)}
-                    </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span className="badge badge-primary">
+                        {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)}
+                      </span>
+                      <span className="badge" style={{
+                        fontSize: '0.72rem',
+                        background: book.term === 2 ? '#FEF3C7' : '#E0E7FF',
+                        color: book.term === 2 ? '#B45309' : '#3730A3',
+                        border: `1px solid ${book.term === 2 ? '#FDE68A' : '#C7D2FE'}`,
+                        fontWeight: 800
+                      }}>
+                        {book.term === 2 ? (isAr ? '📙 الترم الثاني' : 'Term 2') : (isAr ? '📘 الترم الأول' : 'Term 1')}
+                      </span>
+                    </div>
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.35rem' }}>
                       {isAr ? book.title_ar : (book.title_en || book.title_ar)}
                     </h3>
@@ -1007,171 +1016,6 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
           </div>
         )}
 
-        {/* MODULE 3: UPLOAD BOOK & BACKGROUND POLLING */}
-        {activeTab === 'upload' && (
-          <div style={{ maxWidth: '780px', margin: '0 auto', width: '100%' }}>
-            <div className="card" style={{ padding: '2rem 1.75rem', borderRadius: 'var(--radius-xl)' }}>
-              <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-                <span className="badge badge-primary" style={{ marginBottom: '0.5rem' }}>
-                  {isAr ? 'معالجة دلالية للـ PDF' : 'Semantic PDF Processing'}
-                </span>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--text-title)' }}>
-                  {isAr ? 'رفع ومعالجة كتاب مدرسي جديد' : 'Upload & Process New Textbook'}
-                </h2>
-              </div>
-
-              {uploadMessage && (
-                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#15803D', padding: '0.85rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontWeight: 700 }}>
-                  {uploadMessage}
-                </div>
-              )}
-
-              {/* Upload & Indexing Progress Bar */}
-              {(isUploading || activeJobId) && (
-                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '1.25rem', borderRadius: 'var(--radius-lg)', marginBottom: '1.5rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-                    <span>
-                      {jobStatusText === 'UPLOADING'
-                        ? (isAr ? 'جاري رفع أجزاء الكتاب...' : 'Uploading textbook chunks...')
-                        : jobStatusText === 'PROCESSING'
-                        ? (isAr ? 'جاري استخراج النصوص ومعالجة محتوى الكتاب...' : 'Extracting & Processing Textbook Content...')
-                        : (isAr ? `حالة المعالجة: ${jobStatusText}` : `Processing Status: ${jobStatusText}`)}
-                    </span>
-                    <span style={{ color: 'var(--primary-600)' }}>{jobProgress}%</span>
-                  </div>
-                  <div style={{ width: '100%', height: '10px', background: '#DBEAFE', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div style={{ width: `${jobProgress}%`, height: '100%', background: 'linear-gradient(90deg, #2563EB, #3B82F6)', borderRadius: '999px', transition: 'width 0.3s ease' }} />
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleUploadBook}>
-                <div className="responsive-form-grid-2">
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 800 }}>
-                      {isAr ? 'الصف الدراسي المستهدف للكتاب' : 'Target Grade'}
-                    </label>
-                    <select
-                      className="form-select"
-                      value={selectedGradeId}
-                      onChange={(e) => handleGradeChange(e.target.value)}
-                      style={{ fontWeight: 800, cursor: 'pointer' }}
-                    >
-                      {allGrades.map(g => (
-                        <option key={g.id} value={g.id}>
-                          {isAr ? `${g.name_ar} (${g.stage_name_ar || ''})` : (g.name_en || g.name_ar)}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--primary-700)', marginTop: '0.3rem', fontWeight: 700 }}>
-                      {isAr ? '🎯 يربط الكتاب تلقائياً بطلاب هذا الصف' : '🎯 Links book to students of this grade'}
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 800 }}>
-                      {isAr ? 'المادة الدراسية للكتاب' : 'Subject'}
-                    </label>
-                    <select
-                      className="form-select"
-                      value={selectedSubjectId}
-                      onChange={(e) => setSelectedSubjectId(e.target.value)}
-                      required
-                      style={{ fontWeight: 800, cursor: 'pointer' }}
-                    >
-                      {subjects.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {isAr ? s.name_ar : (s.name_en || s.name_ar)}
-                        </option>
-                      ))}
-                    </select>
-                    <input type="hidden" name="subject_id" value={selectedSubjectId} />
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                      {isAr 
-                        ? 'اختر المادة المناسبة للكتاب (لغة عربية، علوم، رياضيات، دراسات، إلخ)' 
-                        : 'Choose the subject (Arabic, Science, Math, etc.)'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="responsive-form-grid-2">
-                  <div className="form-group">
-                    <label className="form-label">{isAr ? 'نوع المدرسة الموجه لها الكتاب' : 'Target School Type'}</label>
-                    <select className="form-select" value={schoolTypeTarget} onChange={e => setSchoolTypeTarget(e.target.value as any)}>
-                      <option value="كلاهما">{isAr ? '🤝 كلاهما (منهج مشترك كاللغة العربية والدين)' : '🤝 Both (Common like Arabic/Religion)'}</option>
-                      <option value="عربي">{isAr ? '🏫 مدارس عربي فقط (مثل الرياضيات أو العلوم بالعربي)' : '🏫 Arabic Schools Only (Math/Science in Arabic)'}</option>
-                      <option value="لغات">{isAr ? '🌐 مدارس لغات فقط (مثل Math أو Science بالإنجليزية)' : '🌐 Language Schools Only (Math/Science in English)'}</option>
-                    </select>
-                    <div style={{ fontSize: '0.73rem', color: 'var(--primary-700)', marginTop: '0.3rem', fontWeight: 600 }}>
-                      {isAr 
-                        ? '🔗 سيتم ربط الكتاب حصرياً بطلاب الصف ونوع المدرسة المحددين أعلاه.' 
-                        : '🔗 Strictly linked only to students of matching grade & school type.'}
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 800 }}>{isAr ? 'عنوان الكتاب المنهجي' : 'Textbook Title'}</label>
-                    <input
-                      type="text"
-                      required
-                      className="form-input"
-                      value={bookTitleAr}
-                      onChange={e => setBookTitleAr(e.target.value)}
-                      placeholder={isAr ? 'مثال: كتاب اللغة العربية - الصف الأول الإعدادي' : 'e.g. Arabic Book - Prep 1'}
-                    />
-                  </div>
-                </div>
-
-                <div className="responsive-form-grid-2">
-                  <div className="form-group">
-                    <label className="form-label">{isAr ? 'رقم الوحدة' : 'Unit Number'}</label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      className="form-input"
-                      value={chapterNumber}
-                      onChange={e => setChapterNumber(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">{isAr ? 'عنوان الوحدة الدراسية' : 'Unit Title'}</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={chapterTitleAr}
-                      onChange={e => setChapterTitleAr(e.target.value)}
-                      placeholder={isAr ? 'الوحدة الأولى: المادة وخواصها' : 'Unit 1: Matter and its Properties'}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">{isAr ? 'ملف الكتاب أو المقرر (PDF أو نصي)' : 'Textbook or Course File (PDF or TXT)'}</label>
-                  <input
-                    id="book-pdf-input"
-                    type="file"
-                    required
-                    accept=".pdf,.txt,application/pdf,text/plain"
-                    className="form-input"
-                    onChange={e => setPdfFile(e.target.files?.[0] || null)}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-lg"
-                  disabled={isUploading}
-                  style={{ width: '100%', marginTop: '1rem', fontWeight: 800 }}
-                >
-                  {isUploading ? (isAr ? 'جاري الرفع وبدء المعالجة...' : 'Uploading & Indexing...') : (isAr ? 'رفع الكتاب وفهرسته دلالياً 🚀' : 'Upload & Index Textbook 🚀')}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
         {/* MODULE 4: EXAMS MANAGEMENT */}
         {activeTab === 'exams' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -1180,9 +1024,6 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
                   {isAr ? 'بنك الاختبارات والامتحانات' : 'Exam & Quiz Bank'}
                 </h2>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {isAr ? 'إدارة ونشر الاختبارات الموجهة لطلاب صفك' : 'Manage and publish tests for your students'}
-                </span>
               </div>
               <button className="btn btn-primary" onClick={() => setActiveTab('builder')}>
                 <PlusCircle size={16} />
@@ -1935,13 +1776,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
           <span>{isAr ? 'المناهج' : 'Books'}</span>
         </button>
 
-        <button
-          className={`mobile-nav-btn ${activeTab === 'upload' ? 'active' : ''}`}
-          onClick={() => setActiveTab('upload')}
-        >
-          <Upload size={18} />
-          <span>{isAr ? 'رفع كتاب' : 'Upload'}</span>
-        </button>
+
 
         <button
           className={`mobile-nav-btn ${activeTab === 'exams' ? 'active' : ''}`}
@@ -2619,6 +2454,45 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
             </div>
           </div>
         )}
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <button
+          className={`mobile-nav-btn ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          <LayoutDashboard size={20} />
+          <span>{isAr ? 'نظرة عامة' : 'Overview'}</span>
+        </button>
+        <button
+          className={`mobile-nav-btn ${activeTab === 'books' ? 'active' : ''}`}
+          onClick={() => setActiveTab('books')}
+        >
+          <BookOpen size={20} />
+          <span>{isAr ? 'الكتب' : 'Books'}</span>
+        </button>
+        <button
+          className={`mobile-nav-btn ${activeTab === 'exams' ? 'active' : ''}`}
+          onClick={() => setActiveTab('exams')}
+        >
+          <FileText size={20} />
+          <span>{isAr ? 'الامتحانات' : 'Exams'}</span>
+        </button>
+        <button
+          className={`mobile-nav-btn ${activeTab === 'builder' ? 'active' : ''}`}
+          onClick={() => setActiveTab('builder')}
+        >
+          <PlusCircle size={20} />
+          <span>{isAr ? 'إنشاء' : 'Create'}</span>
+        </button>
+        <button
+          className={`mobile-nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          <BarChart2 size={20} />
+          <span>{isAr ? 'الطلاب' : 'Students'}</span>
+        </button>
+      </nav>
 
     </div>
   );

@@ -190,8 +190,29 @@ export const HierarchyDashboard: React.FC = () => {
     loading: boolean;
   }>({ isOpen: false, exam: null, questions: [], loading: false });
 
+  interface TeachingAssignmentItem {
+    subjectId: string;
+    subjectName: string;
+    gradeIds: string[];
+  }
+
   const [createSubModalOpen, setCreateSubModalOpen] = useState<boolean>(false);
-  const [createFormData, setCreateFormData] = useState({
+  const [createFormData, setCreateFormData] = useState<{
+    fullName: string;
+    email: string;
+    username: string;
+    password: string;
+    targetRole: string;
+    governorateId: string;
+    subjectId: string;
+    subjectIds?: string[];
+    assignedSubjects?: string[];
+    gradeId: string;
+    gradeIds?: string[];
+    teachingAssignments?: TeachingAssignmentItem[];
+    schoolName: string;
+    specialization: string;
+  }>({
     fullName: '',
     email: '',
     username: '',
@@ -199,7 +220,11 @@ export const HierarchyDashboard: React.FC = () => {
     targetRole: '',
     governorateId: '',
     subjectId: '',
+    subjectIds: [],
+    assignedSubjects: [],
     gradeId: '',
+    gradeIds: [],
+    teachingAssignments: [],
     schoolName: '',
     specialization: ''
   });
@@ -384,20 +409,114 @@ export const HierarchyDashboard: React.FC = () => {
     }
   };
 
+  // Toggle Subject in Teaching Assignments (Each subject gets its own dedicated grade drop list)
+  const handleToggleSubjectAssignment = (subject: Subject) => {
+    setCreateFormData(prev => {
+      const current = prev.teachingAssignments || [];
+      const exists = current.some(a => a.subjectId === subject.id || a.subjectName === subject.name_ar);
+      let updated: TeachingAssignmentItem[];
+      if (exists) {
+        updated = current.filter(a => a.subjectId !== subject.id && a.subjectName !== subject.name_ar);
+      } else {
+        updated = [...current, { subjectId: subject.id, subjectName: subject.name_ar, gradeIds: [] }];
+      }
+
+      const allSubIds = updated.map(a => a.subjectId);
+      const allSubNames = updated.map(a => a.subjectName);
+      const allGradeIds = Array.from(new Set(updated.flatMap(a => a.gradeIds)));
+
+      return {
+        ...prev,
+        teachingAssignments: updated,
+        subjectId: allSubIds[0] || '',
+        subjectIds: allSubIds,
+        assignedSubjects: allSubNames,
+        gradeId: allGradeIds[0] || '',
+        gradeIds: allGradeIds,
+        specialization: allSubNames.join('، ')
+      };
+    });
+  };
+
+  // Toggle or add Grade for a specific Subject
+  const handleToggleGradeForSubject = (subjectId: string, gradeId: string) => {
+    setCreateFormData(prev => {
+      const current = prev.teachingAssignments || [];
+      const updated = current.map(a => {
+        if (a.subjectId !== subjectId) return a;
+        const exists = a.gradeIds.includes(gradeId);
+        const newGradeIds = exists 
+          ? a.gradeIds.filter(g => g !== gradeId) 
+          : [...a.gradeIds, gradeId];
+        return { ...a, gradeIds: newGradeIds };
+      });
+
+      const allSubIds = updated.map(a => a.subjectId);
+      const allSubNames = updated.map(a => a.subjectName);
+      const allGradeIds = Array.from(new Set(updated.flatMap(a => a.gradeIds)));
+
+      return {
+        ...prev,
+        teachingAssignments: updated,
+        subjectId: allSubIds[0] || '',
+        subjectIds: allSubIds,
+        assignedSubjects: allSubNames,
+        gradeId: allGradeIds[0] || '',
+        gradeIds: allGradeIds,
+        specialization: allSubNames.join('، ')
+      };
+    });
+  };
+
   // Create Subordinate Handler
   const handleCreateSubordinateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateSubError(null);
+
+    // Validation for TEACHER: verify each selected subject has at least one grade chosen
+    if (createFormData.targetRole === 'TEACHER') {
+      const assignments = createFormData.teachingAssignments || [];
+      if (assignments.length === 0) {
+        setCreateSubError(isAr ? 'يرجى اختيار مادة دراسية واحدة على الأقل مسندة للمعلم.' : 'Please select at least one assigned subject for the teacher.');
+        return;
+      }
+      for (const a of assignments) {
+        if (!a.gradeIds || a.gradeIds.length === 0) {
+          setCreateSubError(isAr ? `يرجى اختيار الصف الدراسي لمادة (${a.subjectName}) من القائمة المنسدلة.` : `Please select the grade for (${a.subjectName}) from the dropdown.`);
+          return;
+        }
+      }
+    }
+
     setCreateSubLoading(true);
 
     try {
+      const assignments = createFormData.teachingAssignments || [];
+      const allSubIds = assignments.length > 0 ? assignments.map(a => a.subjectId) : (createFormData.subjectIds || []);
+      const allSubNames = assignments.length > 0 ? assignments.map(a => a.subjectName) : (createFormData.assignedSubjects || []);
+      const allGradeIds = assignments.length > 0 
+        ? Array.from(new Set(assignments.flatMap(a => a.gradeIds))) 
+        : (createFormData.gradeIds || []);
+
+      const payload = {
+        ...createFormData,
+        subjectId: allSubIds[0] || createFormData.subjectId || '',
+        subjectIds: allSubIds,
+        assignedSubjects: allSubNames,
+        gradeId: allGradeIds[0] || createFormData.gradeId || '',
+        gradeIds: allGradeIds,
+        assignedGrades: allGradeIds,
+        teachingAssignments: assignments,
+        specialization: allSubNames.join('، ')
+      };
+
       const res = await fetch(apiUrl('/api/hierarchy/subordinates'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(createFormData)
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (res.ok) {
@@ -411,7 +530,11 @@ export const HierarchyDashboard: React.FC = () => {
           targetRole: '',
           governorateId: '',
           subjectId: '',
+          subjectIds: [],
+          assignedSubjects: [],
           gradeId: '',
+          gradeIds: [],
+          teachingAssignments: [],
           schoolName: '',
           specialization: ''
         });
@@ -612,7 +735,11 @@ export const HierarchyDashboard: React.FC = () => {
                   targetRole: 'TEACHER',
                   governorateId: user?.governorate_id || '',
                   subjectId: user?.subject_id || '',
+                  subjectIds: user?.subject_id ? [user.subject_id] : [],
+                  assignedSubjects: [],
                   gradeId: '',
+                  gradeIds: [],
+                  teachingAssignments: [],
                   schoolName: '',
                   specialization: ''
                 });
@@ -796,7 +923,11 @@ export const HierarchyDashboard: React.FC = () => {
                   targetRole: 'TEACHER',
                   governorateId: '',
                   subjectId: '',
+                  subjectIds: [],
+                  assignedSubjects: [],
                   gradeId: '',
+                  gradeIds: [],
+                  teachingAssignments: [],
                   schoolName: '',
                   specialization: ''
                 });
@@ -833,7 +964,11 @@ export const HierarchyDashboard: React.FC = () => {
                   targetRole: 'CENTRAL_ADMIN',
                   governorateId: '',
                   subjectId: '',
+                  subjectIds: [],
+                  assignedSubjects: [],
                   gradeId: '',
+                  gradeIds: [],
+                  teachingAssignments: [],
                   schoolName: '',
                   specialization: ''
                 });
@@ -2032,7 +2167,11 @@ export const HierarchyDashboard: React.FC = () => {
                     targetRole: 'TEACHER',
                     governorateId: user?.governorate_id || '',
                     subjectId: user?.subject_id || '',
+                    subjectIds: user?.subject_id ? [user.subject_id] : [],
+                    assignedSubjects: [],
                     gradeId: '',
+                    gradeIds: [],
+                    teachingAssignments: [],
                     schoolName: '',
                     specialization: ''
                   });
@@ -2677,67 +2816,227 @@ export const HierarchyDashboard: React.FC = () => {
                   </div>
                 )}
 
-                {/* 5. Subject Selection (for SUPERVISOR or TEACHER) */}
+                {/* 5. Subject & Grade Assignments (Each selected subject has its own dedicated drop list for grades) */}
                 {(createFormData.targetRole === 'SUPERVISOR' || createFormData.targetRole === 'TEACHER') && (
-                  <div>
-                    {user?.role !== 'SUPERVISOR' && (
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                          {isAr ? 'المادة الدراسية المسندة: *' : 'Assigned Academic Subject: *'}
-                        </label>
-                        <select
-                          required
-                          value={createFormData.subjectId}
-                          onChange={(e) => setCreateFormData(prev => ({ ...prev, subjectId: e.target.value }))}
-                          style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.9rem' }}
-                        >
-                          <option value="">{isAr ? 'اختر المادة الدراسية...' : 'Select Academic Subject...'}</option>
-                          {subjects.map(s => (
-                            <option key={s.id} value={s.id}>
-                              {isAr ? s.name_ar : (s.name_en || s.name_ar)}
-                            </option>
-                          ))}
-                        </select>
+                  <div style={{
+                    background: '#F8FAFC',
+                    border: '1.5px solid #CBD5E1',
+                    borderRadius: '0.85rem',
+                    padding: '1.1rem',
+                    margin: '0.5rem 0'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                        <span style={{ fontSize: '1.2rem' }}>📚</span>
+                        <span>{isAr ? 'المواد والصفوف الدراسية المسندة: *' : 'Assigned Subjects & Grades: *'}</span>
+                      </label>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '1rem',
+                        background: (createFormData.teachingAssignments?.length || 0) > 0 ? '#EEF2FF' : '#FEF3C7',
+                        color: (createFormData.teachingAssignments?.length || 0) > 0 ? '#4F46E5' : '#D97706',
+                        border: `1px solid ${(createFormData.teachingAssignments?.length || 0) > 0 ? '#C7D2FE' : '#FDE68A'}`
+                      }}>
+                        {(createFormData.teachingAssignments?.length || 0) === 0
+                          ? (isAr ? 'اختر مادة للبدء' : 'Select a subject')
+                          : (isAr ? `تم تحديد ${createFormData.teachingAssignments?.length} مادة` : `${createFormData.teachingAssignments?.length} Subjects Active`)}
+                      </span>
+                    </div>
+
+                    {/* Step A: Available Subject Pills to Add */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '0.45rem' }}>
+                        {isAr ? 'انقر لإضافة مادة وتحديد صفوفها:' : 'Click to add a subject & assign its grades:'}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.45rem' }}>
+                        {subjects.map(s => {
+                          const isAssigned = (createFormData.teachingAssignments || []).some(a => a.subjectId === s.id || a.subjectName === s.name_ar);
+                          return (
+                            <button
+                              type="button"
+                              key={s.id}
+                              onClick={() => handleToggleSubjectAssignment(s)}
+                              style={{
+                                padding: '0.55rem 0.65rem',
+                                borderRadius: '0.5rem',
+                                border: isAssigned ? '2px solid #4F46E5' : '1.5px solid #CBD5E1',
+                                background: isAssigned ? '#EEF2FF' : '#FFFFFF',
+                                color: isAssigned ? '#3730A3' : '#334155',
+                                fontWeight: isAssigned ? 800 : 600,
+                                fontSize: '0.85rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.35rem',
+                                boxShadow: isAssigned ? '0 2px 6px rgba(79, 70, 229, 0.15)' : 'none',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {isAr ? s.name_ar : (s.name_en || s.name_ar)}
+                              </span>
+                              <span style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                background: isAssigned ? '#4F46E5' : '#F1F5F9',
+                                color: isAssigned ? '#FFFFFF' : '#94A3B8',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.75rem',
+                                fontWeight: 900,
+                                flexShrink: 0
+                              }}>
+                                {isAssigned ? '✓' : '+'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Step B: For each active subject, render its dedicated grade drop list */}
+                    {(createFormData.teachingAssignments && createFormData.teachingAssignments.length > 0) ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                        {createFormData.teachingAssignments.map((assignment) => {
+                          const matchedSubject = subjects.find(s => s.id === assignment.subjectId || s.name_ar === assignment.subjectName);
+                          return (
+                            <div
+                              key={assignment.subjectId}
+                              style={{
+                                background: '#FFFFFF',
+                                border: '2px solid #818CF8',
+                                borderRadius: '0.75rem',
+                                padding: '0.9rem',
+                                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.08)'
+                              }}
+                            >
+                              {/* Subject Header */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                  <span style={{ fontSize: '1.2rem' }}>📖</span>
+                                  <strong style={{ fontSize: '0.95rem', color: '#1E1B4B' }}>
+                                    {assignment.subjectName}
+                                  </strong>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => matchedSubject && handleToggleSubjectAssignment(matchedSubject)}
+                                  style={{
+                                    border: 'none',
+                                    background: '#FEE2E2',
+                                    color: '#DC2626',
+                                    padding: '0.2rem 0.55rem',
+                                    borderRadius: '0.35rem',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {isAr ? 'حذف المادة ✕' : 'Remove ✕'}
+                                </button>
+                              </div>
+
+                              {/* Dedicated Drop List for this subject */}
+                              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#4338CA', marginBottom: '0.35rem' }}>
+                                {isAr ? `اختر الصف الدراسي لمادة (${assignment.subjectName}): *` : `Select Grade for (${assignment.subjectName}): *`}
+                              </label>
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleToggleGradeForSubject(assignment.subjectId, e.target.value);
+                                  }
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.65rem 0.85rem',
+                                  borderRadius: '0.5rem',
+                                  border: assignment.gradeIds.length === 0 ? '2px solid #F59E0B' : '2px solid #6366F1',
+                                  fontSize: '0.875rem',
+                                  background: '#FAF5FF',
+                                  fontWeight: 700,
+                                  color: '#1E1B4B',
+                                  marginBottom: '0.5rem'
+                                }}
+                              >
+                                <option value="">
+                                  {assignment.gradeIds.length === 0 
+                                    ? (isAr ? `اختر الصف الدراسي لمادة ${assignment.subjectName}...` : `Select grade for ${assignment.subjectName}...`)
+                                    : (isAr ? `+ إضافة صف دراسي آخر لمادة ${assignment.subjectName}...` : `+ Add another grade for ${assignment.subjectName}...`)}
+                                </option>
+                                {grades.map(g => {
+                                  const isSelected = assignment.gradeIds.includes(g.id);
+                                  return (
+                                    <option key={g.id} value={g.id}>
+                                      {isSelected ? '✓ ' : ''}{isAr ? `${g.name_ar} - ${g.stage_name_ar || ''}` : `${g.name_en || g.name_ar}`}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+
+                              {/* Selected Grades for this subject */}
+                              {assignment.gradeIds.length > 0 ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+                                    {isAr ? 'الصفوف المحددة لهذه المادة:' : 'Assigned Grades:'}
+                                  </span>
+                                  {assignment.gradeIds.map(gId => {
+                                    const gObj = grades.find(g => g.id === gId);
+                                    const gText = gObj ? (isAr ? `${gObj.name_ar} (${gObj.stage_name_ar || ''})` : gObj.name_en) : gId;
+                                    return (
+                                      <span
+                                        key={gId}
+                                        style={{
+                                          background: '#EEF2FF',
+                                          border: '1px solid #A5B4FC',
+                                          color: '#3730A3',
+                                          fontSize: '0.75rem',
+                                          fontWeight: 800,
+                                          padding: '0.2rem 0.5rem',
+                                          borderRadius: '0.35rem',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.35rem'
+                                        }}
+                                      >
+                                        <span>{gText}</span>
+                                        <span
+                                          onClick={() => handleToggleGradeForSubject(assignment.subjectId, gId)}
+                                          style={{ cursor: 'pointer', fontWeight: 900, color: '#DC2626', fontSize: '0.85rem' }}
+                                          title={isAr ? 'إزالة هذا الصف' : 'Remove'}
+                                        >
+                                          ×
+                                        </span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '0.75rem', color: '#D97706', fontWeight: 700 }}>
+                                  {isAr ? '⚠️ يجب اختيار صف دراسي واحد على الأقل لهذه المادة من القائمة أعلاه' : '⚠️ Please select at least one grade for this subject above'}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '1rem',
+                        textAlign: 'center',
+                        color: '#64748B',
+                        fontSize: '0.85rem',
+                        border: '1.5px dashed #CBD5E1',
+                        borderRadius: '0.65rem'
+                      }}>
+                        {isAr ? 'الرجاء النقر على مادة دراسية أعلاه لإضافتها وتحديد الصفوف الخاصة بها' : 'Please click a subject above to add it and assign its grades'}
                       </div>
                     )}
-                  </div>
-                )}
-
-                {/* 6. Grade Selection (if TEACHER) */}
-                {(createFormData.targetRole === 'TEACHER' || user?.role === 'SUPERVISOR') && (
-                  <div style={{
-                    background: '#F5F3FF',
-                    border: '2px solid #818CF8',
-                    borderRadius: '0.75rem',
-                    padding: '1rem',
-                    margin: '0.25rem 0'
-                  }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', fontWeight: 800, color: '#4338CA', marginBottom: '0.45rem' }}>
-                      <span style={{ fontSize: '1.15rem' }}>🎓</span>
-                      <span>{isAr ? 'الصف الدراسي: *' : 'Assigned Grade: *'}</span>
-                    </label>
-                    <select
-                      required
-                      value={createFormData.gradeId}
-                      onChange={(e) => setCreateFormData(prev => ({ ...prev, gradeId: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem 0.85rem',
-                        borderRadius: '0.5rem',
-                        border: '2px solid #6366F1',
-                        fontSize: '0.925rem',
-                        background: '#FFFFFF',
-                        fontWeight: 800,
-                        color: '#1E1B4B'
-                      }}
-                    >
-                      <option value="">{isAr ? 'اختر الصف الدراسي...' : 'Select Assigned Grade...'}</option>
-                      {grades.map(g => (
-                        <option key={g.id} value={g.id}>
-                          {isAr ? `${g.name_ar} - ${g.stage_name_ar || ''}` : `${g.name_en || g.name_ar} (${g.code})`}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 )}
 

@@ -48,10 +48,11 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
   const [fullName, setFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [specialization, setSpecialization] = useState('اللغة العربية');
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>(['اللغة العربية']);
+  const [customSubjectInput, setCustomSubjectInput] = useState('');
   const [schoolName, setSchoolName] = useState('');
   const [grades, setGrades] = useState<any[]>([]);
-  const [selectedGradeId, setSelectedGradeId] = useState<string>('');
+  const [selectedGradeIds, setSelectedGradeIds] = useState<string[]>([]);
 
   // Feedback states
   const [error, setError] = useState<string | null>(null);
@@ -64,13 +65,35 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
       .then(data => {
         if (Array.isArray(data)) {
           setGrades(data);
-          if (data.length > 0 && !selectedGradeId) {
-            setSelectedGradeId(data[0].id);
+          if (data.length > 0 && selectedGradeIds.length === 0) {
+            setSelectedGradeIds([data[0].id]);
           }
         }
       })
       .catch(console.error);
   }, []);
+
+  const toggleSubject = (subj: string) => {
+    const clean = subj.trim();
+    if (!clean) return;
+    if (selectedSubjects.includes(clean)) {
+      if (selectedSubjects.length > 1) {
+        setSelectedSubjects(selectedSubjects.filter(s => s !== clean));
+      }
+    } else {
+      setSelectedSubjects([...selectedSubjects, clean]);
+    }
+  };
+
+  const toggleGrade = (gId: string) => {
+    if (selectedGradeIds.includes(gId)) {
+      if (selectedGradeIds.length > 1) {
+        setSelectedGradeIds(selectedGradeIds.filter(id => id !== gId));
+      }
+    } else {
+      setSelectedGradeIds([...selectedGradeIds, gId]);
+    }
+  };
 
   // Handle Login
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -118,6 +141,16 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
       return;
     }
 
+    if (selectedSubjects.length === 0) {
+      setError(isAr ? 'الرجاء اختيار مادة تعليمية واحدة على الأقل' : 'Please select at least one teaching subject');
+      return;
+    }
+
+    if (selectedGradeIds.length === 0) {
+      setError(isAr ? 'الرجاء اختيار صف دراسي واحد على الأقل' : 'Please select at least one grade');
+      return;
+    }
+
     if (regPassword.length < 6) {
       setError(isAr ? 'كلمة المرور يجب أن لا تقل عن 6 أحرف' : 'Password must be at least 6 characters');
       return;
@@ -133,9 +166,11 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
           fullName: fullName.trim(),
           email: regEmail.trim(),
           password: regPassword,
-          specialization: specialization.trim(),
+          specialization: selectedSubjects.join('، '),
           schoolName: schoolName.trim() || (isAr ? 'مدرسة المتفوقين' : 'STEM School'),
-          gradeId: selectedGradeId || undefined
+          gradeId: selectedGradeIds[0],
+          assignedSubjects: selectedSubjects,
+          assignedGrades: selectedGradeIds
         })
       });
 
@@ -522,102 +557,152 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
               </div>
             </div>
 
-            {/* Specialization / Subject */}
+            {/* Specialization / Subjects (Multi-select) */}
             <div>
-              <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <BookOpen size={16} style={{ color: 'var(--primary-600)', flexShrink: 0 }} />
-                <span>{isAr ? 'المادة التعليمية / التخصص (تُعتمد لكتبك واختباراتك):' : 'Teaching Subject / Specialization:'}</span>
+              <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem', marginBottom: '0.45rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <BookOpen size={16} style={{ color: 'var(--primary-600)', flexShrink: 0 }} />
+                  <span>{isAr ? 'المواد التعليمية التي يدرّسها المعلم (يمكن اختيار أكثر من مادة):' : 'Teaching Subjects (Select one or more):'}</span>
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--primary-700)', fontWeight: 800, background: '#EFF6FF', padding: '0.15rem 0.5rem', borderRadius: '999px' }}>
+                  {selectedSubjects.length} {isAr ? 'محددة' : 'selected'}
+                </span>
               </label>
-              <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
-                <select
-                  className="form-select"
-                  value={COMMON_SPECIALIZATIONS.includes(specialization) ? specialization : 'OTHER'}
-                  onChange={(e) => {
-                    if (e.target.value !== 'OTHER') {
-                      setSpecialization(e.target.value);
-                    } else {
-                      setSpecialization('');
+
+              {/* Subject toggle chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginBottom: '0.65rem' }}>
+                {COMMON_SPECIALIZATIONS.map(spec => {
+                  const isSelected = selectedSubjects.includes(spec);
+                  return (
+                    <button
+                      key={spec}
+                      type="button"
+                      onClick={() => toggleSubject(spec)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        border: isSelected ? '1.5px solid var(--primary-600)' : '1px solid #CBD5E1',
+                        background: isSelected ? 'linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)' : '#F8FAFC',
+                        color: isSelected ? '#FFFFFF' : '#334155',
+                        borderRadius: 'var(--radius-full)',
+                        padding: '0.35rem 0.85rem',
+                        fontSize: '0.82rem',
+                        fontWeight: isSelected ? 800 : 600,
+                        cursor: 'pointer',
+                        boxShadow: isSelected ? '0 2px 6px rgba(37, 99, 235, 0.25)' : 'none',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {isSelected ? '✓ ' : '+ '}
+                      <span>{spec}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Optional custom subject add */}
+              <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem' }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder={isAr ? '✍️ إضافة مادة أخرى (مثال: البرمجة والذكاء الاصطناعي)...' : '✍️ Add custom subject...'}
+                  value={customSubjectInput}
+                  onChange={(e) => setCustomSubjectInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (customSubjectInput.trim()) {
+                        toggleSubject(customSubjectInput.trim());
+                        setCustomSubjectInput('');
+                      }
+                    }
+                  }}
+                  style={{ fontSize: '0.82rem', padding: '0.45rem 0.75rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (customSubjectInput.trim()) {
+                      toggleSubject(customSubjectInput.trim());
+                      setCustomSubjectInput('');
                     }
                   }}
                   style={{
-                    padding: '0.75rem 1rem',
+                    padding: '0.45rem 0.85rem',
+                    background: 'var(--primary-600)',
+                    color: '#FFF',
+                    border: 'none',
+                    borderRadius: 'var(--radius-md)',
                     fontWeight: 700,
+                    fontSize: '0.8rem',
                     cursor: 'pointer'
                   }}
                 >
-                  {COMMON_SPECIALIZATIONS.map(spec => (
-                    <option key={spec} value={spec}>{spec}</option>
-                  ))}
-                  <option value="OTHER">{isAr ? '✍️ تخصص آخر (إدخال يدوي)' : '✍️ Other Subject'}</option>
-                </select>
-              </div>
-
-              {!COMMON_SPECIALIZATIONS.includes(specialization) && (
-                <div style={{ position: 'relative', marginTop: '0.4rem', marginBottom: '0.5rem' }}>
-                  <input
-                    type="text"
-                    required
-                    className="form-input"
-                    placeholder={isAr ? 'اكتب اسم المادة التعليمية هنا...' : 'Enter subject name here...'}
-                    value={specialization}
-                    onChange={(e) => setSpecialization(e.target.value)}
-                    style={{ paddingRight: isAr ? '1rem' : '1rem', paddingLeft: isAr ? '1rem' : '1rem' }}
-                  />
-                </div>
-              )}
-
-              {/* Quick suggestion tags */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.35rem' }}>
-                {COMMON_SPECIALIZATIONS.map(spec => (
-                  <button
-                    key={spec}
-                    type="button"
-                    onClick={() => setSpecialization(spec)}
-                    style={{
-                      border: specialization === spec ? '1px solid var(--primary-600)' : '1px solid #E2E8F0',
-                      background: specialization === spec ? '#EFF6FF' : '#F8FAFC',
-                      color: specialization === spec ? 'var(--primary-700)' : '#64748B',
-                      borderRadius: 'var(--radius-full)',
-                      padding: '0.2rem 0.6rem',
-                      fontSize: '0.72rem',
-                      fontWeight: specialization === spec ? 700 : 500,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    {spec}
-                  </button>
-                ))}
+                  {isAr ? 'إضافة' : 'Add'}
+                </button>
               </div>
             </div>
 
-            {/* Grade Selection (All grades available) */}
+            {/* Grade Selection (Multi-grade support) */}
             <div>
-              <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <GraduationCap size={16} style={{ color: 'var(--primary-600)', flexShrink: 0 }} />
-                <span>{isAr ? 'الصف الدراسي المستهدف (متاح لكافة المراحل والصفوف):' : 'Target Grade (All Grades Available):'}</span>
+              <label className="form-label" style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem', marginBottom: '0.45rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <GraduationCap size={16} style={{ color: 'var(--primary-600)', flexShrink: 0 }} />
+                  <span>{isAr ? 'الصفوف الدراسية المعتمدة لحساب المعلم (يمكن اختيار أكثر من صف):' : 'Authorized Grades (Select one or more):'}</span>
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--primary-700)', fontWeight: 800, background: '#EFF6FF', padding: '0.15rem 0.5rem', borderRadius: '999px' }}>
+                  {selectedGradeIds.length} {isAr ? 'محددة' : 'selected'}
+                </span>
               </label>
-              <div style={{ position: 'relative' }}>
-                <select
-                  className="form-select"
-                  value={selectedGradeId}
-                  onChange={(e) => setSelectedGradeId(e.target.value)}
-                  style={{
-                    padding: '0.75rem 1rem',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="">{isAr ? 'اختر الصف الدراسي...' : 'Select Grade...'}</option>
-                  {grades.map(g => (
-                    <option key={g.id} value={g.id}>
-                      {isAr ? `${g.name_ar} (${g.stage_name_ar || ''})` : (g.name_en || g.name_ar)}
-                    </option>
-                  ))}
-                </select>
+
+              <div style={{
+                maxHeight: '170px',
+                overflowY: 'auto',
+                border: '1px solid #CBD5E1',
+                borderRadius: 'var(--radius-md)',
+                padding: '0.5rem',
+                background: '#F8FAFC',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '0.4rem'
+              }}>
+                {grades.map(g => {
+                  const isSelected = selectedGradeIds.includes(g.id);
+                  return (
+                    <div
+                      key={g.id}
+                      onClick={() => toggleGrade(g.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        padding: '0.4rem 0.65rem',
+                        borderRadius: 'var(--radius-sm)',
+                        background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                        border: isSelected ? '1.5px solid var(--primary-600)' : '1px solid #E2E8F0',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        style={{ cursor: 'pointer', accentColor: 'var(--primary-600)' }}
+                      />
+                      <span style={{ fontSize: '0.8rem', fontWeight: isSelected ? 800 : 500, color: isSelected ? 'var(--primary-800)' : 'var(--text-body)' }}>
+                        {isAr ? `${g.name_ar} (${g.stage_name_ar || ''})` : (g.name_en || g.name_ar)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-              <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                {isAr ? '💡 يتم ربط حسابك بطلاب هذا الصف مباشرة، مع إمكانية التبديل بين كافة الصفوف في أي وقت.' : '💡 Links your account directly to students in this grade, with ability to switch grades anytime.'}
+              <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '0.35rem', fontWeight: 600 }}>
+                {isAr 
+                  ? '🔒 تنبيه أمني: داخل لوحة تحكم المعلم، سيتم قفل الاختيارات حصرياً على المواد والصفوف التي حددتها هنا ولن تظهر أي مواد أو صفوف أخرى.' 
+                  : '🔒 Note: Inside your dashboard, the system locks strictly to these subjects and grades only.'}
               </div>
             </div>
 

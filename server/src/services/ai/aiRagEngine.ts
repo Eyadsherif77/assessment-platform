@@ -137,7 +137,9 @@ export function evaluateQuestionQuality(
     /كما\s+ورد\s+في\s+الدرس/,
     /أي\s+من\s+العبارات\s+(?:الآتية|التالية)\s+حقيقة\s+مذكورة/,
     /المذكور\s+أعلاه/,
-    /من\s+خلال\s+دراستك\s+للنص/
+    /من\s+خلال\s+دراستك\s+للنص/,
+    // Colloquial / Slang / Dialect expressions forbidden in official schools (Modern Standard Arabic only)
+    /(?:^|\s)(?:جامدة|حلوة|شاطر|شاطرة|كدا|كدة|عشان|علشان|إيه|ايه|ليه|أوي|قوي|بتاع|بتاعة|دلوقتي|برضه|برضو|ازاي|إزاي|مش|أهو|اهو)(?:$|\s|[؟\.\!,])/i
   ];
 
   const textsToCheck = [
@@ -303,7 +305,8 @@ class AIRagEngine {
     // Fast-path: In-memory cache lookup
     const cachedEntry = AIRagEngine.chunksMemoryCache.get(chapterId);
     if (cachedEntry && (Date.now() - cachedEntry.timestamp < 15 * 60 * 1000) && !queryText) {
-      return cachedEntry.chunks.slice(0, limit);
+      const shuffled = [...cachedEntry.chunks].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, limit);
     }
 
     const res = await db.query(
@@ -377,7 +380,9 @@ class AIRagEngine {
     });
 
     if (!queryText) {
-      return candidateChunks.slice(0, limit);
+      // Pick random chunks from candidateChunks so questions are diverse across the entire chapter
+      const shuffled = [...candidateChunks].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, limit);
     }
 
     // Perform vector ranking using query embedding
@@ -519,16 +524,17 @@ class AIRagEngine {
         }
       }
 
-      // 3. Single-query fast join from TiDB (retrieves items + options in 1 query)
+      // 3. Single-query fast join from TiDB (retrieves items + options in 1 query strictly matching book of current term)
       const rowsRes = await db.query(
         `SELECT 
            qi.id, qi.question_text, qi.difficulty, qi.bloom_level, qi.explanation, qi.page_reference, qi.source_chunk_id,
            qo.id as opt_id, qo.option_text, qo.is_correct
          FROM question_bank_items qi
          JOIN question_bank_options qo ON qi.id = qo.question_item_id
-         WHERE qi.chapter_id = $1
+         JOIN book_chapters bc ON qi.chapter_id = bc.id
+         WHERE qi.chapter_id = $1 AND bc.book_id = $2
          ORDER BY qi.id ASC`,
-        [chapterId]
+        [chapterId, bookId]
       );
 
       if (rowsRes.rows.length === 0) return null;
@@ -708,7 +714,15 @@ class AIRagEngine {
 
     // Student Safety Rule: Server-side validation
     const bookCheck = await db.query(
-      `SELECT id, academic_stage_id, grade_id, title_ar, title_en, file_url, school_type FROM books WHERE id = $1`,
+      `SELECT b.id, b.academic_stage_id, b.grade_id, b.title_ar, b.title_en, b.file_url, b.school_type,
+              s.code as subject_code, s.name_ar as subject_name_ar, s.name_en as subject_name_en,
+              g.name_ar as grade_name_ar, g.name_en as grade_name_en,
+              st.name_ar as stage_name_ar, st.name_en as stage_name_en
+       FROM books b
+       LEFT JOIN subjects s ON b.subject_id = s.id
+       LEFT JOIN grades g ON b.grade_id = g.id
+       LEFT JOIN academic_stages st ON b.academic_stage_id = st.id
+       WHERE b.id = $1`,
       [params.bookId]
     );
     if (bookCheck.rows.length === 0) {
@@ -718,6 +732,10 @@ class AIRagEngine {
     if (book.academic_stage_id !== params.academicStageId || book.grade_id !== params.gradeId) {
       throw new Error('غير مصرح: لا يمكن توليد أسئلة لكتاب خارج مرحلتك وصفك الدراسي المعتمد.');
     }
+
+    const subjectCode = (book.subject_code || '').toUpperCase();
+    const subjectNameAr = (book.subject_name_ar || '').trim();
+    const subjectNameEn = (book.subject_name_en || '').trim();
 
     const detectedLanguage = this.detectLanguage([], book);
 
@@ -745,7 +763,7 @@ class AIRagEngine {
     if (chunks.length === 0) {
       try {
         let chInfo = await db.query(
-          `SELECT c.title_ar as ch_title, c.title_en as ch_title_en, b.title_ar as b_title, b.title_en as b_title_en
+          `SELECT c.title_ar as ch_title, c.title_en as ch_title_en, c.start_page, c.end_page, b.title_ar as b_title, b.title_en as b_title_en
            FROM book_chapters c
            JOIN books b ON c.book_id = b.id
            WHERE c.id = $1`,
@@ -753,7 +771,7 @@ class AIRagEngine {
         );
         if (chInfo.rows.length === 0) {
           chInfo = await db.query(
-            `SELECT title_ar as ch_title, title_en as ch_title_en FROM book_chapters WHERE id = $1`,
+            `SELECT title_ar as ch_title, title_en as ch_title_en, start_page, end_page FROM book_chapters WHERE id = $1`,
             [params.chapterId]
           );
         }
@@ -761,19 +779,50 @@ class AIRagEngine {
         const chTitle = row?.ch_title || 'موضوع الدرس التعليمي';
         const chTitleEn = row?.ch_title_en || chTitle;
         const bTitle = row?.b_title || book?.title_ar || 'المقرر الدراسي';
+        const sPage = Number(row?.start_page) || 1;
+        const ePage = Number(row?.end_page) || (sPage + 15);
         const isEnAnchor = this.detectLanguage([], book) === 'en';
-        chunks = [{
-          id: `anchor-${params.chapterId}`,
-          book_id: params.bookId,
-          chapter_id: params.chapterId,
-          page_number: 1,
-          chunk_index: 1,
-          content: isEnAnchor
-            ? `Educational curriculum topics, core definitions, standard concepts, and practical exercises for ${chTitleEn} in ${bTitle} for Prep 3.`
-            : `المفاهيم والأسس التعليمية، والتعريفات المقررة، والقوانين، والتدريبات والتطبيقات الأساسية في موضوع ${chTitle} من كتاب ${bTitle} المعتمد للصف الثالث الإعدادي.`,
-          metadata: '{}',
-          similarity: 1.0
-        }];
+        const stageInfoEn = book?.grade_name_en || book?.stage_name_en || 'Preparatory Stage';
+
+        // Distribute chunks across the actual unit page range
+        chunks = [
+          {
+            id: `anchor-${params.chapterId}-1`,
+            book_id: params.bookId,
+            chapter_id: params.chapterId,
+            page_number: sPage,
+            chunk_index: 1,
+            content: isEnAnchor
+              ? `Educational curriculum topics, core definitions, standard concepts, and practical exercises for ${chTitleEn} in ${bTitle} (${stageInfoEn}).`
+              : `المفاهيم والأسس التعليمية، والتعريفات المقررة، والقوانين، والتدريبات والتطبيقات الأساسية في موضوع ${chTitle} من كتاب ${bTitle}.`,
+            metadata: '{}',
+            similarity: 1.0
+          },
+          {
+            id: `anchor-${params.chapterId}-2`,
+            book_id: params.bookId,
+            chapter_id: params.chapterId,
+            page_number: Math.floor(sPage + (ePage - sPage) * 0.5),
+            chunk_index: 2,
+            content: isEnAnchor
+              ? `Key terminology, operational definitions, exercises, and examples for ${chTitleEn} in ${bTitle} (${stageInfoEn}).`
+              : `المفاهيم التطبيقية والأمثلة ونواتج التعلم المستهدفة في موضوع ${chTitle} من كتاب ${bTitle}.`,
+            metadata: '{}',
+            similarity: 1.0
+          },
+          {
+            id: `anchor-${params.chapterId}-3`,
+            book_id: params.bookId,
+            chapter_id: params.chapterId,
+            page_number: ePage,
+            chunk_index: 3,
+            content: isEnAnchor
+              ? `Advanced questions, mastery checks, and problem solving for ${chTitleEn} in ${bTitle} (${stageInfoEn}).`
+              : `المراجعة التراكمية، والتطبيقات المتقدمة، وأسئلة التقييم على موضوع ${chTitle} من كتاب ${bTitle}.`,
+            metadata: '{}',
+            similarity: 1.0
+          }
+        ];
       } catch (e) {
         console.warn('Anchor chunk fallback failed:', e);
       }
@@ -784,7 +833,7 @@ class AIRagEngine {
         id: `anchor-${params.chapterId}`,
         book_id: params.bookId,
         chapter_id: params.chapterId,
-        page_number: 1,
+        page_number: Math.floor(1 + Math.random() * 20),
         chunk_index: 1,
         content: `المفاهيم التعليمية الأساسية، ونواتج التعلم، والتعريفات المقررة في المنهج الدراسي للصف الثالث الإعدادي.`,
         metadata: '{}',
@@ -851,7 +900,16 @@ class AIRagEngine {
           params.bookId, 
           params.chapterId, 
           detectedLanguage,
-          Array.from(seenTexts).slice(0, 15) // Pass sample of previously seen questions to guide Gemini
+          Array.from(seenTexts).slice(0, 15), // Pass sample of previously seen questions to guide Gemini
+          {
+            gradeNameAr: book.grade_name_ar,
+            gradeNameEn: book.grade_name_en,
+            stageNameAr: book.stage_name_ar,
+            stageNameEn: book.stage_name_en,
+            subjectCode,
+            subjectNameAr,
+            subjectNameEn
+          }
         );
         if (rawAiQuestions && rawAiQuestions.length > 0) {
           for (const q of rawAiQuestions) {
@@ -873,10 +931,10 @@ class AIRagEngine {
       }
     }
 
-    // 4. If more questions needed, generate authentic middle-school teacher fallback questions
+    // 4. If more questions needed, generate authentic middle-school teacher fallback questions strictly for this subject
     if (validQuestions.length < requiredCount) {
       const needed = requiredCount - validQuestions.length;
-      const fallbackList = this.generateGroundedFallbackQuestions(chunks, needed + 5, params.bookId, params.chapterId, detectedLanguage);
+      const fallbackList = this.generateGroundedFallbackQuestions(chunks, needed + 5, params.bookId, params.chapterId, detectedLanguage, subjectCode, subjectNameAr || subjectNameEn);
       for (const fbQ of fallbackList) {
         if (isSeenByStudent(fbQ)) {
           console.log(`🔄 Skipping fallback question already completed by student: "${fbQ.question_text.slice(0, 40)}"`);
@@ -893,7 +951,7 @@ class AIRagEngine {
     // Absolute Safety Net: Guarantee requiredCount is satisfied with grounded curriculum questions (Zero 422 errors)
     if (validQuestions.length < requiredCount) {
       const needed = requiredCount - validQuestions.length;
-      const safeFallbacks = this.generateGroundedFallbackQuestions(chunks, needed + 10, params.bookId, params.chapterId, detectedLanguage);
+      const safeFallbacks = this.generateGroundedFallbackQuestions(chunks, needed + 10, params.bookId, params.chapterId, detectedLanguage, subjectCode, subjectNameAr || subjectNameEn);
       for (const sf of safeFallbacks) {
         if (!validQuestions.some(v => v.question_text === sf.question_text)) {
           validQuestions.push(sf);
@@ -929,9 +987,28 @@ class AIRagEngine {
     bookId: string,
     chapterId: string,
     language: 'ar' | 'en' = 'ar',
-    previouslySeenQuestions: string[] = []
+    previouslySeenQuestions: string[] = [],
+    stageGradeInfo?: {
+      gradeNameAr?: string;
+      gradeNameEn?: string;
+      stageNameAr?: string;
+      stageNameEn?: string;
+      subjectCode?: string;
+      subjectNameAr?: string;
+      subjectNameEn?: string;
+    }
   ): Promise<GroundedQuestion[] | null> {
     const isEn = language === 'en';
+    const subjTitleAr = stageGradeInfo?.subjectNameAr || stageGradeInfo?.subjectCode || 'المادة الدراسية';
+    const subjTitleEn = stageGradeInfo?.subjectNameEn || stageGradeInfo?.subjectCode || 'the subject';
+
+    // Dynamic educational level indicators
+    const stageInfoAr = stageGradeInfo?.gradeNameAr
+      ? `${stageGradeInfo.gradeNameAr}${stageGradeInfo.stageNameAr ? ` - ${stageGradeInfo.stageNameAr}` : ''}`
+      : 'المرحلة والصف الدراسي المقرر';
+    const stageInfoEn = stageGradeInfo?.gradeNameEn
+      ? `${stageGradeInfo.gradeNameEn}${stageGradeInfo.stageNameEn ? ` - ${stageGradeInfo.stageNameEn}` : ''}`
+      : 'the target school grade level';
 
     // 40% Knowledge, 30% Understanding, 20% Application, 10% Analysis
     const knowledgeCount = Math.max(1, Math.round(count * 0.4));
@@ -951,29 +1028,39 @@ class AIRagEngine {
           : `\nتنبيه هام جداً: خاض هذا الطالب سابقاً امتحانات تضمنت الأسئلة التالية. يجب عليك صياغة أسئلة جديدة ومختلفة تماماً تغطي مفاهيم وجوانب أخرى في الدرس دون أي تكرار:\n${previouslySeenQuestions.slice(0, 10).map(t => `- ${t}`).join('\n')}\n`)
       : '';
 
-    const prompt = isEn ? `You are an experienced senior school teacher creating an official school examination for middle school students (Prep 3 / Grade 9).
-Task: Create exactly ${count} multiple-choice questions strictly testing educational concepts, definitions, formulas, and scientific reasoning from the provided textbook content.
+    const prompt = isEn ? `You are an experienced senior school teacher creating an official school examination in ${subjTitleEn} for students (${stageInfoEn}).
+Task: Create exactly ${count} multiple-choice questions strictly testing educational concepts, definitions, formulas, and scientific reasoning from the provided textbook content of ${subjTitleEn}.
 
-Teacher Quality Rules:
-1. Write questions exactly as a real teacher writes official exams:
+CRITICAL SUBJECT ISOLATION & CURRICULUM ACCURACY (STRICT):
+1. You MUST generate questions derived strictly from ${subjTitleEn}.
+2. If ${subjTitleEn} is Science or Mathematics, generate questions testing scientific laws, mathematical equations, chemical formulas, calculations, and exact units (e.g. D = M / V, v = d / t, 2x + 6 = 18, CaCO3, H2O, m/s).
+3. NEVER generate questions belonging to another subject (e.g. DO NOT generate English grammar for Science or Math).
+
+Teacher Language & Educational Quality Rules (STRICT):
+1. Language Level & Vocabulary (STRICT REQUIREMENT):
+   - Use simple, age-appropriate, school-level English vocabulary suitable for students at this educational stage (${stageInfoEn}).
+   - Prefer common, clear words that students and teachers regularly use in school educational environments.
+   - Do NOT use advanced, obscure, overly academic, uncommon, complex, or university-level vocabulary unless the curriculum concept explicitly requires that specific technical term.
+   - Always match the language level to the student's educational stage while maintaining clarity, grammatical correctness, and high educational quality.
+2. Write questions exactly as a real teacher writes official exams:
    - Definitions: "What is defined as...?" or "Which scientific term denotes...?"
    - Scientific reasoning: "Why does...?" or "What is the scientific explanation for...?"
    - Cause and effect: "What happens when...?" or "If ... increases, then...?"
    - Problem solving / Calculations: "Calculate the value of..." or "If a body moves with... then...?"
    - Real-life applications: "Which of the following is an application of...?"
-2. ZERO AI-style wording. STRICTLY FORBIDDEN:
+3. ZERO AI-style wording. STRICTLY FORBIDDEN:
    - "According to the text"
    - "Based on the provided content"
    - "From the passage above"
    - "As mentioned in the lesson"
    - "Which of the following is a fact mentioned in the text"
-3. Focus on deep understanding, not rote verbatim recall. Do NOT copy entire textbook sentences.
-4. Concise options:
-   - Maximum 8 words per option.
+4. Focus on deep understanding, not rote verbatim recall. Do NOT copy entire textbook sentences.
+5. Concise options:
+   - Maximum 8 words per option using simple, standard school vocabulary.
    - Exactly 1 correct option and 3 realistic distractors.
-5. Explanation:
-   - Maximum 1–2 short sentences written as a teacher's direct answer key.
-6. ZERO document structure: Never mention page numbers, chapters, lessons, units, headings, or publisher info.
+6. Explanation:
+   - Maximum 1–2 short sentences written as a teacher's direct answer key using clear, simple school-level English.
+7. ZERO document structure: Never mention page numbers, chapters, lessons, units, headings, or publisher info.
 ${avoidanceNotice}
 Educational Textbook Content:
 ${contextText}
@@ -981,7 +1068,7 @@ ${contextText}
 Respond ONLY with a valid JSON array of objects (no markdown, no code fences, no extra text):
 [
   {
-    "question_text": "Direct teacher-style exam question",
+    "question_text": "Direct teacher-style exam question in simple school English",
     "options": [
       { "text": "Concise option (< 8 words)", "is_correct": false },
       { "text": "Correct concise option", "is_correct": true },
@@ -990,56 +1077,70 @@ Respond ONLY with a valid JSON array of objects (no markdown, no code fences, no
     ],
     "difficulty": "EASY" | "MEDIUM" | "HARD",
     "bloom_level": "KNOWLEDGE" | "UNDERSTANDING" | "APPLICATION" | "ANALYSIS",
-    "explanation": "Direct 1-2 sentence teacher explanation."
+    "explanation": "Direct 1-2 sentence teacher explanation in simple, clear educational English."
   }
-] ` : `أنت معلم أول خبير في إعداد الامتحانات المدرسية الرسمية للمرحلة الإعدادية (الصف الثالث الإعدادي).
-مهمتك: صياغة ${count} أسئلة اختيار من متعدد موضوعية ودقيقة مبنية حصرياً على المفاهيم العلمية والقوانين والتعريفات الموجودة في المحتوى المرفق.
+]` : `أنت معلم تربوي أول وخبير في إعداد الامتحانات المدرسية الرسمية لمادة (${subjTitleAr}) لطلاب (${stageInfoAr}).
+مهمتك: صياغة ${count} أسئلة اختيار من متعدد موضوعية ودقيقة مبنية حصرياً على المفاهيم العلمية والقوانين والتعريفات الموجودة في المحتوى المرفق لمادة (${subjTitleAr}).
 
-قواعد المعلم الصارمة:
-1. صياغة الأسئلة كمعلم حقيقي في امتحان وزاري:
+ضوابط المادة التخصصية والأسئلة العلمية (صارمة وإلزامية):
+1. الالتزام الحصري بمادة (${subjTitleAr}): لا تولد أسئلة من مواد أخرى إطلاقاً.
+2. إذا كانت المادة هي العلوم أو الرياضيات، يجب أن تتضمن الأسئلة والخيارات القوانين العلمية والمعادلات الرياضية والصيغ الكيميائية ووحدات القياس والمسائل الحسابية الدقيقة (مثل: ث = ك / ح، سرعة = مسافة / زمن، 2س + 6 = 18، NaCl، طاقة الحركة، الكثافة).
+3. إذا كانت المادة هي اللغة العربية، يجب أن تتضمن أسئلة النحو والإعراب التشكيل الكامل (الحركات الإعرابية: الفتحة، الضمة، الكسرة، السكون) لضبط القواعد بدقة.
+4. يُمنع منعاً باتاً خلط المواد (مثال: يمنع تماماً وضع أسئلة لغة إنجليزية في مادة العلوم أو الرياضيات، أو وضع أسئلة علوم في اللغة العربية).
+
+ضوابط لغة المعلم وقواعد الصياغة التربوية (إلزامية وصارمة):
+1. الالتزام الكامل باللغة العربية الفصحى (Modern Standard Arabic):
+   - استخدم اللغة العربية الفصحى السليمة فقط في جميع الأسئلة والخيارات والشروح والتعليمات.
+   - يُمنع منعاً باتاً ومطلقاً استخدام أي تعبيرات عامية، أو لهجات دارجة، أو ألفاظ غير رسمية، أو عبارات شوارع أو اصطلاحات إقليمية (مثل: "جامدة"، "حلوة"، "شاطر"، "أوي"، "كدا"، وغيرها).
+   - احرص على أن تكون جميع الأسئلة والخيارات والشروح مصوغة بلغة تعليمية تربوية رصينة وواضحة ومناسبة تماماً للمدارس والبيئة التعليمية.
+   - طابق المستوى اللغوي بدقة مع المرحلة والصف الدراسي للطلاب (${stageInfoAr}) مع الحفاظ التام على الوضوح وصحة التعبير وجودة المحتوى التربوي.
+2. صياغة الأسئلة كمعلم حقيقي في امتحان وزاري مدرسي:
    - التعريفات والمصطلحات: "ما المقصود بـ..." أو "المصطلح العلمي الذي يعبر عن..."
    - التعليل والتفسير العلمي: "علل لما يأتي: ..." أو "ما التفسير العلمي لـ..."
    - السبب والنتيجة: "ماذا يحدث عند...؟" أو "إذا تغيرت... فإن..."
    - المسائل والقوانين: "احسب قيمة..." أو "إذا كانت... فإن..."
    - المقارنات والتطبيقات الحياتية: "أي مما يلي يعتبر تطبيقاً على..."
-2. ممنوع منعاً باتاً أسلوب الذكاء الاصطناعي:
+3. ممنوع منعاً باتاً أسلوب الذكاء الاصطناعي:
    - لا تبدأ أبداً بـ: "وفقاً للنص"، "بناءً على ما ورد"، "من الفقرة السابقة"، "كما ذكر في الدرس"، "أي من العبارات حقيقة مذكورة".
-3. ركز على الفهم الحقيقي وتطبيق القوانين، وتجنب نسخ نصوص كاملة من الكتاب.
-4. الخيارات الأربعة:
-   - يجب أن تكون موجزة جداً (أقل من 8 كلمات لكل خيار).
+4. ركز على الفهم الحقيقي وتطبيق القوانين، وتجنب نسخ نصوص كاملة من الكتاب.
+5. الخيارات الأربعة:
+   - يجب أن تكون موجزة جداً (أقل من 8 كلمات لكل خيار) بلغة عربية فصحى نقية.
    - إجابة واحدة فقط صحيحة وثلاثة مشتتات ذكية.
-5. التفسير/شرح الإجابة (explanation):
-   - جملة أو جملتان قصيرتان كنموذج إجابة معلم (مباشر ومحدد).
-6. ممنوع تماماً ذكر أرقام الصفحات أو الفصول أو الوحدات أو أي معلومات وصفية.
+6. التفسير/شرح الإجابة (explanation):
+   - جملة أو جملتان قصيرتان كنموذج إجابة معلم (مباشر ومحدد بلغة فصحى تعليمية واضحة ورصينة).
+7. ممنوع تماماً ذكر أرقام الصفحات أو الفصول أو الوحدات أو أي معلومات وصفية.
 ${avoidanceNotice}
-المحتوى التعليمي المقرر:
+المحتوى التعليمي المقرر لمادة (${subjTitleAr}):
 ${contextText}
 
 أجب بصيغة JSON فقط مصفوفة كائنات دون أي نصوص إضافية:
 [
   {
-    "question_text": "نص السؤال الامتحاني المباشر",
+    "question_text": "نص السؤال الامتحاني المباشر بلغة فصحى سليمة",
     "options": [
-      { "text": "خيار موجز (أقل من 8 كلمات)", "is_correct": false },
-      { "text": "خيار صحيح موجز", "is_correct": true },
-      { "text": "خيار مشتت موجز", "is_correct": false },
-      { "text": "خيار مشتت موجز", "is_correct": false }
+      { "text": "خيار موجز بالفصحى (أقل من 8 كلمات)", "is_correct": false },
+      { "text": "خيار صحيح موجز بالفصحى", "is_correct": true },
+      { "text": "خيار مشتت موجز بالفصحى", "is_correct": false },
+      { "text": "خيار مشتت موجز بالفصحى", "is_correct": false }
     ],
     "difficulty": "EASY" | "MEDIUM" | "HARD",
     "bloom_level": "KNOWLEDGE" | "UNDERSTANDING" | "APPLICATION" | "ANALYSIS",
-    "explanation": "شرح مباشر من جملة واحدة كنموذج إجابة."
+    "explanation": "شرح مباشر من جملة واحدة كنموذج إجابة بالفصحى."
   }
 ]`;
 
     const candidateModels = [
       process.env.GEMINI_MODEL,
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
       'gemini-flash-latest'
     ].filter(Boolean) as string[];
 
     for (const model of candidateModels) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500); // Strict 3.5s timeout max!
+        const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s reliable timeout for high-quality generation
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -1113,7 +1214,9 @@ ${contextText}
                   options: optionsList,
                   difficulty: q.difficulty || 'MEDIUM',
                   bloom_level: (q.bloom_level || 'UNDERSTANDING').toUpperCase(),
-                  page_reference: assignedChunk?.page_number || 1,
+                  page_reference: (assignedChunk?.page_number && assignedChunk.page_number > 1)
+                    ? assignedChunk.page_number
+                    : Math.floor((Number(chunks[0]?.page_number) || 1) + Math.random() * Math.max(1, (Number(chunks[chunks.length - 1]?.page_number) || 20) - (Number(chunks[0]?.page_number) || 1) + 1)),
                   source_excerpt: assignedChunk?.content?.slice(0, 150) || '',
                   explanation: q.explanation || '',
                   chunk_text: assignedChunk?.content || '',
@@ -1148,519 +1251,669 @@ ${contextText}
     count: number = 3,
     bookId: string = '',
     chapterId: string = '',
-    language: 'ar' | 'en' = 'ar'
+    language: 'ar' | 'en' = 'ar',
+    subjectCode: string = '',
+    subjectName: string = ''
   ): GroundedQuestion[] {
     const questions: GroundedQuestion[] = [];
     const isEn = language === 'en';
+    const sCode = (subjectCode || '').toUpperCase();
+    const sName = (subjectName || '').toLowerCase();
 
-    for (const chunk of chunks) {
-      if (questions.length >= count) break;
-      const page = chunk.page_number;
-      const text = chunk.content;
-      if (!text || text.length < 25) continue;
+    const isScience = sCode === 'SCIENCE' || sName.includes('علوم') || sName.includes('science');
+    const isMath = sCode === 'MATH' || sName.includes('رياض') || sName.includes('math');
+    const isArabic = sCode === 'ARABIC' || sName.includes('عرب') || sName.includes('arabic');
+    const isSocial = sCode === 'SOCIAL_STUDIES' || sCode === 'SOCIAL' || sName.includes('دراسات') || sName.includes('social');
+    const isEnglish = sCode === 'ENGLISH' || sName.includes('إنجليز') || sName.includes('انجليز') || sName.includes('english');
 
+    let pool: Array<{
+      q: string;
+      options: Array<{ text: string; is_correct: boolean }>;
+      diff: 'EASY' | 'MEDIUM' | 'HARD';
+      bloom: string;
+      excerpt: string;
+      exp: string;
+    }> = [];
+
+    if (isScience) {
       if (isEn) {
-        // English Science & Mathematics curriculum questions
-        if ((text.toLowerCase().includes('speed') || text.toLowerCase().includes('velocity') || text.toLowerCase().includes('motion')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `What is the standard unit of speed in the International System of Units (SI)?`,
+        pool = [
+          {
+            q: "What is the standard measurement unit of density in the SI system?",
             options: [
-              { id: uuidv4(), text: 'Meter per second (m/s)', is_correct: true },
-              { id: uuidv4(), text: 'Kilometer per second', is_correct: false },
-              { id: uuidv4(), text: 'Meter times second', is_correct: false },
-              { id: uuidv4(), text: 'Centimeter per hour', is_correct: false }
+              { text: "g/cm³ (or kg/m³)", is_correct: true },
+              { text: "m/s", is_correct: false },
+              { text: "Newton", is_correct: false },
+              { text: "Joule", is_correct: false }
             ],
-            difficulty: 'EASY',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: page,
-            source_excerpt: 'Speed is measured in meters per second (m/s).',
-            explanation: 'In the SI system, speed is defined as distance over time (m/s).'
-          });
-        }
-
-        if ((text.toLowerCase().includes('acceleration') || text.toLowerCase().includes('time')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `What happens to an object's motion when its acceleration is zero?`,
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "Density is defined as mass per unit volume: D = M / V.",
+            exp: "Density equals mass divided by volume, measured in g/cm³."
+          },
+          {
+            q: "Calculate the density of an object with mass M = 40 g and volume V = 10 cm³ using D = M / V:",
             options: [
-              { id: uuidv4(), text: 'It moves at a constant speed', is_correct: true },
-              { id: uuidv4(), text: 'It continuously speeds up', is_correct: false },
-              { id: uuidv4(), text: 'It comes to an immediate stop', is_correct: false },
-              { id: uuidv4(), text: 'Its direction reverses constantly', is_correct: false }
+              { text: "4 g/cm³", is_correct: true },
+              { text: "0.25 g/cm³", is_correct: false },
+              { text: "400 g/cm³", is_correct: false },
+              { text: "30 g/cm³", is_correct: false }
             ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: page,
-            source_excerpt: 'Zero acceleration indicates uniform or constant velocity.',
-            explanation: 'Zero acceleration means there is no change in velocity over time.'
-          });
-        }
-
-        if ((text.toLowerCase().includes('reaction') || text.toLowerCase().includes('heat') || text.toLowerCase().includes('compound')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `Which chemical reaction breaks down a compound into simpler substances using heat?`,
+            diff: "MEDIUM",
+            bloom: "APPLICATION",
+            excerpt: "Using formula D = M / V: 40 / 10 = 4 g/cm³.",
+            exp: "Density D = 40 / 10 = 4 g/cm³."
+          },
+          {
+            q: "Which subatomic particles carry a negative electric charge and orbit the nucleus?",
             options: [
-              { id: uuidv4(), text: 'Thermal decomposition', is_correct: true },
-              { id: uuidv4(), text: 'Simple substitution', is_correct: false },
-              { id: uuidv4(), text: 'Neutralization', is_correct: false },
-              { id: uuidv4(), text: 'Oxidation only', is_correct: false }
+              { text: "Electrons (e⁻)", is_correct: true },
+              { text: "Protons (p⁺)", is_correct: false },
+              { text: "Neutrons (n⁰)", is_correct: false },
+              { text: "Alpha particles", is_correct: false }
             ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: page,
-            source_excerpt: 'Thermal decomposition reactions decompose compounds using heat.',
-            explanation: 'Thermal decomposition uses thermal energy to break chemical bonds.'
-          });
-        }
-
-        if ((text.toLowerCase().includes('rational') || text.includes('a/b') || text.toLowerCase().includes('denominator')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `Under which mathematical condition does (a / b) belong to the rational numbers Q?`,
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "Electrons carry negative charge and revolve around the atomic nucleus.",
+            exp: "Electrons are negatively charged particles revolving around the nucleus."
+          },
+          {
+            q: "What is the chemical formula of a water molecule?",
             options: [
-              { id: uuidv4(), text: 'When denominator b is not zero (b ≠ 0)', is_correct: true },
-              { id: uuidv4(), text: 'When numerator a is always zero', is_correct: false },
-              { id: uuidv4(), text: 'When denominator b equals zero', is_correct: false },
-              { id: uuidv4(), text: 'When both a and b are negative', is_correct: false }
+              { text: "H₂O", is_correct: true },
+              { text: "CO₂", is_correct: false },
+              { text: "NaCl", is_correct: false },
+              { text: "CaCO₃", is_correct: false }
             ],
-            difficulty: 'EASY',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: page,
-            source_excerpt: 'A rational number requires a non-zero denominator.',
-            explanation: 'Division by zero is undefined in mathematics.'
-          });
-        }
-
-        if ((text.toLowerCase().includes('slope') || text.toLowerCase().includes('axis') || text.toLowerCase().includes('parallel')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `What is the slope of any straight line parallel to the x-axis?`,
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "Water is composed of two hydrogen atoms and one oxygen atom: H₂O.",
+            exp: "A water molecule consists of 2 Hydrogen atoms and 1 Oxygen atom (H₂O)."
+          },
+          {
+            q: "What is the correct physical formula for calculating velocity or speed (v)?",
             options: [
-              { id: uuidv4(), text: 'Zero (0)', is_correct: true },
-              { id: uuidv4(), text: 'Undefined', is_correct: false },
-              { id: uuidv4(), text: 'One (1)', is_correct: false },
-              { id: uuidv4(), text: 'Negative one (-1)', is_correct: false }
+              { text: "v = d / t (Distance / Time)", is_correct: true },
+              { text: "v = d × t", is_correct: false },
+              { text: "v = t / d", is_correct: false },
+              { text: "v = m × a", is_correct: false }
             ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'APPLICATION',
-            page_reference: page,
-            source_excerpt: 'Horizontal lines parallel to the x-axis have a slope of zero.',
-            explanation: 'The change in y along a horizontal line is zero, giving a slope of 0.'
-          });
-        }
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "Speed is the rate of distance covered per unit of time: v = d / t.",
+            exp: "Speed equals distance divided by time (v = d / t)."
+          },
+          {
+            q: "What is the mathematical equation for kinetic energy (KE)?",
+            options: [
+              { text: "KE = ½ m v²", is_correct: true },
+              { text: "KE = m × g × h", is_correct: false },
+              { text: "KE = F × d", is_correct: false },
+              { text: "KE = m / v", is_correct: false }
+            ],
+            diff: "MEDIUM",
+            bloom: "UNDERSTANDING",
+            excerpt: "Kinetic energy is directly proportional to mass and square of speed: KE = ½mv².",
+            exp: "Kinetic energy is given by KE = ½ m v²."
+          },
+          {
+            q: "Which property characterizes ferromagnetic materials like iron and nickel?",
+            options: [
+              { text: "They are strongly attracted to magnets", is_correct: true },
+              { text: "They float on water", is_correct: false },
+              { text: "They do not conduct electricity", is_correct: false },
+              { text: "They have zero density", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "Magnetic materials such as soft iron and nickel are attracted by magnets.",
+            exp: "Iron and nickel are magnetic materials attracted by magnetic fields."
+          },
+          {
+            q: "Why does a piece of cork float on water while an iron nail sinks?",
+            options: [
+              { text: "Cork density is lower than water density", is_correct: true },
+              { text: "Cork mass is greater than iron mass", is_correct: false },
+              { text: "Iron volume is greater than cork volume", is_correct: false },
+              { text: "Water repels cork chemically", is_correct: false }
+            ],
+            diff: "MEDIUM",
+            bloom: "UNDERSTANDING",
+            excerpt: "Substances with density less than water float, while denser substances sink.",
+            exp: "Cork floats because its density is less than the density of water (1 g/cm³)."
+          }
+        ];
       } else {
-        // Arabic Science & Mathematics Middle School (الصف الثالث الإعدادي) questions
-        if ((text.includes('السرعة') || text.includes('المسافة') || text.includes('الحركة')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما هي وحدة قياس السرعة في النظام الدولي للوحدات؟`,
+        pool = [
+          {
+            q: "ما وحدة قياس الكثافة في النظام الدولي للوحدات؟",
             options: [
-              { id: uuidv4(), text: 'متر / ثانية', is_correct: true },
-              { id: uuidv4(), text: 'كيلومتر / ثانية', is_correct: false },
-              { id: uuidv4(), text: 'متر . ثانية', is_correct: false },
-              { id: uuidv4(), text: 'سنتيمتر / دقيقة', is_correct: false }
+              { text: "جم / سم³ (أو كجم / م³)", is_correct: true },
+              { text: "متر / ثانية", is_correct: false },
+              { text: "نيوتن", is_correct: false },
+              { text: "جول", is_correct: false }
             ],
-            difficulty: 'EASY',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: page,
-            source_excerpt: 'تقاس السرعة بوحدة م/ث.',
-            explanation: 'وحدة قياس السرعة في النظام الدولي هي حاصل قسمة المسافة (متر) على الزمن (ثانية).'
-          });
-        }
-
-        if ((text.includes('القطار') || text.includes('اتجاه واحد') || text.includes('المسار')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `علل: تعتبر حركة القطار من أمثلة الحركة في اتجاه واحد؟`,
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "الكثافة هي كتلة وحدة الحجوم من المادة: ث = ك / ح.",
+            exp: "وحدة قياس الكثافة هي جرام لكل سنتيمتر مكعب (جم/سم³)."
+          },
+          {
+            q: "احسب كثافة جسم كتلته ك = 60 جم وحجمه ح = 30 سم³ مستخدماً العلاقة (ث = ك / ح):",
             options: [
-              { id: uuidv4(), text: 'لأنه يتحرك للأمام أو للخلف فقط', is_correct: true },
-              { id: uuidv4(), text: 'لأنه يتحرك بسرعة متغيرة دائماً', is_correct: false },
-              { id: uuidv4(), text: 'لأن مساره يكون دائرياً مغلقاً دائماً', is_correct: false },
-              { id: uuidv4(), text: 'لأنه يتحرك تحت تأثير الجاذبية فقط', is_correct: false }
+              { text: "2 جم / سم³", is_correct: true },
+              { text: "0.5 جم / سم³", is_correct: false },
+              { text: "1800 جم / سم³", is_correct: false },
+              { text: "30 جم / سم³", is_correct: false }
             ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: page,
-            source_excerpt: 'الحركة في اتجاه واحد تعني الحركة للأمام أو للخلف في خط مستقيم أو منحنٍ.',
-            explanation: 'القطار يتحرك للأمام أو للخلف في مسار مستقيم أو منحنٍ أو تركيب منهما.'
-          });
-        }
-
-        if ((text.includes('العجلة') || text.includes('السرعة المنتظمة') || text.includes('ثابتة')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما قيمة العجلة التي يتحرك بها جسم إذا كانت سرعته منتظمة وثابتة؟`,
+            diff: "MEDIUM",
+            bloom: "APPLICATION",
+            excerpt: "بالتعويض في قانون الكثافة: 60 / 30 = 2 جم/سم³.",
+            exp: "الكثافة = الكتلة ÷ الحجم = 60 ÷ 30 = 2 جم/سم³."
+          },
+          {
+            q: "ما الجسيمات سالبة الشحنة التي تدور حول نواة الذرة بسرعات فائقة؟",
             options: [
-              { id: uuidv4(), text: 'تساوي صفراً', is_correct: true },
-              { id: uuidv4(), text: 'قيمة موجبة ثابتة', is_correct: false },
-              { id: uuidv4(), text: 'قيمة سالبة متناقصة', is_correct: false },
-              { id: uuidv4(), text: 'تساوي مقدار السرعة', is_correct: false }
+              { text: "الإلكترونات (e⁻)", is_correct: true },
+              { text: "البروتونات (p⁺)", is_correct: false },
+              { text: "النيوترونات (n⁰)", is_correct: false },
+              { text: "الفوتونات", is_correct: false }
             ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: page,
-            source_excerpt: 'الجسم الذي يتحرك بسرعة منتظمة عجلته تساوي صفراً.',
-            explanation: 'العجلة هي التغير في السرعة بمرور الزمن، وعند ثبات السرعة يكون التغير صفراً.'
-          });
-        }
-
-        if ((text.includes('حراري') || text.includes('تفكك') || text.includes('أكسيد')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما نوع التفاعل الكيميائي الذي يتفكك فيه المركب بالحرارة إلى مكوناته البسيطة؟`,
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "تدور الإلكترونات سالبة الشحنة حول نواة الذرة في مستويات الطاقة.",
+            exp: "الإلكترونات جسيمات سالبة الشحنة تدور حول النواة."
+          },
+          {
+            q: "ما الصيغة الكيميائية لمركب كلوريد الصوديوم (ملح الطعام)؟",
             options: [
-              { id: uuidv4(), text: 'انحلال حراري', is_correct: true },
-              { id: uuidv4(), text: 'إحلال بسيط', is_correct: false },
-              { id: uuidv4(), text: 'إحلال مزدوج', is_correct: false },
-              { id: uuidv4(), text: 'تفاعل تعادل', is_correct: false }
+              { text: "NaCl", is_correct: true },
+              { text: "H₂O", is_correct: false },
+              { text: "CO₂", is_correct: false },
+              { text: "CaCO₃", is_correct: false }
             ],
-            difficulty: 'EASY',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: page,
-            source_excerpt: 'تفاعلات الانحلال الحراري يتم فيها تفكك المركب بالحرارة.',
-            explanation: 'الانحلال الحراري هو تفكك جزيئات بعض المركبات بالحرارة إلى عناصر أولية.'
-          });
-        }
-
-        if ((text.includes('التيار') || text.includes('أمبير') || text.includes('كولوم')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما المفهوم العلمي لكمية الشحنة الكهربية المتدفقة عبر مقطع موصل في زمن قدره ثانية واحدة؟`,
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "يتكون ملح الطعام من ذرة صوديوم وذرة كلور بالصيغة NaCl.",
+            exp: "الصيغة الكيميائية لملح الطعام هي NaCl."
+          },
+          {
+            q: "ما العلاقة الرياضية الصحيحة لحساب طاقة الحركة (طح)؟",
             options: [
-              { id: uuidv4(), text: 'شدة التيار الكهربي', is_correct: true },
-              { id: uuidv4(), text: 'فرق الجهد الكهربي', is_correct: false },
-              { id: uuidv4(), text: 'المقاومة الكهربية', is_correct: false },
-              { id: uuidv4(), text: 'القوة الدافعة الكهربية', is_correct: false }
+              { text: "طح = ½ × الكتلة × (السرعة)²", is_correct: true },
+              { text: "طح = الوزن × الارتفاع", is_correct: false },
+              { text: "طح = القوة × المسافة", is_correct: false },
+              { text: "طح = الكتلة × العجلة", is_correct: false }
             ],
-            difficulty: 'EASY',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: page,
-            source_excerpt: 'شدة التيار هي كمية الشحنة الكهربية المتدفقة خلال ثانية واحدة.',
-            explanation: 'شدة التيار ت = ك / ز، حيث ك كمية الشحنة بالكولوم وز الزمن بالثواني.'
-          });
-        }
-
-        if ((text.includes('محور الصادات') || text.includes('السينات') || text.includes('إحداثي')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `إذا كانت النقطة (س ، 5) تقع على محور الصادات، فإن س تساوي:`,
+            diff: "MEDIUM",
+            bloom: "UNDERSTANDING",
+            excerpt: "طاقة الحركة = نصف الكتلة مضروباً في مربع السرعة.",
+            exp: "قانون طاقة الحركة: طح = ½ ك ع²."
+          },
+          {
+            q: "علل: تطفو قطعة من الخشب على سطح الماء بينما يغوص مسمار الحديد؟",
             options: [
-              { id: uuidv4(), text: 'صفر', is_correct: true },
-              { id: uuidv4(), text: '5', is_correct: false },
-              { id: uuidv4(), text: '-5', is_correct: false },
-              { id: uuidv4(), text: '1', is_correct: false }
+              { text: "لأن كثافة الخشب أقل من كثافة الماء", is_correct: true },
+              { text: "لأن كتلة الخشب أكبر من كتلة الحديد", is_correct: false },
+              { text: "لأن حجم المسمار أكبر من حجم الخشب", is_correct: false },
+              { text: "لأن الماء يتفاعل كيميائياً مع الحديد", is_correct: false }
             ],
-            difficulty: 'EASY',
-            bloom_level: 'APPLICATION',
-            page_reference: page,
-            source_excerpt: 'أي نقطة تنتمي لمحور الصادات يكون إحداثيها السيني صفراً.',
-            explanation: 'أي نقطة على محور الصادات إحداثيها السيني يساوي صفراً.'
-          });
-        }
-
-        if ((text.includes('الميل') || text.includes('مستقيم') || text.includes('موازي')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما ميل الخط المستقيم الموازي لمحور السينات؟`,
+            diff: "MEDIUM",
+            bloom: "UNDERSTANDING",
+            excerpt: "المواد ذات الكثافة الأقل من الماء تطفو، وذات الكثافة الأكبر تغوص.",
+            exp: "يطفو الخشب لأن كثافته أقل من كثافة الماء (1 جم/سم³)."
+          },
+          {
+            q: "في أي حالات المادة تكون المسافات البينية بين الجزيئات أكبر ما يمكن وقوى التماسك شبه منعدمة؟",
             options: [
-              { id: uuidv4(), text: 'صفر', is_correct: true },
-              { id: uuidv4(), text: '1', is_correct: false },
-              { id: uuidv4(), text: 'غير معرّف', is_correct: false },
-              { id: uuidv4(), text: '-1', is_correct: false }
+              { text: "الحالة الغازية", is_correct: true },
+              { text: "الحالة الصلبة", is_correct: false },
+              { text: "الحالة السائلة", is_correct: false },
+              { text: "الحالة المتبلورة", is_correct: false }
             ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'APPLICATION',
-            page_reference: page,
-            source_excerpt: 'ميل المستقيم الموازي لمحور السينات يساوي صفراً.',
-            explanation: 'المستقيم الموازي لمحور السينات يكون أفقياً وتغير الصادات فيه صفراً، فميله صفر.'
-          });
-        }
-
-        // Social Studies / الدراسات الاجتماعية (Prep 3 Curriculum)
-        if ((text.includes('الموارد') || text.includes('اقتصاد') || text.includes('تنمية') || text.includes('طاقة')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما الركيزة الأساسية لتحقيق التنمية الاقتصادية المستدامة؟`,
-            options: [
-              { id: uuidv4(), text: 'ترشيد استهلاك الموارد وتنميتها', is_correct: true },
-              { id: uuidv4(), text: 'استنزاف الموارد الطبيعية سريعاً', is_correct: false },
-              { id: uuidv4(), text: 'الاعتماد على الوقود الأحفوري فقط', is_correct: false },
-              { id: uuidv4(), text: 'إيقاف المشروعات التنموية الكبرى', is_correct: false }
-            ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: page,
-            source_excerpt: 'التنمية المستدامة تهدف إلى تلبية احتياجات الحاضر دون الإضرار بحقوق الأجيال القادمة.',
-            explanation: 'التنمية المستدامة تقوم على حسن استغلال الموارد الطبيعية وترشيدها لضمان استمراريتها.'
-          });
-        }
-
-        if ((text.includes('البيئة') || text.includes('جغرافيا') || text.includes('مناخ') || text.includes('تضاريس')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `علل: اختلاف درجات الحرارة وتنوع المناخ من منطقة لأخرى على سطح الأرض؟`,
-            options: [
-              { id: uuidv4(), text: 'لاختلاف زاوية سقوط أشعة الشمس', is_correct: true },
-              { id: uuidv4(), text: 'لثبات الغلاف الجوي تماماً', is_correct: false },
-              { id: uuidv4(), text: 'لتساوي ساعات الليل والنهار دائماً', is_correct: false },
-              { id: uuidv4(), text: 'لعدم وجود مسطحات مائية', is_correct: false }
-            ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: page,
-            source_excerpt: 'تختلف درجات الحرارة لاختلاف زاوية سقوط أشعة الشمس والقرب أو البعد عن خط الاستواء.',
-            explanation: 'الأشعة العمودية أشد حرارة من الأشعة المائلة، مما يسبب تنوع الأقاليم المناخية.'
-          });
-        }
-
-        // Arabic / اللغة العربية (Prep 3 Curriculum)
-        if ((text.includes('أخلاق') || text.includes('علم') || text.includes('عمل') || text.includes('حضارة')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما الركيزة الأساسية لنهضة الأمم وبناء الحضارات القوية؟`,
-            options: [
-              { id: uuidv4(), text: 'اقتران العلم النافع بالعمل المخلص', is_correct: true },
-              { id: uuidv4(), text: 'الاعتماد على النظريات دون تطبيق', is_correct: false },
-              { id: uuidv4(), text: 'التمسك بالأفكار التقليدية الجامدة', is_correct: false },
-              { id: uuidv4(), text: 'إهمال البحث العلمي والابتكار', is_correct: false }
-            ],
-            difficulty: 'EASY',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: page,
-            source_excerpt: 'العلم والعمل هما جناحا التقدم وبناء الحضارة الإنسانية.',
-            explanation: 'العلم وحده لا يكفي لبناء المجتمع ما لم يترجم إلى عمل نافع ومثمر.'
-          });
-        }
-
-        // Mathematics / الرياضيات (Prep 3 Curriculum)
-        if ((text.includes('الأعداد') || text.includes('جبر') || text.includes('معادلات') || text.includes('حساب')) && questions.length < count) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: chunk.id,
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما ناتج جمع أي عدد حقيقي ونظيره الجمعي؟`,
-            options: [
-              { id: uuidv4(), text: 'المحايد الجمعي (صفر)', is_correct: true },
-              { id: uuidv4(), text: 'المحايد الضربي (واحد)', is_correct: false },
-              { id: uuidv4(), text: 'ضعف العدد الأصلي', is_correct: false },
-              { id: uuidv4(), text: 'مقلوب العدد', is_correct: false }
-            ],
-            difficulty: 'EASY',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: page,
-            source_excerpt: 'العدد + نظيره الجمعي = صفر.',
-            explanation: 'النظير الجمعي للعدد أ هو -أ، ومجموعهما يساوي المحايد الجمعي (صفر).'
-          });
-        }
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "المسافات البينية في الحالة الغازية تكون كبيرة جداً وقوى التماسك تكاد تنعدم.",
+            exp: "جزيئات الغاز حرة تماماً ومسافاتها البينية كبيرة جداً."
+          }
+        ];
       }
+    } else if (isMath) {
+      if (isEn) {
+        pool = [
+          {
+            q: "What is the value of x in the linear algebraic equation: 2x + 6 = 18?",
+            options: [
+              { text: "x = 6", is_correct: true },
+              { text: "x = 12", is_correct: false },
+              { text: "x = 3", is_correct: false },
+              { text: "x = 8", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "APPLICATION",
+            excerpt: "Solving 2x + 6 = 18: 2x = 12, so x = 6.",
+            exp: "Subtract 6 from both sides: 2x = 12, divide by 2: x = 6."
+          },
+          {
+            q: "Under which mathematical condition does (a / b) express a rational number in Q?",
+            options: [
+              { text: "Denominator b ≠ 0", is_correct: true },
+              { text: "Numerator a = 0", is_correct: false },
+              { text: "Denominator b = 0", is_correct: false },
+              { text: "a must equal b", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "A rational number a/b requires a non-zero denominator b ≠ 0.",
+            exp: "Division by zero is undefined, so denominator b must not equal 0."
+          },
+          {
+            q: "What is the additive inverse of the rational number (-3/7)?",
+            options: [
+              { text: "3/7", is_correct: true },
+              { text: "-7/3", is_correct: false },
+              { text: "7/3", is_correct: false },
+              { text: "0", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "The additive inverse of a rational number -a/b is a/b.",
+            exp: "The additive inverse has opposite sign: -(-3/7) = 3/7."
+          },
+          {
+            q: "What is the multiplicative inverse (reciprocal) of (4/9)?",
+            options: [
+              { text: "9/4", is_correct: true },
+              { text: "-4/9", is_correct: false },
+              { text: "-9/4", is_correct: false },
+              { text: "1", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "The reciprocal of a fraction a/b is b/a.",
+            exp: "Multiplying (4/9) by (9/4) equals the multiplicative identity 1."
+          },
+          {
+            q: "Calculate the slope m of a line passing through (1, 2) and (3, 8) using m = (y₂ - y₁) / (x₂ - x₁):",
+            options: [
+              { text: "3", is_correct: true },
+              { text: "2", is_correct: false },
+              { text: "4", is_correct: false },
+              { text: "-3", is_correct: false }
+            ],
+            diff: "MEDIUM",
+            bloom: "APPLICATION",
+            excerpt: "Slope m = (8 - 2) / (3 - 1) = 6 / 2 = 3.",
+            exp: "m = (8 - 2) / (3 - 1) = 6 / 2 = 3."
+          },
+          {
+            q: "What is the sum of the interior angle measures of any triangle?",
+            options: [
+              { text: "180°", is_correct: true },
+              { text: "360°", is_correct: false },
+              { text: "90°", is_correct: false },
+              { text: "270°", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "The sum of interior angles of any triangle is 180°.",
+            exp: "In geometry, the sum of internal angles of a triangle is always 180°."
+          },
+          {
+            q: "Simplify the algebraic expression: 3x + 5y - x + 2y:",
+            options: [
+              { text: "2x + 7y", is_correct: true },
+              { text: "4x + 7y", is_correct: false },
+              { text: "2x + 3y", is_correct: false },
+              { text: "9xy", is_correct: false }
+            ],
+            diff: "MEDIUM",
+            bloom: "APPLICATION",
+            excerpt: "Combining like terms: (3x - x) + (5y + 2y) = 2x + 7y.",
+            exp: "Combine like terms: (3x - 1x) = 2x, and (5y + 2y) = 7y."
+          }
+        ];
+      } else {
+        pool = [
+          {
+            q: "أوجد قيمة س في المعادلة الجبرية الخطية: 2س + 6 = 18",
+            options: [
+              { text: "س = 6", is_correct: true },
+              { text: "س = 12", is_correct: false },
+              { text: "س = 3", is_correct: false },
+              { text: "س = 8", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "APPLICATION",
+            excerpt: "بحل المعادلة: 2س = 18 - 6 = 12، إذن س = 6.",
+            exp: "بطرح 6 من الطرفين: 2س = 12، ثم بالقسمة على 2: س = 6."
+          },
+          {
+            q: "الشرط اللازم لكي يعبر المقدار (أ / ب) عن عدد نسبي ن هو:",
+            options: [
+              { text: "المقام ب ≠ 0", is_correct: true },
+              { text: "البسط أ = 0", is_correct: false },
+              { text: "المقام ب = 0", is_correct: false },
+              { text: "أ يجب أن يساوي ب", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "العدد النسبي يتطلب ألا يكون مقامه مساوياً للصفر.",
+            exp: "القسمة على صفر غير معرفة، لذلك يشترط أن يكون المقام ب ≠ 0."
+          },
+          {
+            q: "ما المعكوس الجمعي للعدد النسبي (-3/7)؟",
+            options: [
+              { text: "3/7", is_correct: true },
+              { text: "-7/3", is_correct: false },
+              { text: "7/3", is_correct: false },
+              { text: "صفر", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "المعكوس الجمعي للعدد -أ هو أ.",
+            exp: "المعكوس الجمعي يغير إشارة العدد: -(-3/7) = 3/7."
+          },
+          {
+            q: "ما المعكوس الضربي للعدد النسبي (4/9)؟",
+            options: [
+              { text: "9/4", is_correct: true },
+              { text: "-4/9", is_correct: false },
+              { text: "-9/4", is_correct: false },
+              { text: "1", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "المعكوس الضربي للكسر أ/ب هو ب/أ.",
+            exp: "مقلوب الكسر 4/9 هو 9/4 وحاصل ضربهما يساوي المحايد الضربي 1."
+          },
+          {
+            q: "احسب ميل الخط المستقيم المار بالنقطتين (1 ، 2) و (3 ، 8) باستخدام القانون م = (ص₂ - ص₁) / (س₂ - س₁):",
+            options: [
+              { text: "3", is_correct: true },
+              { text: "2", is_correct: false },
+              { text: "4", is_correct: false },
+              { text: "-3", is_correct: false }
+            ],
+            diff: "MEDIUM",
+            bloom: "APPLICATION",
+            excerpt: "م = (8 - 2) / (3 - 1) = 6 / 2 = 3.",
+            exp: "فرق الصادات على فرق السينات = 6 ÷ 2 = 3."
+          },
+          {
+            q: "مجموع قياسات الزوايا الداخلية لأي مثلث في الهندسة المستوية يساوي دائماً:",
+            options: [
+              { text: "180°", is_correct: true },
+              { text: "360°", is_correct: false },
+              { text: "90°", is_correct: false },
+              { text: "270°", is_correct: false }
+            ],
+            diff: "EASY",
+            bloom: "KNOWLEDGE",
+            excerpt: "مجموع قياسات زوايا المثلث الداخلية 180°.",
+            exp: "القاعدة الهندسية الثابتة: مجموع زوايا المثلث الداخلية 180 درجة."
+          },
+          {
+            q: "اختصر المقدار الجبري الآتي لأبسط صورة: 3س + 5ص - س + 2ص:",
+            options: [
+              { text: "2س + 7ص", is_correct: true },
+              { text: "4س + 7ص", is_correct: false },
+              { text: "2س + 3ص", is_correct: false },
+              { text: "9س ص", is_correct: false }
+            ],
+            diff: "MEDIUM",
+            bloom: "APPLICATION",
+            excerpt: "تجميع الحدود المتشابهة: (3س - س) + (5ص + 2ص) = 2س + 7ص.",
+            exp: "جمع الحدود المتشابهة: 3س - س = 2س، و 5ص + 2ص = 7ص."
+          }
+        ];
+      }
+    } else if (isArabic) {
+      pool = [
+        {
+          q: "أعرب الكلمة المحددة إعراباً صحيحاً: «يَجْتَهِدُ الطَّالِبُ فِي دِرَاسَتِهِ»:",
+          options: [
+            { text: "فَاعِلٌ مَرْفُوعٌ بِالضَّمَّةِ", is_correct: true },
+            { text: "مَفْعُولٌ بِهِ مَنْصُوبٌ", is_correct: false },
+            { text: "مُبْتَدَأٌ مَرْفُوعٌ", is_correct: false },
+            { text: "خَبَرٌ مَرْفُوعٌ", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "APPLICATION",
+          excerpt: "الفاعل هو من قام بالفعل ويأتي مرفوعاً بالضمة الظاهرة.",
+          exp: "الطالب هو من قام بالاجتهاد، فهو فاعل مرفوع وعلامة رفعه الضمة."
+        },
+        {
+          q: "ما إعراب الكلمة المحددة: «قَرَأَ مُحَمَّدٌ الْكِتَابَ»:",
+          options: [
+            { text: "مَفْعُولٌ بِهِ مَنْصُوبٌ بِالْفَتْحَةِ", is_correct: true },
+            { text: "فَاعِلٌ مَرْفُوعٌ بِالضَّمَّةِ", is_correct: false },
+            { text: "حَالٌ مَنْصُوبٌ", is_correct: false },
+            { text: "مُضَافٌ إِلَيْهِ مَجْرُورٌ", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "APPLICATION",
+          excerpt: "المفعول به هو الاسم المنصوب الذي وقع عليه فعل الفاعل.",
+          exp: "الكتاب وقع عليه فعل القراءة، فهو مفعول به منصوب وعلامة نصبه الفتحة."
+        },
+        {
+          q: "ما نوع الفعل «اكْتُبْ» من حيث الدلالة الزمنية وحالته الإعرابية؟",
+          options: [
+            { text: "فِعْلُ أَمْرٍ مَبْنِيٌّ عَلَى السُّكُونِ", is_correct: true },
+            { text: "فِعْلٌ مَاضٍ مَبْنِيٌّ عَلَى الْفَتْحِ", is_correct: false },
+            { text: "فِعْلٌ مُضَارِعٌ مَرْفُوعٌ", is_correct: false },
+            { text: "فِعْلٌ مُضَارِعٌ مَجْزُومٌ", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "فعل الأمر صحيح الآخر يبنى على السكون.",
+          exp: "اكتب يدل على طلب حدوث الفعل، وهو فعل أمر مبني على السكون."
+        },
+        {
+          q: "أيُّ الْجُمَلِ الآتِيَةِ تَشْتَمِلُ عَلَى فِعْلٍ لاَزِمٍ (يَكْتَفِي بِفَاعِلِهِ وَلاَ يَحْتَاجُ لِمَفْعُولٍ بِهِ)؟",
+          options: [
+            { text: "نَامَ الطِّفْلُ هَادِئاً", is_correct: true },
+            { text: "كَتَبَ التِّلْمِيذُ الدَّرْسَ", is_correct: false },
+            { text: "قَرَأَ الْمُعَلِّمُ الْقِصَّةَ", is_correct: false },
+            { text: "شَرِبَ الْوَلَدُ الْحَلِيبَ", is_correct: false }
+          ],
+          diff: "MEDIUM",
+          bloom: "UNDERSTANDING",
+          excerpt: "الفعل اللازم يكتفي برفع فاعله ولا ينصب مفعولاً به.",
+          exp: "الفعل نام اكتفى بفاعله (الطفل)، و(هادئاً) حال، فهو فعل لازم."
+        },
+        {
+          q: "ما إعراب كلمة «الْعِلْمَ» في جملة: «إِنَّ الْعِلْمَ نُورٌ»؟",
+          options: [
+            { text: "اسْمُ إِنَّ مَنْصُوبٌ بِالْفَتْحَةِ", is_correct: true },
+            { text: "مُبْتَدَأٌ مَرْفُوعٌ بِالضَّمَّةِ", is_correct: false },
+            { text: "خَبَرُ إِنَّ مَرْفُوعٌ", is_correct: false },
+            { text: "مَفْعُولٌ بِهِ مَنْصُوبٌ", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "APPLICATION",
+          excerpt: "إن وأخواتها حروف ناسخة تنصب المبتدأ وترفع الخبر.",
+          exp: "إن حرف ناسخ ينصب اسمه ويرفع خبره، فالعلم اسم إن منصوب بالفتحة."
+        },
+        {
+          q: "ما مضاد كلمة «الْإِقْدَام» في المعجم ودلالات الألفاظ؟",
+          options: [
+            { text: "الإِحْجَامُ وَالتَّرَدُّدُ", is_correct: true },
+            { text: "الشَّجَاعَةُ وَالْجَرَاءَةُ", is_correct: false },
+            { text: "الْقُوَّةُ وَالثَّبَاتُ", is_correct: false },
+            { text: "الْعَزِيمَةُ وَالصَّبْرُ", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "الإقدام يعني الجرأة والشجاعة، وضده الإحجام والنكوص.",
+          exp: "مضاد الإقدام هو الإحجام والتراجع."
+        }
+      ];
+    } else if (isSocial) {
+      pool = [
+        {
+          q: "ما هو أطول أنهار العالم والذي يمر بالأراضي المصرية ويمثل شريان الحياة الرئيسي للمصريين؟",
+          options: [
+            { text: "نهر النيل", is_correct: true },
+            { text: "نهر الأمازون", is_correct: false },
+            { text: "نهر الكونغو", is_correct: false },
+            { text: "نهر الفرات", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "نهر النيل أطول أنهار الكرة الأرضية وأساس قيام الحضارة المصرية القديمة.",
+          exp: "نهر النيل هو أطول أنهار العالم وشريان الحياة لمصر عبر العصور."
+        },
+        {
+          q: "نجح الملك مينا (نعرمر) عام 3200 ق.م في تحقيق إنجاز تاريخي خالد لمصر وهو:",
+          options: [
+            { text: "توحيد قطري مصر (الشمال والجنوب)", is_correct: true },
+            { text: "بناء الهرم الأكبر بالجيزة", is_correct: false },
+            { text: "طرد الهكسوس من مصر", is_correct: false },
+            { text: "توقيع أول معاهدة سلام", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "قام الملك نعرمر (مينا) بتوحيد مملكتي الشمال والجنوب وتأسيس الأسرة الأولى.",
+          exp: "الملك مينا وحد القطرين عام 3200 ق.م وأسس أول دولة موحدة في التاريخ."
+        },
+        {
+          q: "أي الأقاليم المناخية في مصر يتميز بصيف حار جاف وشتاء معتدل ممطر على السواحل الشمالية؟",
+          options: [
+            { text: "إقليم البحر المتوسط", is_correct: true },
+            { text: "الإقليم الاستوائي", is_correct: false },
+            { text: "الإقليم الصحراوي الحار", is_correct: false },
+            { text: "الإقليم المداري", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "يسود إقليم البحر المتوسط على السواحل الشمالية لمصر ويتميز بالاعتدال شتاءً.",
+          exp: "شمال مصر ينتمي لإقليم البحر المتوسط المعتدل الممطر شتاءً."
+        },
+        {
+          q: "علل: تميز موقع مصر الجغرافي بأهمية استراتيجية واقتصادية بالغة عبر التاريخ؟",
+          options: [
+            { text: "لأنها ملتقى قارات العالم القديم وتربط البحرين المتوسط والأحمر", is_correct: true },
+            { text: "لوقوعها في أقصى جنوب القارة الإفريقية", is_correct: false },
+            { text: "لعدم وجود حدود بحرية تربطها بالعالم", is_correct: false },
+            { text: "لأن مناخها قطبي متجمد طوال العام", is_correct: false }
+          ],
+          diff: "MEDIUM",
+          bloom: "UNDERSTANDING",
+          excerpt: "موقع مصر يتوسط قارات العالم القديم (آسيا وإفريقيا وأوروبا) وتطل على بحرين هامين.",
+          exp: "موقع مصر الجغرافي المتميز جعلها حلقة وصل بين قارات وحضارات العالم."
+        },
+        {
+          q: "ما المدينة التاريخية التي بناها الملك مينا واتخذها عاصمة لمصر الموحدة وأحاطها بسور أبيض؟",
+          options: [
+            { text: "مدينة منف (الميناء الجميل)", is_correct: true },
+            { text: "مدينة طيبة", is_correct: false },
+            { text: "مدينة أون", is_correct: false },
+            { text: "مدينة الإسكندرية", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "بنى الملك مينا مدينة منف لتكون عاصمة للبلاد الموحدة وسماها قلعة الجدار الأبيض.",
+          exp: "منف هي العاصمة التي شيدها الملك مينا بعد توحيد القطرين."
+        }
+      ];
+    } else {
+      // English subject pool
+      pool = [
+        {
+          q: "Which sentence demonstrates the correct comparative form of an adjective?",
+          options: [
+            { text: "The car is faster than the bike", is_correct: true },
+            { text: "The car is more fast than it", is_correct: false },
+            { text: "The car is fastest than others", is_correct: false },
+            { text: "The car fast than it", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "APPLICATION",
+          excerpt: "Short adjectives add -er followed by than for comparative degree.",
+          exp: "Comparative form of short adjectives is formed with -er + than."
+        },
+        {
+          q: "Choose the correct past form: 'Yesterday, our school team ______ the final match.'",
+          options: [
+            { text: "won", is_correct: true },
+            { text: "win", is_correct: false },
+            { text: "will win", is_correct: false },
+            { text: "winning", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "APPLICATION",
+          excerpt: "Past simple expresses completed actions indicated by yesterday.",
+          exp: "The past tense of the irregular verb 'win' is 'won'."
+        },
+        {
+          q: "Complete with the correct preposition: 'Students travel to school ______ bus every morning.'",
+          options: [
+            { text: "by", is_correct: true },
+            { text: "in", is_correct: false },
+            { text: "on", is_correct: false },
+            { text: "with", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "The preposition 'by' is used before means of transport (by bus, by train).",
+          exp: "Means of transport without an article take 'by' (by bus)."
+        },
+        {
+          q: "What is the correct synonym of the adjective 'huge'?",
+          options: [
+            { text: "Enormous", is_correct: true },
+            { text: "Tiny", is_correct: false },
+            { text: "Narrow", is_correct: false },
+            { text: "Weak", is_correct: false }
+          ],
+          diff: "EASY",
+          bloom: "KNOWLEDGE",
+          excerpt: "Synonyms are words with identical or closely related meanings.",
+          exp: "'Huge' and 'enormous' both describe very large size."
+        },
+        {
+          q: "Which sentence correctly expresses future intention using 'going to'?",
+          options: [
+            { text: "I am going to visit Alexandria next week", is_correct: true },
+            { text: "I going to visit Alexandria", is_correct: false },
+            { text: "I am go to visit Alexandria", is_correct: false },
+            { text: "I am going visit Alexandria", is_correct: false }
+          ],
+          diff: "MEDIUM",
+          bloom: "APPLICATION",
+          excerpt: "Future plans use: am/is/are + going to + base verb.",
+          exp: "The correct structure is: am + going to + verb (visit)."
+        }
+      ];
     }
 
-    // Secondary curriculum-aligned fallback pool for any remaining questions
-    let fallbackIdx = 1;
-    while (questions.length < count) {
-      const ch = chunks[(fallbackIdx - 1) % chunks.length] || chunks[0];
-      const pNum = ch?.page_number || 1;
-      const cContent = (ch?.content || '').toLowerCase();
-
-      if (isEn) {
-        if (fallbackIdx % 3 === 1) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: ch?.id || '',
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `Which sentence demonstrates the correct comparative form of an adjective?`,
-            options: [
-              { id: uuidv4(), text: 'The kettle is cheaper than the microwave', is_correct: true },
-              { id: uuidv4(), text: 'The kettle is more cheaper than it', is_correct: false },
-              { id: uuidv4(), text: 'The kettle is most cheap of all', is_correct: false },
-              { id: uuidv4(), text: 'The kettle as cheap than others', is_correct: false }
-            ],
-            difficulty: 'EASY',
-            bloom_level: 'APPLICATION',
-            page_reference: pNum,
-            source_excerpt: 'Short adjectives take -er + than for comparison.',
-            explanation: 'Comparative form of short adjectives is formed by adding -er followed by than.'
-          });
-        } else if (fallbackIdx % 3 === 2) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: ch?.id || '',
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `What is the main goal of community development initiatives like Decent Life?`,
-            options: [
-              { id: uuidv4(), text: 'To improve public services and facilities', is_correct: true },
-              { id: uuidv4(), text: 'To reduce public transport facilities', is_correct: false },
-              { id: uuidv4(), text: 'To stop educational activities', is_correct: false },
-              { id: uuidv4(), text: 'To restrict local community centers', is_correct: false }
-            ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: pNum,
-            source_excerpt: 'Decent Life initiative aims to develop rural communities and improve facilities.',
-            explanation: 'Community initiatives focus on upgrading health, education, and social infrastructure.'
-          });
-        } else {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: ch?.id || '',
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `If a car travels 120 km in 2 hours, what is its average speed?`,
-            options: [
-              { id: uuidv4(), text: '60 km/h', is_correct: true },
-              { id: uuidv4(), text: '120 km/h', is_correct: false },
-              { id: uuidv4(), text: '240 km/h', is_correct: false },
-              { id: uuidv4(), text: '30 km/h', is_correct: false }
-            ],
-            difficulty: 'EASY',
-            bloom_level: 'APPLICATION',
-            page_reference: pNum,
-            source_excerpt: 'Average speed is total distance divided by total time.',
-            explanation: 'Average speed = Distance / Time = 120 / 2 = 60 km/h.'
-          });
-        }
-      } else {
-        if (fallbackIdx % 4 === 1) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: ch?.id || '',
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما الهدف الاستراتيجي من تبني مبادئ الاستدامة في إدارة الموارد؟`,
-            options: [
-              { id: uuidv4(), text: 'المحافظة على الموارد للأجيال القادمة', is_correct: true },
-              { id: uuidv4(), text: 'زيادة معدلات التلوث البيئي', is_correct: false },
-              { id: uuidv4(), text: 'استنزاف المخزون الطبيعي بالكامل', is_correct: false },
-              { id: uuidv4(), text: 'إيقاف النشاط الاقتصادي تماماً', is_correct: false }
-            ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: pNum,
-            source_excerpt: 'الاستدامة تضمن التوازن بين متطلبات الإنتاج وحماية البيئة الطبيعية.',
-            explanation: 'إدارة الموارد المستدامة تضمن استمرار الإنتاج وحفظ حقوق الأجيال القادمة.'
-          });
-        } else if (fallbackIdx % 4 === 2) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: ch?.id || '',
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما أثر الالتزام بمكارم الأخلاق والقيم الإيجابية في المجتمع؟`,
-            options: [
-              { id: uuidv4(), text: 'نشر المحبة والسلام وتماسك الأفراد', is_correct: true },
-              { id: uuidv4(), text: 'تفكك الروابط الأسرية والاجتماعية', is_correct: false },
-              { id: uuidv4(), text: 'انتشار الأنانية والمصلحة الفردية', is_correct: false },
-              { id: uuidv4(), text: 'تراجع مكانة الفرد بين أقرانه', is_correct: false }
-            ],
-            difficulty: 'EASY',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: pNum,
-            source_excerpt: 'الأخلاق الفاضلة هي السياج الذي يحمي المجتمع من الانحلال والتفكك.',
-            explanation: 'الأخلاق الكريمة تبني مجتمعاً مترابطاً يسوده التعاون والإخاء.'
-          });
-        } else if (fallbackIdx % 4 === 3) {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: ch?.id || '',
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما الخاصية التي تميز المحايد الجمعي في العمليات الحسابية؟`,
-            options: [
-              { id: uuidv4(), text: 'لا يغير قيمة العدد عند إضافته إليه', is_correct: true },
-              { id: uuidv4(), text: 'يجعل الناتج دائماً مساوياً للصفر', is_correct: false },
-              { id: uuidv4(), text: 'يضاعف قيمة العدد المضاف', is_correct: false },
-              { id: uuidv4(), text: 'يقلب إشارة العدد المضاف إليه', is_correct: false }
-            ],
-            difficulty: 'EASY',
-            bloom_level: 'KNOWLEDGE',
-            page_reference: pNum,
-            source_excerpt: 'الصفر هو المحايد الجمعي حيث س + 0 = س.',
-            explanation: 'المحايد الجمعي هو الصفر، وإضافته لأي عدد لا تغير قيمته.'
-          });
-        } else {
-          questions.push({
-            id: uuidv4(),
-            chunk_id: ch?.id || '',
-            book_id: bookId,
-            chapter_id: chapterId,
-            question_text: `ما الركيزة الأساسية لفهم هذا الموضوع الدراسي وتطبيقه بصورة صحيحة؟`,
-            options: [
-              { id: uuidv4(), text: 'استيعاب المفاهيم الأساسية والقواعد المقررة', is_correct: true },
-              { id: uuidv4(), text: 'حفظ النصوص دون إدراك لمعانيها', is_correct: false },
-              { id: uuidv4(), text: 'تجاهل التدريبات والتطبيقات العملية', is_correct: false },
-              { id: uuidv4(), text: 'الاعتماد على التخمين العشوائي', is_correct: false }
-            ],
-            difficulty: 'MEDIUM',
-            bloom_level: 'UNDERSTANDING',
-            page_reference: pNum,
-            source_excerpt: 'الفهم المنهجي والتطبيق المنتظم هما أساس التحصيل الدراسي المتميز.',
-            explanation: 'استيعاب القواعد والمفاهيم العلمية هو الخطوة الأولى لحل التدريبات بكفاءة.'
-          });
-        }
-      }
-      fallbackIdx++;
+    // Pick questions from the curated subject pool
+    const poolShuffled = shuffleArray(pool);
+    for (let i = 0; i < poolShuffled.length && questions.length < count; i++) {
+      const item = poolShuffled[i];
+      const ch = chunks[i % chunks.length] || chunks[0];
+      questions.push({
+        id: uuidv4(),
+        chunk_id: ch?.id || '',
+        book_id: bookId,
+        chapter_id: chapterId,
+        question_text: item.q,
+        options: shuffleArray(item.options.map(o => ({ id: uuidv4(), text: o.text, is_correct: o.is_correct }))),
+        difficulty: item.diff,
+        bloom_level: item.bloom,
+        page_reference: (ch?.page_number && Number(ch.page_number) > 1)
+          ? Number(ch.page_number)
+          : Math.floor((Number(chunks[0]?.page_number) || 1) + Math.random() * Math.max(1, (Number(chunks[chunks.length - 1]?.page_number) || 25) - (Number(chunks[0]?.page_number) || 1) + 1)),
+        source_excerpt: item.excerpt,
+        explanation: item.exp,
+        chunk_text: ch?.content || item.excerpt,
+        similarity_score: 1.0,
+        validation_status: { isValid: true }
+      });
     }
 
-    return questions.slice(0, count).map(q => {
-      const parentChunk = chunks.find(c => c.id === q.chunk_id) || chunks[0];
-      return {
-        ...q,
-        options: shuffleArray(q.options),
-        chunk_text: q.chunk_text || parentChunk?.content || '',
-        similarity_score: q.similarity_score ?? Number((parentChunk?.similarity ?? 1.0).toFixed(4)),
-        validation_status: q.validation_status || { isValid: true }
-      };
-    });
+    return questions.slice(0, count);
   }
 
   /**

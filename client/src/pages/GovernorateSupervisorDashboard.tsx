@@ -41,8 +41,12 @@ interface StudentItem {
   familyCode?: string;
   gradeId: string;
   gradeName: string;
+  gradeNameAr?: string;
+  gradeNameEn?: string;
   gradeCode?: string;
   stageName: string;
+  stageNameAr?: string;
+  stageNameEn?: string;
   schoolType: string;
   schoolName: string;
   governorateName: string;
@@ -338,17 +342,30 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
 
-      // Find Students sheet or first sheet
-      const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('student')) || workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '' });
+      // Support multi-sheet / multi-table workbooks (e.g. 5 tables in English, 6th in Arabic)
+      let combinedRows: any[] = [];
+      const studentSheetNames = workbook.SheetNames.filter(n => !n.toLowerCase().includes('parent') && !n.toLowerCase().includes('meta'));
+      const sheetsToProcess = studentSheetNames.length > 0 ? studentSheetNames : workbook.SheetNames;
 
-      if (rows.length === 0) {
+      for (const sName of sheetsToProcess) {
+        const worksheet = workbook.Sheets[sName];
+        if (!worksheet) continue;
+        const sRows = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '' });
+        for (const r of sRows) {
+          // If row lacks Batch Code / Grade, preserve the sheet name as batch code
+          if (!r['Batch Code'] && !r['batchCode'] && !r['كود الدفعة'] && !r['Grade'] && !r['grade']) {
+            r['Batch Code'] = sName;
+          }
+          combinedRows.push(r);
+        }
+      }
+
+      if (combinedRows.length === 0) {
         throw new Error(isAr ? 'ملف الإكسيل فارغ أو لا يحتوي على صفوف بيانات' : 'Excel file is empty');
       }
 
       // Convert date serials if any
-      const cleanedRows = rows.map(r => {
+      const cleanedRows = combinedRows.map(r => {
         const rawDate = r['Birth Date'] || r['birthDate'];
         let formattedDate = rawDate;
         if (typeof rawDate === 'number' || (!isNaN(Number(rawDate)) && !String(rawDate).includes('-') && !String(rawDate).includes('/'))) {
@@ -366,11 +383,12 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         };
       });
 
-      // Filter out blank or empty rows
+      // Filter out blank or empty rows - support all Arabic & English header forms
       const validRows = cleanedRows.filter(r => {
-        const u = r['Username'] || r['username'] || r['اسم المستخدم'];
-        const n = r['Name'] || r['name'] || r['الاسم'] || r['First name'] || r['firstName'] || r['Arabic Name'] || r['arabicName'];
-        return (u && String(u).trim().length > 0) || (n && String(n).trim().length > 0);
+        const u = r['Username'] || r['username'] || r['اسم المستخدم'] || r['كود الطالب'] || r['كود'] || r['الرقم القومي'] || r['رقم الجلوس'] || r['Student Code'] || r['studentCode'] || r['Code'] || r['ID'];
+        const n = r['Name'] || r['name'] || r['الاسم'] || r['اسم الطالب'] || r['First name'] || r['firstName'] || r['Arabic Name'] || r['arabicName'] || r['الطالب'] || r['Student Name'];
+        const anyVal = Object.values(r).some(v => v !== null && v !== undefined && String(v).trim().length > 0);
+        return Boolean((u && String(u).trim().length > 0) || (n && String(n).trim().length > 0) || anyVal);
       });
 
       if (validRows.length === 0) {
@@ -1303,7 +1321,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                               background: s.gender === 'Female' || s.gender === 'أنثى' ? '#FCE7F3' : '#E0E7FF',
                               color: s.gender === 'Female' || s.gender === 'أنثى' ? '#9D174D' : '#3730A3'
                             }}>
-                              {s.gender || 'Male'}
+                              {s.gender || (/[a-zA-Z]/.test(s.fullName || '') ? 'Male' : (isAr ? 'ذكر' : 'Male'))}
                             </span>
                           </td>
 
@@ -1319,12 +1337,12 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
 
                           {/* 10. Religion */}
                           <td style={{ padding: '0.75rem 0.9rem', color: 'var(--text-body)', verticalAlign: 'middle' }}>
-                            {s.religion || 'مسلم'}
+                            {s.religion || (/[a-zA-Z]/.test(s.fullName || '') ? 'Muslim' : (isAr ? 'مسلم' : 'Muslim'))}
                           </td>
 
                           {/* 11. Nationality */}
                           <td style={{ padding: '0.75rem 0.9rem', color: 'var(--text-body)', verticalAlign: 'middle' }}>
-                            {s.nationality || 'مصر'}
+                            {s.nationality || (/[a-zA-Z]/.test(s.fullName || '') ? 'Egypt' : (isAr ? 'مصر' : 'Egypt'))}
                           </td>
 
                           {/* 12. Email */}
@@ -1342,7 +1360,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                               fontSize: '0.75rem',
                               fontWeight: 700
                             }}>
-                              {s.batchCode || s.gradeName}
+                              {s.batchCode || (/[a-zA-Z]/.test(s.fullName || '') ? (s.gradeNameEn || s.gradeName) : (isAr ? (s.gradeNameAr || s.gradeName) : (s.gradeNameEn || s.gradeName)))}
                             </span>
                           </td>
 
@@ -1534,13 +1552,13 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
                         color: 'var(--text-muted)'
                       }}>
                         <div>
-                          <strong style={{ color: 'var(--text-body)' }}>{isAr ? 'الصف:' : 'Batch:'}</strong> {s.batchCode || s.gradeName}
+                          <strong style={{ color: 'var(--text-body)' }}>{isAr ? 'الصف:' : 'Batch:'}</strong> {s.batchCode || (/[a-zA-Z]/.test(s.fullName || '') ? (s.gradeNameEn || s.gradeName) : (isAr ? (s.gradeNameAr || s.gradeName) : (s.gradeNameEn || s.gradeName)))}
                         </div>
                         <div>
-                          <strong style={{ color: 'var(--text-body)' }}>{isAr ? 'الجنس:' : 'Gender:'}</strong> {s.gender || 'Male'}
+                          <strong style={{ color: 'var(--text-body)' }}>{isAr ? 'الجنس:' : 'Gender:'}</strong> {s.gender || (/[a-zA-Z]/.test(s.fullName || '') ? 'Male' : (isAr ? 'ذكر' : 'Male'))}
                         </div>
                         <div>
-                          <strong style={{ color: 'var(--text-body)' }}>{isAr ? 'الديانة:' : 'Religion:'}</strong> {s.religion || 'مسلم'}
+                          <strong style={{ color: 'var(--text-body)' }}>{isAr ? 'الديانة:' : 'Religion:'}</strong> {s.religion || (/[a-zA-Z]/.test(s.fullName || '') ? 'Muslim' : (isAr ? 'مسلم' : 'Muslim'))}
                         </div>
                         <div>
                           <strong style={{ color: 'var(--text-body)' }}>{isAr ? 'تاريخ الميلاد:' : 'Birth:'}</strong> {s.birthDate || '-'}

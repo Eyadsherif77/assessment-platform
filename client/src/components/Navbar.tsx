@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import { usePlatformSettings } from '../context/PlatformSettingsContext';
 import { Globe, LogOut, User, Sparkles, School, Home as HomeIcon } from 'lucide-react';
 
 interface NavbarProps {
@@ -10,6 +11,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => {
   const { user, logout, language, setLanguage, t, isImpersonating, exitImpersonation, previousUser } = useAuth();
+  const { platformLogo } = usePlatformSettings();
 
   const toggleLanguage = () => {
     setLanguage(language === 'ar' ? 'en' : 'ar');
@@ -103,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
           onClick={(e) => { e.preventDefault(); setActiveView('home'); }}
         >
           <div className="brand-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', padding: 0 }}>
-            <img src="/logo.png" alt={t.brandName} style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '50%' }} />
+            <img src={platformLogo || '/logo.png'} alt={t.brandName} style={{ width: '38px', height: '38px', objectFit: 'contain', borderRadius: '50%' }} />
           </div>
           <div className="brand-text">
             <div className="brand-title">{t.brandName}</div>

@@ -79,12 +79,15 @@ router.get('/teachers', async (req: AuthenticatedRequest, res) => {
         tp.school_name, 
         tp.specialization,
         tp.grade_id,
+        tp.subject_id,
+        sub.name_ar as subject_name_ar,
         grd.name_ar as grade_name_ar,
         (SELECT COUNT(*) FROM books b WHERE b.teacher_id = u.id) as books_count,
         (SELECT COUNT(*) FROM exams e WHERE e.teacher_id = u.id) as exams_count
       FROM users u
       LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
       LEFT JOIN grades grd ON tp.grade_id = grd.id
+      LEFT JOIN subjects sub ON tp.subject_id = sub.id
       WHERE u.role = 'TEACHER'
       ORDER BY u.created_at DESC
     `;
@@ -114,6 +117,8 @@ router.get('/teachers', async (req: AuthenticatedRequest, res) => {
         specialization: row.specialization || 'معلم متخصص',
         gradeId: row.grade_id || null,
         gradeNameAr: row.grade_name_ar || null,
+        subjectId: row.subject_id || null,
+        subjectNameAr: row.subject_name_ar || null,
         isActive: row.is_active !== 0,
         booksCount: Number(row.books_count || 0),
         examsCount: Number(row.exams_count || 0),
@@ -134,7 +139,7 @@ router.get('/teachers', async (req: AuthenticatedRequest, res) => {
  */
 router.post('/teachers', async (req: AuthenticatedRequest, res) => {
   try {
-    const { email, password, fullName, specialization, schoolName, permissions, gradeId } = req.body;
+    const { email, password, fullName, specialization, schoolName, permissions, gradeId, subjectId } = req.body;
 
     if (!email || !password || !fullName) {
       return res.status(400).json({ error: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور واسم المعلم' });
@@ -153,8 +158,16 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
       }
     }
 
+    let finalSpecialization = specialization;
+    if (subjectId) {
+      const subRes = await db.query('SELECT name_ar FROM subjects WHERE id = $1', [subjectId]);
+      if (subRes.rows.length > 0) {
+        finalSpecialization = specialization || `معلم ${subRes.rows[0].name_ar}`;
+      }
+    }
+
     const teacherId = uuidv4();
-    const cleanSpec = specialization ? specialization.substring(0, 3).toUpperCase() : 'GEN';
+    const cleanSpec = finalSpecialization ? finalSpecialization.substring(0, 3).toUpperCase() : 'GEN';
     const hybridId = `HYBRID-TEA-${cleanSpec}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const passwordHash = await bcrypt.hash(password, 10);
 
@@ -168,8 +181,8 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
     };
 
     await db.query(
-      `INSERT INTO users (id, hybrid_id, email, password_hash, role, full_name, permissions, is_active)
-       VALUES ($1, $2, $3, $4, 'TEACHER', $5, $6, $7)`,
+      `INSERT INTO users (id, hybrid_id, email, password_hash, role, full_name, permissions, is_active, subject_id)
+       VALUES ($1, $2, $3, $4, 'TEACHER', $5, $6, $7, $8)`,
       [
         teacherId,
         hybridId,
@@ -177,14 +190,15 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
         passwordHash,
         fullName.trim(),
         JSON.stringify(defaultPerms),
-        defaultPerms.is_active ? 1 : 0
+        defaultPerms.is_active ? 1 : 0,
+        subjectId || null
       ]
     );
 
     await db.query(
-      `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization, grade_id, academic_stage_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [teacherId, fullName.trim(), schoolName || null, specialization || null, gradeId || null, stageId]
+      `INSERT INTO teacher_profiles (user_id, full_name, school_name, specialization, grade_id, academic_stage_id, subject_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [teacherId, fullName.trim(), schoolName || null, finalSpecialization || null, gradeId || null, stageId, subjectId || null]
     );
 
     return res.status(201).json({
@@ -194,9 +208,10 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
         hybrid_id: hybridId,
         email: email.toLowerCase().trim(),
         fullName: fullName.trim(),
-        specialization,
+        specialization: finalSpecialization,
         schoolName,
         gradeId: gradeId || null,
+        subjectId: subjectId || null,
         permissions: defaultPerms
       }
     });
@@ -483,6 +498,375 @@ router.post('/impersonate/student/:id', async (req: AuthenticatedRequest, res) =
   } catch (error: any) {
     console.error('Error impersonating student:', error);
     return res.status(500).json({ error: 'فشل الدخول إلى حساب الطالب' });
+  }
+});
+
+/**
+ * 4. Platform Settings & Global Controls
+ */
+router.get('/settings', async (req: AuthenticatedRequest, res) => {
+  try {
+    const rows = await db.query('SELECT setting_key, setting_value FROM platform_settings');
+    const settings: Record<string, any> = {
+      active_term: 1,
+      allow_student_registration: true,
+      active_grades: 'ALL',
+      platform_logo: '/logo.png',
+      monthly_exam_limit: 10,
+      allow_subordinate_visibility: true
+    };
+
+    for (const r of rows.rows) {
+      if (r.setting_key === 'active_term') {
+        settings.active_term = parseInt(r.setting_value, 10) || 1;
+      } else if (r.setting_key === 'allow_student_registration') {
+        settings.allow_student_registration = r.setting_value === 'true' || r.setting_value === '1';
+      } else if (r.setting_key === 'allow_subordinate_visibility') {
+        settings.allow_subordinate_visibility = r.setting_value === 'true' || r.setting_value === '1';
+      } else if (r.setting_key === 'active_grades') {
+        try {
+          settings.active_grades = JSON.parse(r.setting_value);
+        } catch {
+          settings.active_grades = r.setting_value;
+        }
+      } else if (r.setting_key === 'platform_logo') {
+        settings.platform_logo = r.setting_value;
+      } else if (r.setting_key === 'monthly_exam_limit') {
+        settings.monthly_exam_limit = parseInt(r.setting_value, 10) || 10;
+      } else {
+        settings[r.setting_key] = r.setting_value;
+      }
+    }
+
+    return res.json(settings);
+  } catch (error: any) {
+    return res.status(500).json({ error: 'خطأ في جلب إعدادات المنظومة' });
+  }
+});
+
+router.post('/settings', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { active_term, allow_student_registration, allow_subordinate_visibility, active_grades, platform_logo, monthly_exam_limit } = req.body;
+    const now = new Date().toISOString();
+    const updatedBy = req.user!.email;
+
+    const updates: Array<{ key: string; val: string }> = [];
+
+    if (active_term !== undefined) {
+      const termNum = parseInt(String(active_term), 10) === 2 ? '2' : '1';
+      updates.push({ key: 'active_term', val: termNum });
+    }
+    if (allow_student_registration !== undefined) {
+      updates.push({ key: 'allow_student_registration', val: String(!!allow_student_registration) });
+    }
+    if (allow_subordinate_visibility !== undefined) {
+      updates.push({ key: 'allow_subordinate_visibility', val: String(!!allow_subordinate_visibility) });
+    }
+    if (active_grades !== undefined) {
+      const gVal = typeof active_grades === 'string' ? active_grades : JSON.stringify(active_grades);
+      updates.push({ key: 'active_grades', val: gVal });
+    }
+    if (platform_logo !== undefined) {
+      updates.push({ key: 'platform_logo', val: String(platform_logo) });
+    }
+    if (monthly_exam_limit !== undefined) {
+      const lim = parseInt(String(monthly_exam_limit), 10);
+      if (!isNaN(lim) && lim > 0) {
+        updates.push({ key: 'monthly_exam_limit', val: String(lim) });
+      }
+    }
+
+    for (const u of updates) {
+      try {
+        await db.query(
+          `INSERT INTO platform_settings (setting_key, setting_value, updated_at, updated_by)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (setting_key) DO UPDATE SET setting_value = $2, updated_at = $3, updated_by = $4`,
+          [u.key, u.val, now, updatedBy]
+        );
+      } catch (_) {
+        try {
+          await db.query(
+            `REPLACE INTO platform_settings (setting_key, setting_value, updated_at, updated_by)
+             VALUES ($1, $2, $3, $4)`,
+            [u.key, u.val, now, updatedBy]
+          );
+        } catch (e) {
+          console.error(`Error saving setting ${u.key}:`, e);
+        }
+      }
+    }
+
+    return res.json({ message: 'تم حفظ إعدادات المنظومة بنجاح', success: true });
+  } catch (error: any) {
+    console.error('Error saving settings:', error);
+    return res.status(500).json({ error: 'خطأ أثناء حفظ إعدادات المنظومة: ' + error.message });
+  }
+});
+
+/**
+ * 5. Admin Curriculum & Books Management
+ */
+router.get('/books', async (req: AuthenticatedRequest, res) => {
+  try {
+    const query = `
+      SELECT b.*, 
+             s.name_ar as subject_name_ar, s.name_en as subject_name_en,
+             st.name_ar as stage_name_ar, 
+             g.name_ar as grade_name_ar,
+             (SELECT COUNT(*) FROM book_chapters bc WHERE bc.book_id = b.id) as chapters_count
+      FROM books b
+      LEFT JOIN subjects s ON b.subject_id = s.id
+      LEFT JOIN academic_stages st ON b.academic_stage_id = st.id
+      LEFT JOIN grades g ON b.grade_id = g.id
+      ORDER BY b.term ASC, g.sort_order ASC, b.created_at DESC
+    `;
+    const booksRes = await db.query(query);
+    return res.json({ books: booksRes.rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب قائمة المناهج والكتب: ' + err.message });
+  }
+});
+
+router.delete('/books/:id', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM book_chunks WHERE book_id = $1', [id]);
+    await db.query('DELETE FROM book_chapters WHERE book_id = $1', [id]);
+    await db.query('DELETE FROM question_bank WHERE book_id = $1', [id]);
+    await db.query('DELETE FROM books WHERE id = $1', [id]);
+
+    return res.json({ message: 'تم حذف الكتاب والمحتوى المرتبط به بنجاح' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل حذف الكتاب: ' + err.message });
+  }
+});
+
+router.put('/books/:id', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      title_ar,
+      title_en,
+      academic_stage_id,
+      grade_id,
+      subject_id,
+      term,
+      school_type
+    } = req.body;
+
+    const bookCheck = await db.query('SELECT * FROM books WHERE id = $1', [id]);
+    if (bookCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'الكتاب غير موجود' });
+    }
+
+    const cur = bookCheck.rows[0];
+    const newTitleAr = title_ar !== undefined && String(title_ar).trim() ? String(title_ar).trim() : cur.title_ar;
+    const newTitleEn = title_en !== undefined && String(title_en).trim() ? String(title_en).trim() : (cur.title_en || newTitleAr);
+    const newStageId = academic_stage_id || cur.academic_stage_id;
+    const newGradeId = grade_id || cur.grade_id;
+    const newSubjectId = subject_id || cur.subject_id;
+    const newTerm = term !== undefined ? (parseInt(String(term), 10) === 2 ? 2 : 1) : cur.term;
+    const newSchoolType = school_type !== undefined ? school_type : cur.school_type;
+
+    await db.query(
+      `UPDATE books 
+       SET title_ar = $1, title_en = $2, academic_stage_id = $3, grade_id = $4, subject_id = $5, term = $6, school_type = $7
+       WHERE id = $8`,
+      [newTitleAr, newTitleEn, newStageId, newGradeId, newSubjectId, newTerm, newSchoolType, id]
+    );
+
+    // Sync cascaded references in chunks so future question generations and filters are fully aligned
+    await db.query(
+      `UPDATE book_chunks 
+       SET academic_stage_id = $1, grade_id = $2, subject_id = $3
+       WHERE book_id = $4`,
+      [newStageId, newGradeId, newSubjectId, id]
+    );
+
+    return res.json({
+      message: 'تم تحديث بيانات الكتاب بنجاح ومزامنة التحديثات',
+      book: {
+        id,
+        title_ar: newTitleAr,
+        title_en: newTitleEn,
+        academic_stage_id: newStageId,
+        grade_id: newGradeId,
+        subject_id: newSubjectId,
+        term: newTerm,
+        school_type: newSchoolType
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل تحديث بيانات الكتاب: ' + err.message });
+  }
+});
+
+/**
+ * 6. Superadmin Profile & Credentials Management (with double-check confirmation)
+ */
+router.put('/profile/credentials', async (req: AuthenticatedRequest, res) => {
+  try {
+    const adminId = req.user!.id;
+    const { fullName, email, currentPassword, newPassword, confirmNewPassword } = req.body;
+
+    const adminRes = await db.query(`SELECT id, email, full_name, role, password_hash FROM users WHERE id = $1`, [adminId]);
+    if (adminRes.rows.length === 0) {
+      return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+    const admin = adminRes.rows[0];
+
+    if (currentPassword || newPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'الرجاء إدخال كلمة المرور الحالية لتأكيد التغيير' });
+      }
+      const isMatch = await bcrypt.compare(currentPassword, admin.password_hash);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+      }
+    }
+
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'يجب ألا تقل كلمة المرور الجديدة عن 6 أحرف' });
+      }
+      if (!confirmNewPassword || newPassword !== confirmNewPassword) {
+        return res.status(400).json({ error: 'كلمتا المرور غير متطابقتين (فشل التأكيد المزدوج)' });
+      }
+    }
+
+    let updatedHash = admin.password_hash;
+    if (newPassword) {
+      updatedHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    const updatedFullName = fullName && fullName.trim() ? fullName.trim() : admin.full_name;
+    const updatedEmail = email && email.trim() ? email.trim() : admin.email;
+
+    if (updatedEmail !== admin.email) {
+      const emailCheck = await db.query(`SELECT id FROM users WHERE email = $1 AND id != $2`, [updatedEmail, adminId]);
+      if (emailCheck.rows.length > 0) {
+        return res.status(400).json({ error: 'اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل بحساب آخر' });
+      }
+    }
+
+    await db.query(
+      `UPDATE users SET full_name = $1, email = $2, password_hash = $3 WHERE id = $4`,
+      [updatedFullName, updatedEmail, updatedHash, adminId]
+    );
+
+    const token = generateToken({
+      id: admin.id,
+      email: updatedEmail,
+      role: admin.role,
+      fullName: updatedFullName
+    });
+
+    return res.json({
+      message: 'تم تحديث بيانات الحساب وكلمة المرور بنجاح',
+      user: {
+        id: admin.id,
+        email: updatedEmail,
+        fullName: updatedFullName,
+        role: admin.role
+      },
+      token
+    });
+  } catch (err: any) {
+    console.error('Update admin credentials error:', err);
+    return res.status(500).json({ error: 'حدث خطأ أثناء تحديث بيانات الحساب: ' + err.message });
+  }
+});
+
+/**
+ * 7. Change/Reset Password for users under Superadmin (with double check)
+ */
+router.put('/users/:userId/password', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword, confirmNewPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل' });
+    }
+    if (!confirmNewPassword || newPassword !== confirmNewPassword) {
+      return res.status(400).json({ error: 'كلمتا المرور غير متطابقتين (فشل التأكيد المزدوج)' });
+    }
+
+    const userRes = await db.query(`SELECT id, full_name, email, role FROM users WHERE id = $1`, [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await db.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [newHash, userId]);
+
+    return res.json({
+      message: `تم تغيير كلمة المرور للمستخدم (${userRes.rows[0].full_name}) بنجاح`,
+      userId
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل تغيير كلمة مرور المستخدم: ' + err.message });
+  }
+});
+
+/**
+ * 8. Student Device Limits & Active Sessions Management
+ */
+router.get('/students/:userId/devices', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const devicesRes = await db.query(
+      `SELECT id, device_id, device_name, ip_address, last_active_at, created_at 
+       FROM user_active_devices WHERE user_id = $1 ORDER BY last_active_at DESC`,
+      [userId]
+    );
+    const spRes = await db.query(`SELECT max_devices FROM student_profiles WHERE user_id = $1`, [userId]);
+    const maxDevices = spRes.rows[0]?.max_devices ? Number(spRes.rows[0].max_devices) : 2;
+
+    return res.json({
+      devices: devicesRes.rows,
+      max_devices: maxDevices,
+      count: devicesRes.rows.length
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب أجهزة الطالب' });
+  }
+});
+
+router.put('/students/:userId/max-devices', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { maxDevices } = req.body;
+    const num = parseInt(String(maxDevices), 10);
+    if (isNaN(num) || num < 1 || num > 20) {
+      return res.status(400).json({ error: 'الرجاء إدخال رقم صحيح بين 1 و 20 للأجهزة المسموح بها' });
+    }
+
+    await db.query(`UPDATE student_profiles SET max_devices = $1 WHERE user_id = $2`, [num, userId]);
+    return res.json({ message: `تم تحديث الحد الأقصى للأجهزة إلى (${num}) بنجاح`, max_devices: num });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل تحديث الحد الأقصى للأجهزة' });
+  }
+});
+
+router.delete('/students/:userId/devices/:deviceId', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId, deviceId } = req.params;
+    await db.query(`DELETE FROM user_active_devices WHERE user_id = $1 AND (device_id = $2 OR id = $2)`, [userId, deviceId]);
+    return res.json({ message: 'تم إزالة الجهاز بنجاح ويمكن للطالب الدخول بجهاز جديد' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل إزالة الجهاز' });
+  }
+});
+
+router.delete('/students/:userId/devices', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { userId } = req.params;
+    await db.query(`DELETE FROM user_active_devices WHERE user_id = $1`, [userId]);
+    return res.json({ message: 'تمت إعادة ضبط وحذف جميع الأجهزة المسجلة للطالب بنجاح' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل تصفير أجهزة الطالب' });
   }
 });
 

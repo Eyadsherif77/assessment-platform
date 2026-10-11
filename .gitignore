@@ -15,3 +15,13 @@ uploads/*.pdf
 server/pgdata_local/
 *.db
 scratch/
+__pycache__/
+*.pyc
+scratch_*.mjs
+server/check_*.mjs
+server/inspect_*.mjs
+server/scratch_*.mjs
+server/test_*.mjs
+server/migrate_*.mjs
+server/src/scratch_*.mjs
+server/src/migrate_*.mjs

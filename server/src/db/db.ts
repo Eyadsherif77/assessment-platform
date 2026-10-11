@@ -209,24 +209,46 @@ class DatabaseManager {
             }
           }
 
-          // Hierarchy migrations for users, exams, and teacher_profiles
+          // Hierarchy migrations for users, exams, teacher_profiles, and books
           const hierarchyUserCols = [
             'ALTER TABLE users ADD COLUMN governorate_id VARCHAR(64) NULL',
             'ALTER TABLE users ADD COLUMN subject_id VARCHAR(64) NULL',
             'ALTER TABLE users ADD COLUMN created_by VARCHAR(64) NULL',
             'ALTER TABLE exams ADD COLUMN governorate_id VARCHAR(64) NULL',
+            'ALTER TABLE exams ADD COLUMN term INT DEFAULT 1',
+            'ALTER TABLE exams ADD COLUMN school_type VARCHAR(64) DEFAULT \'كلاهما\'',
+            'ALTER TABLE books ADD COLUMN term INT DEFAULT 1',
+            'ALTER TABLE books ADD COLUMN school_type VARCHAR(64) DEFAULT \'كلاهما\'',
             'ALTER TABLE teacher_profiles ADD COLUMN governorate_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN subject_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN supervisor_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN grade_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN academic_stage_id VARCHAR(64) NULL',
-            'ALTER TABLE users ADD COLUMN initial_password VARCHAR(255) NULL'
+            'ALTER TABLE users ADD COLUMN initial_password VARCHAR(255) NULL',
+            'ALTER TABLE student_profiles ADD COLUMN max_devices INT DEFAULT 2'
           ];
           for (const colSql of hierarchyUserCols) {
             try {
               await this.tidbConn.execute(colSql);
             } catch (_) {}
           }
+
+          // Ensure user_active_devices table
+          try {
+            await this.tidbConn.execute(`
+              CREATE TABLE IF NOT EXISTS user_active_devices (
+                id VARCHAR(64) PRIMARY KEY,
+                user_id VARCHAR(64) NOT NULL,
+                device_id VARCHAR(128) NOT NULL,
+                device_name VARCHAR(128),
+                ip_address VARCHAR(64),
+                last_active_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_device_user (user_id),
+                UNIQUE KEY uq_user_device (user_id, device_id)
+              )
+            `);
+          } catch (_) {}
 
           // Ensure chunked uploads storage table
           try {
@@ -347,6 +369,9 @@ class DatabaseManager {
         try {
           await this.query(`ALTER TABLE teacher_profiles ADD COLUMN supervisor_id TEXT`);
         } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE teacher_profiles ADD COLUMN teaching_assignments TEXT`);
+        } catch (_) {}
 
         // Ensure no NULL school_type values exist in database
         try {
@@ -370,6 +395,42 @@ class DatabaseManager {
             )
           `);
         } catch (_) {}
+
+        // Add term column to books and exams
+        try {
+          await this.query(`ALTER TABLE books ADD COLUMN term INTEGER DEFAULT 1`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE exams ADD COLUMN term INTEGER DEFAULT 1`);
+        } catch (_) {}
+
+        // Initialize default platform settings if not present
+        const defaultSettings = [
+          ['active_term', '1'],
+          ['allow_student_registration', 'true'],
+          ['active_grades', 'ALL'],
+          ['platform_logo', '/logo.png'],
+          ['monthly_exam_limit', '10']
+        ];
+        for (const [key, val] of defaultSettings) {
+          try {
+            await this.query(
+              `INSERT INTO platform_settings (setting_key, setting_value, updated_at, updated_by)
+               VALUES ($1, $2, $3, 'SYSTEM')
+               ON CONFLICT (setting_key) DO NOTHING`,
+              [key, val, new Date().toISOString()]
+            );
+          } catch (_) {
+            // For MySQL / SQLite compatibility
+            try {
+              await this.query(
+                `INSERT IGNORE INTO platform_settings (setting_key, setting_value, updated_at, updated_by)
+                 VALUES ($1, $2, $3, 'SYSTEM')`,
+                [key, val, new Date().toISOString()]
+              );
+            } catch (_) {}
+          }
+        }
 
         await this.ensureAllGradesAndSubjects();
         console.log('✅ Database schema verified and active.');

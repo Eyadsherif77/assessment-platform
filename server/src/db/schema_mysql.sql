@@ -81,11 +81,25 @@ CREATE TABLE IF NOT EXISTS student_profiles (
     grade_id VARCHAR(64) NOT NULL,
     section VARCHAR(64),
     school_type VARCHAR(64),
+    max_devices INT DEFAULT 2,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (academic_stage_id) REFERENCES academic_stages(id),
     FOREIGN KEY (grade_id) REFERENCES grades(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_active_devices (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    device_id VARCHAR(128) NOT NULL,
+    device_name VARCHAR(128),
+    ip_address VARCHAR(64),
+    last_active_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_device_user (user_id),
+    UNIQUE KEY uq_user_device (user_id, device_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS teacher_profiles (
@@ -116,6 +130,7 @@ CREATE TABLE IF NOT EXISTS books (
     processing_status VARCHAR(64) DEFAULT 'COMPLETED',
     processing_error TEXT,
     school_type VARCHAR(64) DEFAULT 'كلاهما',
+    term INT DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (academic_stage_id) REFERENCES academic_stages(id),
     FOREIGN KEY (grade_id) REFERENCES grades(id),
@@ -216,6 +231,7 @@ CREATE TABLE IF NOT EXISTS exams (
     duration_minutes INT DEFAULT 30,
     is_published INT DEFAULT 0,
     school_type VARCHAR(64) DEFAULT 'كلاهما',
+    term INT DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (academic_stage_id) REFERENCES academic_stages(id),

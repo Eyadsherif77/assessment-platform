@@ -53,11 +53,11 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB
 });
 
-// Upload Book (Teachers & Admins only)
+// Upload Book (Main Admin only)
 router.post(
   '/upload',
   authenticateToken,
-  requireRole(['TEACHER', 'ADMIN']),
+  requireRole(['ADMIN']),
   upload.single('file'),
   async (req: AuthenticatedRequest, res) => {
     try {
@@ -67,6 +67,7 @@ router.post(
         academic_stage_id,
         grade_id,
         subject_id,
+        term = 1,
         chapter_number,
         chapter_title_ar,
         school_type
@@ -81,12 +82,13 @@ router.post(
       const filePath = req.file ? req.file.path : '';
       const fileSize = req.file ? req.file.size : 0;
       const effectiveSchoolType = school_type || 'كلاهما';
+      const cleanTerm = parseInt(String(term), 10) === 2 ? 2 : 1;
 
       await db.query(
         `INSERT INTO books (
            id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
-           file_url, file_size, school_type, processing_status
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING')`,
+           file_url, file_size, school_type, term, processing_status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING')`,
         [
           bookId,
           title_ar.trim(),
@@ -97,7 +99,8 @@ router.post(
           req.user!.id,
           fileUrl,
           fileSize,
-          effectiveSchoolType
+          effectiveSchoolType,
+          cleanTerm
         ]
       );
 
@@ -290,7 +293,7 @@ router.post(
 router.post(
   '/upload-chunk',
   authenticateToken,
-  requireRole(['TEACHER', 'ADMIN']),
+  requireRole(['ADMIN']),
   chunkUpload.single('chunk'),
   async (req: AuthenticatedRequest, res) => {
     try {
@@ -319,7 +322,7 @@ router.post(
 router.post(
   '/finalize-chunked',
   authenticateToken,
-  requireRole(['TEACHER', 'ADMIN']),
+  requireRole(['ADMIN']),
   async (req: AuthenticatedRequest, res) => {
     try {
       const {
@@ -329,6 +332,7 @@ router.post(
         academic_stage_id,
         grade_id,
         subject_id,
+        term = 1,
         chapter_number,
         chapter_title_ar,
         school_type,
@@ -421,13 +425,14 @@ router.post(
       const effectiveSchoolType = school_type || 'كلاهما';
       const effectiveFileSize = Number(fileSize) || fullBuffer.length;
       const effectiveFileName = fileName ? `/uploads/${fileName}` : '/uploads/course_book.pdf';
+      const cleanTerm = parseInt(String(term), 10) === 2 ? 2 : 1;
 
       // 4. Insert into books table
       await db.query(
         `INSERT INTO books (
            id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
-           file_url, file_size, total_pages, school_type, processing_status
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'COMPLETED')`,
+           file_url, file_size, total_pages, school_type, term, processing_status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'COMPLETED')`,
         [
           bookId,
           title_ar.trim(),
@@ -439,7 +444,8 @@ router.post(
           effectiveFileName,
           effectiveFileSize,
           totalNumPages || pages.length,
-          effectiveSchoolType
+          effectiveSchoolType,
+          cleanTerm
         ]
       );
 
@@ -606,18 +612,35 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       params.push(studentSchoolType);
       conditions.push(`(b.school_type = $${params.length} OR b.school_type = 'كلاهما' OR b.school_type IS NULL)`);
     } else {
-      // For teachers: return their own books directly when my_only is requested
+      // For teachers: textbooks are uploaded by Admin. Teachers see curriculum books for the platform/filters
+      // For teachers: filter textbooks strictly to their assigned subject & grade
       if (req.user?.role === 'TEACHER') {
-        if (req.query.my_only === 'true' && req.user?.id) {
-          params.push(req.user.id);
-          conditions.push(`b.teacher_id = $${params.length}`);
-          if (req.query.subject_id) {
-            params.push(req.query.subject_id);
-            conditions.push(`b.subject_id = $${params.length}`);
+        const teacherSubjId = req.query.subject_id || req.teacherProfile?.subjectId;
+        const teacherGradeId = req.query.grade_id || req.teacherProfile?.gradeId;
+        const teacherStageId = req.query.stage_id || req.teacherProfile?.academicStageId;
+
+        if (teacherStageId) {
+          params.push(teacherStageId);
+          conditions.push(`b.academic_stage_id = $${params.length}`);
+        }
+        if (teacherGradeId) {
+          params.push(teacherGradeId);
+          conditions.push(`b.grade_id = $${params.length}`);
+        }
+        if (teacherSubjId) {
+          params.push(teacherSubjId);
+          conditions.push(`(b.subject_id = $${params.length} OR b.subject_id IN (
+            SELECT s2.id FROM subjects s1 
+            JOIN subjects s2 ON (s1.code = s2.code OR s1.name_ar = s2.name_ar) 
+            WHERE s1.id = $${params.length}
+          ))`);
+        } else if (req.teacherProfile?.specialization) {
+          const specClean = req.teacherProfile.specialization.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim().toLowerCase();
+          const sRows = await db.query(`SELECT id FROM subjects WHERE LOWER(name_ar) LIKE $1 OR LOWER(name_en) LIKE $1 OR LOWER(code) LIKE $1`, [`%${specClean}%`]);
+          if (sRows.rows.length > 0) {
+            const subjIds = sRows.rows.map((r: any) => `'${r.id}'`).join(',');
+            conditions.push(`b.subject_id IN (${subjIds})`);
           }
-        } else if (req.query.subject_id) {
-          params.push(req.query.subject_id);
-          conditions.push(`b.subject_id = $${params.length}`);
         }
       } else if (req.query.my_only === 'true' && req.user?.id) {
         params.push(req.user.id);
@@ -625,23 +648,38 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       }
 
       // Optional query filters
-      if (req.query.stage_id) {
+      if (req.query.stage_id && req.user?.role !== 'TEACHER') {
         params.push(req.query.stage_id);
         conditions.push(`b.academic_stage_id = $${params.length}`);
       }
-      if (req.query.grade_id) {
+      if (req.query.grade_id && req.user?.role !== 'TEACHER') {
         params.push(req.query.grade_id);
         conditions.push(`b.grade_id = $${params.length}`);
       }
       if (req.query.school_type) {
         params.push(req.query.school_type);
-        conditions.push(`b.school_type = $${params.length}`);
+        conditions.push(`(b.school_type = $${params.length} OR b.school_type = 'كلاهما' OR b.school_type IS NULL)`);
       }
     }
 
-    if (req.query.subject_id) {
+    if (req.query.subject_id && req.user?.role !== 'TEACHER') {
       params.push(req.query.subject_id);
       conditions.push(`b.subject_id = $${params.length}`);
+    }
+
+    // Term filtering: query param 'term', or default to platform's active_term for students and teachers
+    let filterTerm: number | null = req.query.term ? parseInt(String(req.query.term), 10) : null;
+    if (!filterTerm && (req.user?.role === 'STUDENT' || req.user?.role === 'TEACHER')) {
+      try {
+        const termSetting = await db.query(`SELECT setting_value FROM platform_settings WHERE setting_key = 'active_term'`);
+        filterTerm = termSetting.rows.length > 0 ? (parseInt(termSetting.rows[0].setting_value, 10) || 1) : 1;
+      } catch (_) {
+        filterTerm = 1;
+      }
+    }
+    if (filterTerm && (filterTerm === 1 || filterTerm === 2)) {
+      params.push(filterTerm);
+      conditions.push(`(b.term = $${params.length} OR b.term IS NULL)`);
     }
 
     if (conditions.length > 0) {

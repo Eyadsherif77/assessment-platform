@@ -32,18 +32,24 @@ export class AIChapterDetector {
 
     let detected: DetectedChapter[] = [];
 
-    // 1. Try Gemini AI detection using Table of Contents / first 20 pages
+    // 1. Try Gemini AI detection using Table of Contents / first 20 pages with 3s fast timeout
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey && pages.length > 0) {
       try {
-        detected = await this.callGeminiForChapters({
-          bookTitleAr,
-          bookTitleEn: bookTitleEn || bookTitleAr,
-          totalPages,
-          pagesSlice: pages.slice(0, 20)
-        });
+        const timeoutPromise = new Promise<DetectedChapter[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Chapter detection timeout')), 3000)
+        );
+        detected = await Promise.race([
+          this.callGeminiForChapters({
+            bookTitleAr,
+            bookTitleEn: bookTitleEn || bookTitleAr,
+            totalPages,
+            pagesSlice: pages.slice(0, 20)
+          }),
+          timeoutPromise
+        ]);
       } catch (err) {
-        console.warn('⚠️ AI chapter detection note, falling back to heuristic:', err);
+        console.warn('⚠️ AI chapter detection fast fallback to heuristic:', err);
       }
     }
 

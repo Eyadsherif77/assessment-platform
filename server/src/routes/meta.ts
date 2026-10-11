@@ -50,6 +50,30 @@ router.get('/stages/:stageId/grades', async (req, res) => {
   }
 });
 
+// Get all subjects (optionally filtered by gradeId or stageId)
+router.get('/subjects', async (req, res) => {
+  try {
+    const { gradeId } = req.query;
+    if (gradeId) {
+      const subjects = await db.query(
+        'SELECT * FROM subjects WHERE grade_id = $1 ORDER BY sort_order ASC',
+        [gradeId]
+      );
+      return res.json(subjects.rows);
+    }
+    const subjects = await db.query(`
+      SELECT s.*, g.name_ar as grade_name_ar, g.code as grade_code, st.name_ar as stage_name_ar
+      FROM subjects s
+      JOIN grades g ON s.grade_id = g.id
+      JOIN academic_stages st ON g.stage_id = st.id
+      ORDER BY st.sort_order ASC, g.sort_order ASC, s.sort_order ASC
+    `);
+    return res.json(subjects.rows);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب المواد الدراسية: ' + err.message });
+  }
+});
+
 // Get subjects for a specific grade
 router.get('/grades/:gradeId/subjects', async (req, res) => {
   try {
@@ -84,6 +108,47 @@ router.get('/locations', async (req, res) => {
     return res.json(result);
   } catch (err: any) {
     return res.status(500).json({ error: 'خطأ في جلب المواقع والمدارس' });
+  }
+});
+
+// Get global platform settings (publicly accessible for branding and behavior)
+router.get('/platform-settings', async (req, res) => {
+  try {
+    const rows = await db.query('SELECT setting_key, setting_value FROM platform_settings');
+    const settings: Record<string, any> = {
+      active_term: 1,
+      allow_student_registration: true,
+      active_grades: 'ALL',
+      platform_logo: '/logo.png',
+      monthly_exam_limit: 10,
+      allow_subordinate_visibility: true
+    };
+
+    for (const r of rows.rows) {
+      if (r.setting_key === 'active_term') {
+        settings.active_term = parseInt(r.setting_value, 10) || 1;
+      } else if (r.setting_key === 'allow_student_registration') {
+        settings.allow_student_registration = r.setting_value === 'true' || r.setting_value === '1';
+      } else if (r.setting_key === 'allow_subordinate_visibility') {
+        settings.allow_subordinate_visibility = r.setting_value === 'true' || r.setting_value === '1';
+      } else if (r.setting_key === 'active_grades') {
+        try {
+          settings.active_grades = JSON.parse(r.setting_value);
+        } catch {
+          settings.active_grades = r.setting_value;
+        }
+      } else if (r.setting_key === 'platform_logo') {
+        settings.platform_logo = r.setting_value;
+      } else if (r.setting_key === 'monthly_exam_limit') {
+        settings.monthly_exam_limit = parseInt(r.setting_value, 10) || 10;
+      } else {
+        settings[r.setting_key] = r.setting_value;
+      }
+    }
+
+    return res.json(settings);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب إعدادات المنظومة: ' + err.message });
   }
 });
 

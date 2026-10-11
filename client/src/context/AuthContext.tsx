@@ -40,6 +40,9 @@ export interface UserProfile {
     specialization?: string;
     section?: string;
     school_type?: string;
+    assigned_grades?: any;
+    assigned_subjects?: any;
+    [key: string]: any;
   };
 }
 

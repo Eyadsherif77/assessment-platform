@@ -9,6 +9,7 @@ import { AdminTeacherPortal } from './pages/AdminTeacherPortal';
 import { HierarchyDashboard } from './pages/HierarchyDashboard';
 import { GovernorateSupervisorDashboard } from './pages/GovernorateSupervisorDashboard';
 import { AuthModal } from './pages/AuthModal';
+import { PlatformSettingsProvider } from './context/PlatformSettingsContext';
 import { useScreenDetector } from './utils/useScreenDetector';
 
 const PlatformApp: React.FC = () => {
@@ -175,8 +176,10 @@ const PlatformApp: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <PlatformApp />
-    </AuthProvider>
+    <PlatformSettingsProvider>
+      <AuthProvider>
+        <PlatformApp />
+      </AuthProvider>
+    </PlatformSettingsProvider>
   );
 }

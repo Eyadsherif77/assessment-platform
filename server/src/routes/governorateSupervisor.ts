@@ -140,8 +140,10 @@ router.get('/students', async (req: AuthenticatedRequest, res) => {
         sp.academic_stage_id,
         sp.grade_id,
         g.name_ar as grade_name_ar,
+        g.name_en as grade_name_en,
         g.code as grade_code,
         s.name_ar as stage_name_ar,
+        s.name_en as stage_name_en,
         gov.name_ar as governorate_name
       FROM users u
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
@@ -157,6 +159,7 @@ router.get('/students', async (req: AuthenticatedRequest, res) => {
     const students = result.rows.map(row => {
       const uname = row.username || (row.email ? row.email.split('@')[0] : '');
       const autoPass = uname ? `${uname}Aa@1` : (row.initial_password || 'Aa@1');
+      const isEnglishStudent = /[a-zA-Z]/.test(row.full_name || '') && !(/[\u0600-\u06FF]/.test(row.full_name || ''));
       return {
         id: row.id,
         imported: row.student_code || `#s-${row.id.substring(0, 6)}`,
@@ -174,13 +177,17 @@ router.get('/students', async (req: AuthenticatedRequest, res) => {
         birthDate: row.birth_date || '',
         religion: row.religion || '',
         nationality: row.nationality || '',
-        batchCode: row.batch_code || row.grade_name_ar || '',
+        batchCode: row.batch_code || (isEnglishStudent ? (row.grade_name_en || row.grade_name_ar) : (row.grade_name_ar || row.grade_name_en)) || '',
         electiveSubjects: row.elective_subjects || '',
         familyCode: row.family_code || '',
         gradeId: row.grade_id,
-        gradeName: row.grade_name_ar || 'غير محدد',
+        gradeName: isEnglishStudent ? (row.grade_name_en || row.grade_name_ar || 'Unspecified') : (row.grade_name_ar || row.grade_name_en || 'غير محدد'),
+        gradeNameAr: row.grade_name_ar || 'غير محدد',
+        gradeNameEn: row.grade_name_en || 'Unspecified',
         gradeCode: row.grade_code,
-        stageName: row.stage_name_ar || 'غير محدد',
+        stageName: isEnglishStudent ? (row.stage_name_en || row.stage_name_ar || 'Unspecified') : (row.stage_name_ar || row.stage_name_en || 'غير محدد'),
+        stageNameAr: row.stage_name_ar || 'غير محدد',
+        stageNameEn: row.stage_name_en || 'Unspecified',
         schoolType: row.school_type || 'عربى',
         schoolName: row.school_name || 'المدرسة الرسمية',
         governorateName: row.governorate_name || 'غير محدد',
@@ -379,14 +386,68 @@ router.post('/students/bulk', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'لم يتم توفير أي بيانات طلاب للاستيراد' });
     }
 
-    // Cache all grades
+    // Cache all grades with English names
     const gradesRes = await db.query(
-      `SELECT g.id, g.code, g.name_ar, g.stage_id, s.name_ar as stage_name
+      `SELECT g.id, g.code, g.name_ar, g.name_en, g.stage_id, s.name_ar as stage_name, s.name_en as stage_name_en
        FROM grades g
        JOIN academic_stages s ON g.stage_id = s.id`
     );
     const allGrades = gradesRes.rows;
     const fallbackGrade = (defaultGradeId ? allGrades.find(g => g.id === defaultGradeId) : null) || allGrades[0];
+
+    // Helper: Smart grade resolution supporting Arabic & English
+    const resolveGrade = (batchCode: string, rowGradeId: string | undefined) => {
+      if (rowGradeId) {
+        const found = allGrades.find(g => g.id === rowGradeId);
+        if (found) return found;
+      }
+      if (!batchCode || !batchCode.trim()) return fallbackGrade;
+      const raw = batchCode.trim().toLowerCase();
+
+      // 1. Direct name / code match
+      for (const g of allGrades) {
+        if (g.code && raw === g.code.toLowerCase()) return g;
+        if (g.name_ar && (raw.includes(g.name_ar.toLowerCase()) || g.name_ar.toLowerCase().includes(raw))) return g;
+        if (g.name_en && (raw.includes(g.name_en.toLowerCase()) || g.name_en.toLowerCase().includes(raw))) return g;
+      }
+
+      // 2. Prep / Preparatory / إعدادي / Grade 7-9
+      if (/(?:prep|preparatory|إعدادي|اعدادي|grade\s*7\b|year\s*7\b|g\s*7\b)/i.test(raw)) {
+        if (/(?:3|three|تالتة|ثالث)/i.test(raw) || /grade\s*9/i.test(raw)) return allGrades.find(g => g.code === 'PREP_3') || fallbackGrade;
+        if (/(?:2|two|تانية|ثانية|ثاني)/i.test(raw) || /grade\s*8/i.test(raw)) return allGrades.find(g => g.code === 'PREP_2') || fallbackGrade;
+        return allGrades.find(g => g.code === 'PREP_1') || fallbackGrade;
+      }
+      if (/grade\s*9\b|year\s*9\b|g\s*9\b/i.test(raw)) return allGrades.find(g => g.code === 'PREP_3') || fallbackGrade;
+      if (/grade\s*8\b|year\s*8\b|g\s*8\b/i.test(raw)) return allGrades.find(g => g.code === 'PREP_2') || fallbackGrade;
+      if (/grade\s*7\b|year\s*7\b|g\s*7\b/i.test(raw)) return allGrades.find(g => g.code === 'PREP_1') || fallbackGrade;
+
+      // 3. Secondary / ثانوي / Grade 10-12
+      if (/(?:sec|secondary|ثانوي|ثانوية)/i.test(raw)) {
+        if (/(?:3|three|تالتة|ثالث)/i.test(raw) || /grade\s*12/i.test(raw)) return allGrades.find(g => g.code === 'SEC_3') || fallbackGrade;
+        if (/(?:2|two|تانية|ثانية|ثاني)/i.test(raw) || /grade\s*11/i.test(raw)) return allGrades.find(g => g.code === 'SEC_2') || fallbackGrade;
+        return allGrades.find(g => g.code === 'SEC_1') || fallbackGrade;
+      }
+      if (/grade\s*12\b|year\s*12\b|g\s*12\b/i.test(raw)) return allGrades.find(g => g.code === 'SEC_3') || fallbackGrade;
+      if (/grade\s*11\b|year\s*11\b|g\s*11\b/i.test(raw)) return allGrades.find(g => g.code === 'SEC_2') || fallbackGrade;
+      if (/grade\s*10\b|year\s*10\b|g\s*10\b/i.test(raw)) return allGrades.find(g => g.code === 'SEC_1') || fallbackGrade;
+
+      // 4. Primary / ابتدائي / Grade 1-6
+      if (/(?:prim|primary|ابتدائي|ابتدائى)/i.test(raw)) {
+        if (/(?:6|six|سادسة|سادس)/i.test(raw)) return allGrades.find(g => g.code === 'PRIM_6') || fallbackGrade;
+        if (/(?:5|five|خامسة|خامس)/i.test(raw)) return allGrades.find(g => g.code === 'PRIM_5') || fallbackGrade;
+        if (/(?:4|four|رابعة|رابع)/i.test(raw)) return allGrades.find(g => g.code === 'PRIM_4') || fallbackGrade;
+        if (/(?:3|three|تالتة|ثالث)/i.test(raw)) return allGrades.find(g => g.code === 'PRIM_3') || fallbackGrade;
+        if (/(?:2|two|تانية|ثانية|ثاني)/i.test(raw)) return allGrades.find(g => g.code === 'PRIM_2') || fallbackGrade;
+        return allGrades.find(g => g.code === 'PRIM_1') || fallbackGrade;
+      }
+      for (let n = 1; n <= 6; n++) {
+        if (new RegExp(`(?:grade|year|g|صف|الصف)\\s*${n}\\b`, 'i').test(raw)) {
+          return allGrades.find(g => g.code === `PRIM_${n}`) || fallbackGrade;
+        }
+      }
+
+      return fallbackGrade;
+    };
 
     // Cache governorate
     const assignedGovId = user.governorateId || null;
@@ -398,134 +459,192 @@ router.post('/students/bulk', async (req: AuthenticatedRequest, res) => {
 
     let createdCount = 0;
     let updatedCount = 0;
+    const errors: string[] = [];
 
     for (let i = 0; i < incomingList.length; i++) {
-      const row = incomingList[i];
-      const rawUsername = row['Username'] || row['username'] || row['اسم المستخدم'] || '';
-      const cleanUsername = String(rawUsername).trim();
-      if (!cleanUsername) continue;
+      try {
+        const row = incomingList[i];
+        if (!row || typeof row !== 'object') continue;
 
-      // STRICT password rule: username + Aa@1
-      const cleanPassword = `${cleanUsername}Aa@1`;
-      const passwordHash = await bcrypt.hash(cleanPassword, 10);
+        // 1. Extract username or student code across all known column naming schemes
+        const rawUsername = 
+          row['Username'] || row['username'] || row['اسم المستخدم'] ||
+          row['كود الطالب'] || row['كود'] || row['الرقم القومي'] ||
+          row['رقم الجلوس'] || row['Student Code'] || row['studentCode'] ||
+          row['Student_Code'] || row['Code'] || row['code'] ||
+          row['ID'] || row['id'] || row['الرقم التعريفي'] || '';
 
-      const firstName = String(row['First name'] || row['firstName'] || '').trim();
-      const middleName = String(row['student middle name'] || row['middleName'] || '').trim();
-      const lastName = String(row['Last name'] || row['lastName'] || '').trim();
-      const arabicName = String(row['Arabic Name'] || row['arabicName'] || '').trim();
+        const firstName = String(row['First name'] || row['firstName'] || row['الاسم الأول'] || '').trim();
+        const middleName = String(row['student middle name'] || row['middleName'] || row['اسم الأب'] || '').trim();
+        const lastName = String(row['Last name'] || row['lastName'] || row['اسم العائلة'] || row['اللقب'] || '').trim();
+        const arabicName = String(row['Arabic Name'] || row['arabicName'] || row['الاسم بالعربي'] || '').trim();
 
-      const combinedName = [firstName, middleName, lastName].filter(Boolean).join(' ');
-      const rawFullName = row['Name'] || row['name'] || combinedName || arabicName || cleanUsername;
-      const cleanFullName = String(rawFullName).trim();
+        const combinedName = [firstName, middleName, lastName].filter(Boolean).join(' ');
+        const rawFullName = row['Name'] || row['name'] || row['الاسم'] || row['اسم الطالب'] || combinedName || arabicName || '';
+        const cleanFullName = String(rawFullName || 'طالب').trim();
 
-      const gender = String(row['Gender'] || row['gender'] || '').trim();
-      const birthDate = String(row['Birth Date'] || row['birthDate'] || '').trim();
-      const religion = String(row['Religion'] || row['religion'] || '').trim();
-      const nationality = String(row['Nationality'] || row['nationality'] || 'Egypt').trim();
-      const batchCode = String(row['Batch Code'] || row['batchCode'] || '').trim();
-      const electiveSubjects = String(row['elective subjects string'] || row['electiveSubjects'] || '').trim();
-      const familyCode = String(row['Family Code'] || row['familyCode'] || '').trim();
-      const importedCode = String(row['imported'] || row['studentCode'] || '').trim();
+        let cleanUsername = String(rawUsername).trim();
+        if (!cleanUsername) {
+          // Generate unique username from name or index
+          const safeName = cleanFullName.replace(/[^a-zA-Z0-9\u0621-\u064A]/g, '').slice(0, 8);
+          cleanUsername = `stu_${safeName || 'user'}_${Date.now().toString(36).slice(-4)}_${i + 1}_${Math.floor(100 + Math.random() * 900)}`;
+        }
 
-      const emailRaw = row['Email'] || row['email'];
-      const userEmail = emailRaw ? String(emailRaw).trim().toLowerCase() : `${cleanUsername.toLowerCase()}@school.edu.eg`;
+        const gender = String(row['Gender'] || row['gender'] || row['النوع'] || (/[a-zA-Z]/.test(cleanFullName) ? 'Male' : 'ذكر')).trim();
+        const birthDate = String(row['Birth Date'] || row['birthDate'] || row['تاريخ الميلاد'] || '').trim();
+        const religion = String(row['Religion'] || row['religion'] || row['الديانة'] || (/[a-zA-Z]/.test(cleanFullName) ? 'Muslim' : 'مسلم')).trim();
+        const nationality = String(row['Nationality'] || row['nationality'] || row['الجنسية'] || (/[a-zA-Z]/.test(cleanFullName) ? 'Egypt' : 'مصر')).trim();
+        const batchCode = String(row['Batch Code'] || row['batchCode'] || row['كود الدفعة'] || row['Grade'] || row['grade'] || '').trim();
+        const electiveSubjects = String(row['elective subjects string'] || row['electiveSubjects'] || '').trim();
+        const familyCode = String(row['Family Code'] || row['familyCode'] || '').trim();
+        const importedCode = String(row['imported'] || row['studentCode'] || row['كود الطالب'] || row['الرقم القومي'] || '').trim();
 
-      // Resolve grade by batchCode or fallback
-      let matchedGrade = allGrades.find(g => 
-        (batchCode && (g.name_ar.includes(batchCode) || batchCode.toLowerCase().includes(g.code.toLowerCase()))) ||
-        (row.gradeId && g.id === row.gradeId)
-      ) || fallbackGrade;
+        const rawSchoolType = String(row['School Type'] || row['schoolType'] || row['نوع المدرسة'] || '').trim().toLowerCase();
+        let cleanSchoolType = 'عربي';
+        if (rawSchoolType.includes('لغات') || rawSchoolType.includes('lang') || rawSchoolType.includes('english')) {
+          cleanSchoolType = 'لغات';
+        } else if (rawSchoolType.includes('عرب') || rawSchoolType.includes('arabic')) {
+          cleanSchoolType = 'عربي';
+        } else if (/[a-zA-Z]/.test(cleanFullName) && !(/[\u0600-\u06FF]/.test(cleanFullName))) {
+          cleanSchoolType = 'لغات';
+        }
 
-      const targetGradeId = matchedGrade.id;
-      const targetStageId = matchedGrade.stage_id;
+        const rawSchoolName = String(row['School Name'] || row['schoolName'] || row['المدرسة'] || '').trim();
+        const cleanSchoolName = rawSchoolName || (cleanSchoolType === 'لغات' ? 'Official Language School' : 'المدرسة الرسمية');
 
-      // Check if user exists
-      const existing = await db.query(
-        'SELECT id FROM users WHERE LOWER(username) = $1 OR LOWER(email) = $2',
-        [cleanUsername.toLowerCase(), userEmail]
-      );
+        const emailRaw = row['Email'] || row['email'] || row['البريد'] || row['البريد الإلكتروني'];
+        let userEmail = emailRaw ? String(emailRaw).trim().toLowerCase() : `${cleanUsername.toLowerCase()}@school.edu.eg`;
 
-      if (existing.rows.length > 0) {
-        const existingId = existing.rows[0].id;
-        await db.query(
-          `UPDATE users SET full_name = $1, password_hash = $2, initial_password = $3 WHERE id = $4`,
-          [cleanFullName, passwordHash, cleanPassword, existingId]
-        );
-        await db.query(
-          `UPDATE student_profiles SET 
-             full_name = $1, arabic_name = $2, first_name = $3, middle_name = $4, last_name = $5,
-             gender = $6, birth_date = $7, religion = $8, nationality = $9, batch_code = $10,
-             elective_subjects = $11, family_code = $12, grade_id = $13, academic_stage_id = $14
-           WHERE user_id = $15`,
-          [
-            cleanFullName, arabicName || cleanFullName, firstName, middleName, lastName,
-            gender, birthDate, religion, nationality, batchCode,
-            electiveSubjects, familyCode, targetGradeId, targetStageId,
-            existingId
-          ]
-        );
-        updatedCount++;
-      } else {
-        const newUserId = uuidv4();
-        const finalStudentCode = importedCode || `#s${String(i + 1).padStart(6, '0')}`;
+        // Resolve grade by batchCode, row.gradeId, or fallback
+        const matchedGrade = resolveGrade(batchCode, row.gradeId);
+        const targetGradeId = matchedGrade.id;
+        const targetStageId = matchedGrade.stage_id;
 
-        await db.query(
-          `INSERT INTO users (
-            id, super_id, email, username, password_hash, role, full_name,
-            governorate_id, created_by, initial_password, is_active
-           ) VALUES ($1, $2, $3, $4, $5, 'STUDENT', $6, $7, $8, $9, 1)`,
-          [
-            newUserId,
-            finalStudentCode,
-            userEmail,
-            cleanUsername,
-            passwordHash,
-            cleanFullName,
-            assignedGovId,
-            user.id,
-            cleanPassword
-          ]
-        );
+        // STRICT IDENTIFICATION: Only update if matching student code or explicit imported username!
+        // Never match on common email so accounts are never overwritten across grades or students!
+        let existingUser: any = null;
+        if (importedCode) {
+          const exByCode = await db.query(
+            'SELECT id, username, email FROM users WHERE super_id = $1 LIMIT 1',
+            [importedCode]
+          );
+          if (exByCode.rows.length > 0) existingUser = exByCode.rows[0];
+        }
+        if (!existingUser && rawUsername && String(rawUsername).trim()) {
+          const exByUname = await db.query(
+            'SELECT id, username, email FROM users WHERE LOWER(username) = $1 LIMIT 1',
+            [String(rawUsername).trim().toLowerCase()]
+          );
+          if (exByUname.rows.length > 0) existingUser = exByUname.rows[0];
+        }
 
-        await db.query(
-          `INSERT INTO student_profiles (
-            user_id, full_name, governorate_id, governorate_name, school_name,
-            academic_stage_id, grade_id, school_type, student_code, term,
-            first_name, middle_name, last_name, arabic_name, gender, birth_date,
-            religion, nationality, batch_code, elective_subjects, family_code
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-          [
-            newUserId,
-            cleanFullName,
-            assignedGovId,
-            govName,
-            'المدرسة الرسمية',
-            targetStageId,
-            targetGradeId,
-            'عربى',
-            finalStudentCode,
-            'الاول',
-            firstName,
-            middleName,
-            lastName,
-            arabicName || cleanFullName,
-            gender,
-            birthDate,
-            religion,
-            nationality,
-            batchCode,
-            electiveSubjects,
-            familyCode
-          ]
-        );
-        createdCount++;
+        if (existingUser) {
+          const existingId = existingUser.id;
+          const cleanPassword = `${existingUser.username}Aa@1`;
+          const passwordHash = await bcrypt.hash(cleanPassword, 10);
+          await db.query(
+            `UPDATE users SET full_name = $1, password_hash = $2, initial_password = $3 WHERE id = $4`,
+            [cleanFullName, passwordHash, cleanPassword, existingId]
+          );
+          await db.query(
+            `UPDATE student_profiles SET 
+               full_name = $1, arabic_name = $2, first_name = $3, middle_name = $4, last_name = $5,
+               gender = $6, birth_date = $7, religion = $8, nationality = $9, batch_code = $10,
+               elective_subjects = $11, family_code = $12, grade_id = $13, academic_stage_id = $14,
+               school_type = $15, school_name = $16
+             WHERE user_id = $17`,
+            [
+              cleanFullName, arabicName || cleanFullName, firstName, middleName, lastName,
+              gender, birthDate, religion, nationality, batchCode,
+              electiveSubjects, familyCode, targetGradeId, targetStageId,
+              cleanSchoolType, cleanSchoolName,
+              existingId
+            ]
+          );
+          updatedCount++;
+        } else {
+          // Guarantee unique username
+          let finalUsername = cleanUsername.toLowerCase();
+          const unameCollision = await db.query('SELECT id FROM users WHERE LOWER(username) = $1', [finalUsername]);
+          if (unameCollision.rows.length > 0) {
+            finalUsername = `${finalUsername}_${Date.now().toString(36).slice(-3)}_${i + 1}`;
+          }
+
+          // Guarantee unique email without overriding
+          let finalEmail = userEmail.toLowerCase();
+          const emailCollision = await db.query('SELECT id FROM users WHERE LOWER(email) = $1', [finalEmail]);
+          if (emailCollision.rows.length > 0) {
+            finalEmail = `${finalUsername}@school.edu.eg`;
+          }
+
+          const finalPassword = `${finalUsername}Aa@1`;
+          const passwordHash = await bcrypt.hash(finalPassword, 10);
+          const newUserId = uuidv4();
+          const finalStudentCode = importedCode || `STU-${Date.now().toString(36).toUpperCase().slice(-4)}-${String(i + 1).padStart(4, '0')}`;
+
+          await db.query(
+            `INSERT INTO users (
+              id, super_id, email, username, password_hash, role, full_name,
+              governorate_id, created_by, initial_password, is_active
+             ) VALUES ($1, $2, $3, $4, $5, 'STUDENT', $6, $7, $8, $9, 1)`,
+            [
+              newUserId,
+              finalStudentCode,
+              finalEmail,
+              finalUsername,
+              passwordHash,
+              cleanFullName,
+              assignedGovId,
+              user.id,
+              finalPassword
+            ]
+          );
+
+          await db.query(
+            `INSERT INTO student_profiles (
+              user_id, full_name, governorate_id, governorate_name, school_name,
+              academic_stage_id, grade_id, school_type, student_code, term,
+              first_name, middle_name, last_name, arabic_name, gender, birth_date,
+              religion, nationality, batch_code, elective_subjects, family_code
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+            [
+              newUserId,
+              cleanFullName,
+              assignedGovId,
+              govName,
+              cleanSchoolName,
+              targetStageId,
+              targetGradeId,
+              cleanSchoolType,
+              finalStudentCode,
+              'الاول',
+              firstName,
+              middleName,
+              lastName,
+              arabicName || cleanFullName,
+              gender,
+              birthDate,
+              religion,
+              nationality,
+              batchCode,
+              electiveSubjects,
+              familyCode
+            ]
+          );
+          createdCount++;
+        }
+      } catch (rowErr: any) {
+        console.warn(`Row ${i} import notice:`, rowErr.message);
+        errors.push(`صف ${i + 1}: ${rowErr.message}`);
       }
     }
 
     return res.status(200).json({
       message: `تم استيراد ومعالجة ${createdCount + updatedCount} طالب بنجاح (${createdCount} حساب جديد، ${updatedCount} تم تحديثه)`,
       createdCount,
-      updatedCount
+      updatedCount,
+      totalProcessed: createdCount + updatedCount,
+      errors: errors.slice(0, 5)
     });
   } catch (err: any) {
     console.error('Error importing bulk students:', err);

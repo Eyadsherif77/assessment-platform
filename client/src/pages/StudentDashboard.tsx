@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
+import { usePlatformSettings } from '../context/PlatformSettingsContext';
 import { apiUrl } from '../utils/api';
 import { 
   BookOpen, 
@@ -26,8 +27,17 @@ import {
 
 export const StudentDashboard: React.FC = () => {
   const { user, token, language, updateUserProfile } = useAuth();
+  const { activeTerm } = usePlatformSettings();
   const isAr = language === 'ar';
   const ArrowIcon = isAr ? ArrowLeft : ArrowRight;
+
+  const [selectedTerm, setSelectedTerm] = useState<number>(activeTerm || 1);
+
+  useEffect(() => {
+    if (activeTerm) {
+      setSelectedTerm(activeTerm);
+    }
+  }, [activeTerm]);
 
   const getInitialTab = (): 'home' | 'ai' | 'books' | 'exams' | 'analytics' => {
     try {
@@ -419,9 +429,10 @@ export const StudentDashboard: React.FC = () => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Reload student restricted books and exams
-  const reloadStudentContent = () => {
+  const reloadStudentContent = (termToUse?: number) => {
     if (!token) return;
-    fetch(apiUrl('/api/books'), {
+    const t = termToUse || selectedTerm || activeTerm || 1;
+    fetch(apiUrl(`/api/books?term=${t}`), {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())
@@ -437,7 +448,7 @@ export const StudentDashboard: React.FC = () => {
       })
       .catch(console.error);
 
-    fetch(apiUrl('/api/exams'), {
+    fetch(apiUrl(`/api/exams?term=${t}`), {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.json())
@@ -446,6 +457,12 @@ export const StudentDashboard: React.FC = () => {
       })
       .catch(console.error);
   };
+
+  useEffect(() => {
+    if (token) {
+      reloadStudentContent(selectedTerm);
+    }
+  }, [token, selectedTerm]);
 
   const handleOpenProfileModal = () => {
     setEditStageId(user?.profile?.academic_stage_id || '');
@@ -1740,17 +1757,17 @@ export const StudentDashboard: React.FC = () => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                               <span style={{ fontSize: '1.1rem' }}>{item.is_correct ? '✅' : '❌'}</span>
                               <strong style={{ color: 'var(--primary-950)', fontSize: '0.95rem' }}>
-                                {isAr ? `السؤال ${idx + 1}` : `Question ${idx + 1}`}: {item.question_text}
+                                {isItemEn ? `Question ${idx + 1}` : `السؤال ${idx + 1}`}: {item.question_text}
                               </strong>
                               <span className="badge badge-primary" style={{ marginInlineStart: '0.25rem' }}>
-                                📖 {isAr ? `صفحة ${item.page_reference || '7'}` : `Page ${item.page_reference || '7'}`}
+                                📖 {isItemEn ? `Page ${item.page_reference || '1'}` : `صفحة ${item.page_reference || '1'}`}
                               </span>
                             </div>
 
                           <div style={{ fontSize: '0.85rem', margin: '0.4rem 0', color: item.is_correct ? '#15803D' : '#B45309', fontWeight: 600 }}>
                             {item.study_recommendation || (item.is_correct
-                              ? (isAr ? 'تم استيعاب هذه الجزئية بنجاح.' : 'Mastered successfully.')
-                              : (isAr ? `يرجى مراجعة صفحة ${item.page_reference} بعناية.` : `Please review page ${item.page_reference} carefully.`))}
+                              ? (isItemEn ? 'Mastered: Successfully demonstrated comprehension of concept.' : (isAr ? 'تم استيعاب هذه الجزئية بنجاح.' : 'Mastered successfully.'))
+                              : (isItemEn ? `Action Plan: Please review page ${item.page_reference || '1'} carefully.` : (isAr ? `يرجى مراجعة صفحة ${item.page_reference} بعناية.` : `Please review page ${item.page_reference} carefully.`)))}
                           </div>
 
                           {item.explanation && (
@@ -1802,50 +1819,84 @@ export const StudentDashboard: React.FC = () => {
             ========================================================= */}
         {activeTab === 'books' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
                   {isAr ? 'كتبي ومناهجي المعتمدة' : 'Official Curriculum Textbooks'}
                 </h2>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {isAr 
-                    ? `مخصصة ومقيدة بصفك الدراسي (${user?.profile?.grade_name_ar || 'الصف الثالث الإعدادي'}) ونوع مدرستك (${user?.profile?.school_type === 'لغات' ? 'مدارس لغات' : 'مدارس عربي'})`
-                    : `Restricted to your grade (${user?.profile?.grade_name_en || 'Prep 1'}) and school (${user?.profile?.school_type === 'لغات' ? 'Language School' : 'Arabic School'})`}
-                </span>
+              </div>
+
+              {/* Student Term Switcher */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#F1F5F9', padding: '0.35rem', borderRadius: 'var(--radius-lg)', border: '1px solid #E2E8F0' }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${selectedTerm === 1 ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setSelectedTerm(1)}
+                  style={{ fontWeight: 800, padding: '0.4rem 1rem' }}
+                >
+                  📘 {isAr ? 'الفصل الدراسي الأول (الترم 1)' : 'Term 1'}
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${selectedTerm === 2 ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setSelectedTerm(2)}
+                  style={{ fontWeight: 800, padding: '0.4rem 1rem' }}
+                >
+                  📙 {isAr ? 'الفصل الدراسي الثاني (الترم 2)' : 'Term 2'}
+                </button>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
-              {books.map(book => (
-                <div key={book.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ width: '44px', height: '44px', borderRadius: 'var(--radius-lg)', background: 'var(--primary-100)', color: 'var(--primary-800)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-                      <BookOpen size={22} />
+            {books.length === 0 ? (
+              <div className="card" style={{ padding: '3rem 2rem', textAlign: 'center', borderRadius: 'var(--radius-xl)' }}>
+                <BookOpen size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0 }}>
+                  {isAr ? 'لا توجد كتب دراسية لهذا الترم حالياً' : 'No textbooks available for this term yet'}
+                </h3>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                {books.map(book => (
+                  <div key={book.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <div style={{ width: '44px', height: '44px', borderRadius: 'var(--radius-lg)', background: 'var(--primary-100)', color: 'var(--primary-800)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <BookOpen size={22} />
+                        </div>
+                        <span className="badge" style={{
+                          fontSize: '0.72rem',
+                          background: book.term === 2 ? '#FEF3C7' : '#E0E7FF',
+                          color: book.term === 2 ? '#B45309' : '#3730A3',
+                          border: `1px solid ${book.term === 2 ? '#FDE68A' : '#C7D2FE'}`,
+                          fontWeight: 800
+                        }}>
+                          {book.term === 2 ? (isAr ? '📙 الترم الثاني' : 'Term 2') : (isAr ? '📘 الترم الأول' : 'Term 1')}
+                        </span>
+                      </div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 0.35rem' }}>
+                        {isAr ? book.title_ar : (book.title_en || book.title_ar)}
+                      </h3>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', margin: '0.4rem 0 0.75rem' }}>
+                        <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
+                          {isAr ? book.grade_name_ar : (book.grade_name_en || book.grade_name_ar)}
+                        </span>
+                        <span className="badge" style={{ 
+                          fontSize: '0.72rem', 
+                          background: book.school_type === 'لغات' ? '#EFF6FF' : book.school_type === 'عربي' ? '#F0FDF4' : '#F5F3FF',
+                          color: book.school_type === 'لغات' ? '#1D4ED8' : book.school_type === 'عربي' ? '#15803D' : '#6D28D9',
+                          border: `1px solid ${book.school_type === 'لغات' ? '#BFDBFE' : book.school_type === 'عربي' ? '#BBF7D0' : '#DDD6FE'}`
+                        }}>
+                          {book.school_type === 'عربي' 
+                            ? (isAr ? '🏫 مدارس عربي' : 'Arabic')
+                            : book.school_type === 'لغات'
+                            ? (isAr ? '🌐 مدارس لغات' : 'Language')
+                            : (isAr ? '🤝 عام ولغات (كلاهما)' : 'Both')}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                        {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)} • {isAr ? `${book.chapters?.length || 1} وحدات مفهرسة` : `${book.chapters?.length || 1} Indexed Units`}
+                      </div>
                     </div>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 0.35rem' }}>
-                      {isAr ? book.title_ar : (book.title_en || book.title_ar)}
-                    </h3>
-                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', margin: '0.4rem 0 0.75rem' }}>
-                      <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
-                        {isAr ? book.grade_name_ar : (book.grade_name_en || book.grade_name_ar)}
-                      </span>
-                      <span className="badge" style={{ 
-                        fontSize: '0.72rem', 
-                        background: book.school_type === 'لغات' ? '#EFF6FF' : book.school_type === 'عربي' ? '#F0FDF4' : '#F5F3FF',
-                        color: book.school_type === 'لغات' ? '#1D4ED8' : book.school_type === 'عربي' ? '#15803D' : '#6D28D9',
-                        border: `1px solid ${book.school_type === 'لغات' ? '#BFDBFE' : book.school_type === 'عربي' ? '#BBF7D0' : '#DDD6FE'}`
-                      }}>
-                        {book.school_type === 'عربي' 
-                          ? (isAr ? '🏫 مدارس عربي' : 'Arabic')
-                          : book.school_type === 'لغات'
-                          ? (isAr ? '🌐 مدارس لغات' : 'Language')
-                          : (isAr ? '🤝 عام ولغات (كلاهما)' : 'Both')}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                      {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)} • {isAr ? `${book.chapters?.length || 1} وحدات مفهرسة` : `${book.chapters?.length || 1} Indexed Units`}
-                    </div>
-                  </div>
 
                   <button
                     className="btn btn-primary"
@@ -1858,6 +1909,7 @@ export const StudentDashboard: React.FC = () => {
                 </div>
               ))}
             </div>
+          )}
 
             {/* Dedicated Fullscreen PDF Reader Modal via Portal - Single Unified Navbar & Photo 2 Radial Spinner */}
             {selectedPdfBook && createPortal(
@@ -2086,13 +2138,32 @@ export const StudentDashboard: React.FC = () => {
             ========================================================= */}
         {activeTab === 'exams' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
-                {isAr ? 'الامتحانات والاختبارات المجدولة' : 'Scheduled & Timed Exams'}
-              </h2>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {isAr ? 'اختبارات إلكترونية تفاعلية بمؤقت زمني حقيقي وتصحيح آلي' : 'Interactive timed exams with instant automated grading'}
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
+                  {isAr ? 'الامتحانات والاختبارات المجدولة' : 'Scheduled & Timed Exams'}
+                </h2>
+              </div>
+
+              {/* Student Term Switcher */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#F1F5F9', padding: '0.35rem', borderRadius: 'var(--radius-lg)', border: '1px solid #E2E8F0' }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${selectedTerm === 1 ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setSelectedTerm(1)}
+                  style={{ fontWeight: 800, padding: '0.4rem 1rem' }}
+                >
+                  📘 {isAr ? 'الفصل الدراسي الأول (الترم 1)' : 'Term 1'}
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${selectedTerm === 2 ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setSelectedTerm(2)}
+                  style={{ fontWeight: 800, padding: '0.4rem 1rem' }}
+                >
+                  📙 {isAr ? 'الفصل الدراسي الثاني (الترم 2)' : 'Term 2'}
+                </button>
+              </div>
             </div>
 
             {/* Exam Runner Mode */}
@@ -2377,6 +2448,18 @@ export const StudentDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
+            ) : exams.length === 0 ? (
+              <div className="card" style={{ padding: '3rem 2rem', textAlign: 'center', borderRadius: 'var(--radius-xl)' }}>
+                <Clock size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+                  {isAr ? 'لا توجد امتحانات منشورة لهذا الترم حتى الآن' : 'No exams available for this term yet'}
+                </h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '480px', margin: '0 auto' }}>
+                  {isAr 
+                    ? 'سيتم إدراج الاختبارات المنشورة لصفك ومدرستك فور نشرها من قبل المعلمين.'
+                    : 'Exams published for your grade will appear here.'}
+                </p>
+              </div>
             ) : (
               /* Exams List Grid */
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
@@ -2386,6 +2469,15 @@ export const StudentDashboard: React.FC = () => {
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
                         <span className="badge badge-primary">
                           {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
+                        </span>
+                        <span className="badge" style={{
+                          fontSize: '0.72rem',
+                          background: exam.term === 2 ? '#FEF3C7' : '#E0E7FF',
+                          color: exam.term === 2 ? '#B45309' : '#3730A3',
+                          border: `1px solid ${exam.term === 2 ? '#FDE68A' : '#C7D2FE'}`,
+                          fontWeight: 800
+                        }}>
+                          {exam.term === 2 ? (isAr ? '📙 الترم الثاني' : 'Term 2') : (isAr ? '📘 الترم الأول' : 'Term 1')}
                         </span>
                         <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
                           {isAr ? exam.grade_name_ar : (exam.grade_name_en || exam.grade_name_ar)}

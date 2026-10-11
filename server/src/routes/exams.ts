@@ -115,6 +115,21 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       conditions.push(`e.subject_id = $${params.length}`);
     }
 
+    // Term filter: explicit query or default to active_term for students and teachers
+    let filterTerm: number | null = req.query.term ? parseInt(String(req.query.term), 10) : null;
+    if (!filterTerm && (req.user?.role === 'STUDENT' || req.user?.role === 'TEACHER')) {
+      try {
+        const termSetting = await db.query(`SELECT setting_value FROM platform_settings WHERE setting_key = 'active_term'`);
+        filterTerm = termSetting.rows.length > 0 ? (parseInt(termSetting.rows[0].setting_value, 10) || 1) : 1;
+      } catch (_) {
+        filterTerm = 1;
+      }
+    }
+    if (filterTerm && (filterTerm === 1 || filterTerm === 2)) {
+      params.push(filterTerm);
+      conditions.push(`(e.term = $${params.length} OR e.term IS NULL)`);
+    }
+
     if (conditions.length > 0) {
       sql += ` WHERE ` + conditions.join(' AND ');
     }
@@ -138,6 +153,7 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
       subject_id,
       book_id,
       chapter_id,
+      term,
       duration_minutes = 30,
       is_published = false,
       school_type = 'كلاهما',
@@ -149,16 +165,27 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
       return res.status(400).json({ error: 'الرجاء إدخال البيانات الأساسية للاختبار' });
     }
 
-    const prepStageId = '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
-    const prep3GradeId = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
+    const prepStageId = academic_stage_id || '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
+    const prep3GradeId = grade_id || '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
+
+    // Resolve term from body or active platform term
+    let finalTerm = term ? (parseInt(String(term), 10) === 2 ? 2 : 1) : null;
+    if (!finalTerm) {
+      try {
+        const termSetting = await db.query(`SELECT setting_value FROM platform_settings WHERE setting_key = 'active_term'`);
+        finalTerm = termSetting.rows.length > 0 ? (parseInt(termSetting.rows[0].setting_value, 10) || 1) : 1;
+      } catch (_) {
+        finalTerm = 1;
+      }
+    }
 
     const creatorGovId = governorate_id || req.user?.governorateId || null;
     const examId = uuidv4();
     await db.query(
       `INSERT INTO exams (
          id, title_ar, title_en, teacher_id, academic_stage_id, grade_id, subject_id,
-         book_id, chapter_id, duration_minutes, is_published, school_type, governorate_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+         book_id, chapter_id, duration_minutes, is_published, school_type, governorate_id, term
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         examId,
         title_ar.trim(),
@@ -172,7 +199,8 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
         duration_minutes,
         is_published ? 1 : 0,
         school_type || 'كلاهما',
-        creatorGovId
+        creatorGovId,
+        finalTerm
       ]
     );
 
