@@ -499,14 +499,15 @@ router.post('/students/bulk', async (req: AuthenticatedRequest, res) => {
         const familyCode = String(row['Family Code'] || row['familyCode'] || '').trim();
         const importedCode = String(row['imported'] || row['studentCode'] || row['كود الطالب'] || row['الرقم القومي'] || '').trim();
 
-        const rawSchoolType = String(row['School Type'] || row['schoolType'] || row['نوع المدرسة'] || '').trim().toLowerCase();
-        let cleanSchoolType = 'عربي';
+        const rawSchoolType = String(
+          row['School Type'] || row['schoolType'] || row['نوع المدرسة'] || row['نوع التعليم'] || row['التعليم'] || ''
+        ).trim().toLowerCase();
+        const globalDefaultSchoolType = String(req.body.defaultSchoolType || 'عربى').trim();
+        let cleanSchoolType = globalDefaultSchoolType.includes('لغات') ? 'لغات' : 'عربى';
         if (rawSchoolType.includes('لغات') || rawSchoolType.includes('lang') || rawSchoolType.includes('english')) {
           cleanSchoolType = 'لغات';
         } else if (rawSchoolType.includes('عرب') || rawSchoolType.includes('arabic')) {
-          cleanSchoolType = 'عربي';
-        } else if (/[a-zA-Z]/.test(cleanFullName) && !(/[\u0600-\u06FF]/.test(cleanFullName))) {
-          cleanSchoolType = 'لغات';
+          cleanSchoolType = 'عربى';
         }
 
         const rawSchoolName = String(row['School Name'] || row['schoolName'] || row['المدرسة'] || '').trim();

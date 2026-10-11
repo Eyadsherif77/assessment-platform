@@ -79,6 +79,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
   // Excel File Input Ref & State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importDefaultSchoolType, setImportDefaultSchoolType] = useState<'عربى' | 'لغات'>('عربى');
 
   // Form State for creating student
   const [fullName, setFullName] = useState<string>('');
@@ -304,6 +305,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         'Nationality': s.nationality || 'Egypt',
         'Email': s.email || `${s.username}@school.edu.eg`,
         'Batch Code': s.batchCode || s.gradeName || '',
+        'School Type': s.schoolType || 'عربى',
         'elective subjects string': s.electiveSubjects || '',
         'Family Code': s.familyCode || `F${String(idx + 1).padStart(4, '0')}`
       }));
@@ -403,7 +405,8 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         },
         body: JSON.stringify({
           students: validRows,
-          defaultGradeId: selectedGradeId || undefined
+          defaultGradeId: selectedGradeId || undefined,
+          defaultSchoolType: importDefaultSchoolType
         })
       });
 
@@ -591,7 +594,42 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         </div>
 
         {/* Upper Export & Import Buttons */}
-        <div className="supervisor-header-actions" style={{ zIndex: 2, display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div className="supervisor-header-actions" style={{ zIndex: 2, display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Default School Type Selector for Import */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: 'rgba(255, 255, 255, 0.18)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.35)',
+            padding: '0.45rem 0.85rem',
+            borderRadius: 'var(--radius-xl)',
+            color: '#FFFFFF'
+          }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>
+              {isAr ? 'نوع التعليم للملف:' : 'School Type for File:'}
+            </span>
+            <select
+              value={importDefaultSchoolType}
+              onChange={e => setImportDefaultSchoolType(e.target.value as any)}
+              style={{
+                background: '#FFFFFF',
+                color: '#1E3A8A',
+                border: 'none',
+                borderRadius: '0.5rem',
+                padding: '0.3rem 0.6rem',
+                fontWeight: 900,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <option value="عربى">{isAr ? '🏫 مدارس عربي' : 'Arabic School'}</option>
+              <option value="لغات">{isAr ? '🌐 مدارس لغات' : 'Language School'}</option>
+            </select>
+          </div>
+
           {/* Import Button */}
           <button
             type="button"

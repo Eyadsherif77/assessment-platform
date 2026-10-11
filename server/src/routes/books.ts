@@ -608,9 +608,17 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       conditions.push(`b.grade_id = $${params.length}`);
 
       // Filter by student's school_type: show books for their specific type OR 'كلاهما' (common books)
-      const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+      const studentSchoolType = (req.studentProfile.schoolType || 'عربي').trim();
+      const normStudentSchoolType = studentSchoolType.replace('ى', 'ي');
       params.push(studentSchoolType);
-      conditions.push(`(b.school_type = $${params.length} OR b.school_type = 'كلاهما' OR b.school_type IS NULL)`);
+      params.push(normStudentSchoolType);
+      conditions.push(`(
+        COALESCE(b.school_type, 'كلاهما') IN ('كلاهما', 'both', 'Both', 'عربي ولغات', 'عام ولغات')
+        OR b.school_type IS NULL
+        OR b.school_type = $${params.length - 1}
+        OR b.school_type = $${params.length}
+        OR REPLACE(COALESCE(b.school_type, ''), 'ى', 'ي') = $${params.length}
+      )`);
     } else {
       // For teachers: textbooks are uploaded by Admin. Teachers see curriculum books for the platform/filters
       // For teachers: filter textbooks strictly to their assigned subject & grade
