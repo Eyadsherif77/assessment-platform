@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { usePlatformSettings } from '../context/PlatformSettingsContext';
-import { X, Lock, Mail, User, School, MapPin, GraduationCap } from 'lucide-react';
+import { X, Lock, Mail, User, School, MapPin, GraduationCap, Eye, EyeOff } from 'lucide-react';
 import { apiUrl } from '../utils/api';
 import { getDeviceId } from '../utils/device';
 
@@ -48,6 +48,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [username, setUsername] = useState<string>('');
   // 8. password
   const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
   const [gradesList, setGradesList] = useState<any[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState<string>('');
@@ -609,7 +610,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       required
                       disabled={!allowStudentRegistration}
                       className="form-input"
@@ -617,8 +618,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
                       style={{
-                        [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem',
-                        [isAr ? 'paddingLeft' : 'paddingRight']: '1rem',
+                        paddingRight: '2.5rem',
+                        paddingLeft: '2.5rem',
                         opacity: !allowStudentRegistration ? 0.7 : 1,
                         cursor: !allowStudentRegistration ? 'not-allowed' : 'auto',
                         backgroundColor: !allowStudentRegistration ? '#F8FAFC' : '#FFFFFF'
@@ -634,6 +635,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         color: 'var(--text-muted)' 
                       }} 
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(prev => !prev)}
+                      tabIndex={-1}
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        [isAr ? 'left' : 'right']: '0.85rem',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: showPassword ? 'var(--color-primary)' : 'var(--text-muted)'
+                      }}
+                      title={showPassword ? (isAr ? 'إخفاء كلمة المرور' : 'Hide password') : (isAr ? 'إظهار كلمة المرور' : 'Show password')}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
                   </div>
                 </div>
               </>
@@ -674,14 +697,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       required
-                      autoComplete="new-password"
+                      autoComplete="current-password"
                       className="form-input"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      style={{ [isAr ? 'paddingRight' : 'paddingLeft']: '2.5rem', [isAr ? 'paddingLeft' : 'paddingRight']: '1rem' }}
+                      style={{ paddingRight: '2.5rem', paddingLeft: '2.5rem' }}
                     />
                     <Lock 
                       size={16} 
@@ -693,6 +716,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         color: 'var(--text-muted)' 
                       }} 
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(prev => !prev)}
+                      tabIndex={-1}
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        [isAr ? 'left' : 'right']: '0.85rem',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: showPassword ? 'var(--color-primary)' : 'var(--text-muted)'
+                      }}
+                      title={showPassword ? (isAr ? 'إخفاء كلمة المرور' : 'Hide password') : (isAr ? 'إظهار كلمة المرور' : 'Show password')}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
                   </div>
                 </div>
               </>

@@ -504,18 +504,18 @@ router.post('/students/bulk', async (req: AuthenticatedRequest, res) => {
         ).trim();
 
         if (!rawSchoolType) {
-          errors.push(`السطر ${i + 1} (${cleanFullName}): نوع المدرسة غير محدد (School Type). يجب تحديد (عربى أو لغات) في ملف الإكسيل.`);
+          errors.push(`السطر ${i + 1} (${cleanFullName}): نوع المدرسة غير محدد (School Type). يجب تحديد (عربى / لغات أو Arabic / English) في ملف الإكسيل.`);
           continue;
         }
 
         const lowerSt = rawSchoolType.toLowerCase();
         let cleanSchoolType: 'عربى' | 'لغات' = 'عربى';
-        if (lowerSt.includes('لغات') || lowerSt.includes('lang') || lowerSt.includes('english')) {
+        if (lowerSt.includes('لغات') || lowerSt.includes('لغة') || lowerSt.includes('lang') || lowerSt.includes('english') || lowerSt === 'en') {
           cleanSchoolType = 'لغات';
-        } else if (lowerSt.includes('عرب') || lowerSt.includes('arabic')) {
+        } else if (lowerSt.includes('عرب') || lowerSt.includes('arabic') || lowerSt === 'ar') {
           cleanSchoolType = 'عربى';
         } else {
-          errors.push(`السطر ${i + 1} (${cleanFullName}): نوع المدرسة غير صالح ("${rawSchoolType}"). يجب أن يكون عربى أو لغات.`);
+          errors.push(`السطر ${i + 1} (${cleanFullName}): نوع المدرسة غير صالح ("${rawSchoolType}"). يجب أن يكون (عربى / لغات أو Arabic / English).`);
           continue;
         }
 
@@ -651,7 +651,7 @@ router.post('/students/bulk', async (req: AuthenticatedRequest, res) => {
 
     if (createdCount === 0 && updatedCount === 0 && errors.length > 0) {
       return res.status(400).json({
-        error: 'فشل استيراد الطلاب: يجب تحديد نوع المدرسة (عربى أو لغات) في عمود School Type / نوع المدرسة لكل طالب في ملف الإكسيل.',
+        error: 'ملف الإكسيل يجب أن يحتوي على عمود نوع المدرسة (School Type / نوع المدرسة) بقيمة (عربى أو لغات أو Arabic / English). لا يمكن استيراد طلاب بدون تحديد نوع المدرسة.',
         details: errors.slice(0, 5)
       });
     }

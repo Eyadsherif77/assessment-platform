@@ -394,15 +394,19 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
 
       // Verify that every valid student has School Type specified
       const missingSchoolTypeRows = validRows.filter(r => {
-        const st = r['School Type'] || r['schoolType'] || r['نوع المدرسة'] || r['نوع التعليم'] || r['التعليم'];
-        return !st || !String(st).trim();
+        const rawSt = r['School Type'] || r['schoolType'] || r['نوع المدرسة'] || r['نوع التعليم'] || r['التعليم'];
+        if (!rawSt || !String(rawSt).trim()) return true;
+        const norm = String(rawSt).trim().toLowerCase();
+        const isArType = norm.includes('عرب') || norm.includes('arabic') || norm === 'ar';
+        const isLangType = norm.includes('لغات') || norm.includes('لغة') || norm.includes('lang') || norm.includes('english') || norm === 'en';
+        return !(isArType || isLangType);
       });
 
       if (missingSchoolTypeRows.length > 0) {
         throw new Error(
           isAr
-            ? `ملف الإكسيل يجب أن يحتوي على عمود نوع المدرسة (School Type / نوع المدرسة) بقيمة (عربى أو لغات). يوجد ${missingSchoolTypeRows.length} طالب بدون تحديد نوع المدرسة، ولا يمكن استيرادهم بدون تحديد نوع المدرسة.`
-            : `Excel file must contain a 'School Type' column with values ('عربى' or 'لغات'). ${missingSchoolTypeRows.length} students have no school type specified.`
+            ? `ملف الإكسيل يجب أن يحتوي على عمود نوع المدرسة (School Type / نوع المدرسة) بقيمة (عربى أو لغات أو Arabic / English). لا يمكن استيراد طلاب بدون تحديد نوع المدرسة.`
+            : `Excel file must contain a 'School Type' column with values (Arabic / English or عربى / لغات). Students cannot be imported without specifying school type.`
         );
       }
 

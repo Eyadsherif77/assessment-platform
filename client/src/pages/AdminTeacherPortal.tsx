@@ -14,7 +14,9 @@ import {
   BookOpen, 
   Building2, 
   CheckCircle2,
-  GraduationCap
+  GraduationCap,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface Props {
@@ -43,6 +45,8 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
   // Login form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
 
   // Register form state
   const [fullName, setFullName] = useState('');
@@ -417,13 +421,13 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
               </label>
               <div style={{ position: 'relative' }}>
                 <input
-                  type="password"
+                  type={showLoginPassword ? 'text' : 'password'}
                   required
                   className="form-input"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  style={{ paddingRight: isAr ? '2.5rem' : '1rem', paddingLeft: isAr ? '1rem' : '2.5rem' }}
+                  style={{ paddingRight: '2.5rem', paddingLeft: '2.5rem' }}
                 />
                 <Lock 
                   size={18} 
@@ -435,6 +439,28 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
                     color: 'var(--text-muted)'
                   }} 
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(prev => !prev)}
+                  tabIndex={-1}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    [isAr ? 'left' : 'right']: '0.85rem',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: showLoginPassword ? 'var(--color-primary)' : 'var(--text-muted)'
+                  }}
+                  title={showLoginPassword ? (isAr ? 'إخفاء كلمة المرور' : 'Hide password') : (isAr ? 'إظهار كلمة المرور' : 'Show password')}
+                >
+                  {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -535,14 +561,14 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
               </label>
               <div style={{ position: 'relative' }}>
                 <input
-                  type="password"
+                  type={showRegPassword ? 'text' : 'password'}
                   required
                   minLength={6}
                   className="form-input"
                   placeholder="••••••••"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
-                  style={{ paddingRight: isAr ? '2.5rem' : '1rem', paddingLeft: isAr ? '1rem' : '2.5rem' }}
+                  style={{ paddingRight: '2.5rem', paddingLeft: '2.5rem' }}
                 />
                 <Lock 
                   size={18} 
@@ -554,6 +580,28 @@ export const AdminTeacherPortal: React.FC<Props> = ({ onBackToHome }) => {
                     color: 'var(--text-muted)'
                   }} 
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowRegPassword(prev => !prev)}
+                  tabIndex={-1}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    [isAr ? 'left' : 'right']: '0.85rem',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: showRegPassword ? 'var(--color-primary)' : 'var(--text-muted)'
+                  }}
+                  title={showRegPassword ? (isAr ? 'إخفاء كلمة المرور' : 'Hide password') : (isAr ? 'إظهار كلمة المرور' : 'Show password')}
+                >
+                  {showRegPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
