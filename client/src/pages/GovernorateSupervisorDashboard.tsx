@@ -79,7 +79,6 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
   // Excel File Input Ref & State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState<boolean>(false);
-  const [importDefaultSchoolType, setImportDefaultSchoolType] = useState<'عربى' | 'لغات'>('عربى');
 
   // Form State for creating student
   const [fullName, setFullName] = useState<string>('');
@@ -393,8 +392,18 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         return Boolean((u && String(u).trim().length > 0) || (n && String(n).trim().length > 0) || anyVal);
       });
 
-      if (validRows.length === 0) {
-        throw new Error(isAr ? 'لم يتم العثور على بيانات طلاب صالحة في ملف الإكسيل' : 'No valid student data found in the Excel file');
+      // Verify that every valid student has School Type specified
+      const missingSchoolTypeRows = validRows.filter(r => {
+        const st = r['School Type'] || r['schoolType'] || r['نوع المدرسة'] || r['نوع التعليم'] || r['التعليم'];
+        return !st || !String(st).trim();
+      });
+
+      if (missingSchoolTypeRows.length > 0) {
+        throw new Error(
+          isAr
+            ? `ملف الإكسيل يجب أن يحتوي على عمود نوع المدرسة (School Type / نوع المدرسة) بقيمة (عربى أو لغات). يوجد ${missingSchoolTypeRows.length} طالب بدون تحديد نوع المدرسة، ولا يمكن استيرادهم بدون تحديد نوع المدرسة.`
+            : `Excel file must contain a 'School Type' column with values ('عربى' or 'لغات'). ${missingSchoolTypeRows.length} students have no school type specified.`
+        );
       }
 
       const res = await fetch(apiUrl('/api/governorate-supervisor/students/bulk'), {
@@ -405,8 +414,7 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
         },
         body: JSON.stringify({
           students: validRows,
-          defaultGradeId: selectedGradeId || undefined,
-          defaultSchoolType: importDefaultSchoolType
+          defaultGradeId: selectedGradeId || undefined
         })
       });
 
@@ -595,40 +603,6 @@ export const GovernorateSupervisorDashboard: React.FC = () => {
 
         {/* Upper Export & Import Buttons */}
         <div className="supervisor-header-actions" style={{ zIndex: 2, display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Default School Type Selector for Import */}
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            background: 'rgba(255, 255, 255, 0.18)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.35)',
-            padding: '0.45rem 0.85rem',
-            borderRadius: 'var(--radius-xl)',
-            color: '#FFFFFF'
-          }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>
-              {isAr ? 'نوع التعليم للملف:' : 'School Type for File:'}
-            </span>
-            <select
-              value={importDefaultSchoolType}
-              onChange={e => setImportDefaultSchoolType(e.target.value as any)}
-              style={{
-                background: '#FFFFFF',
-                color: '#1E3A8A',
-                border: 'none',
-                borderRadius: '0.5rem',
-                padding: '0.3rem 0.6rem',
-                fontWeight: 900,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                outline: 'none'
-              }}
-            >
-              <option value="عربى">{isAr ? '🏫 مدارس عربي' : 'Arabic School'}</option>
-              <option value="لغات">{isAr ? '🌐 مدارس لغات' : 'Language School'}</option>
-            </select>
-          </div>
 
           {/* Import Button */}
           <button

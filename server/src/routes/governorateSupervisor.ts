@@ -229,9 +229,9 @@ router.post('/students', async (req: AuthenticatedRequest, res) => {
       familyCode
     } = req.body;
 
-    if (!fullName || !username || !gradeId) {
+    if (!fullName || !username || !gradeId || !schoolType) {
       return res.status(400).json({
-        error: 'الحقول الإلزامية مطلوبة: اسم الطالب، اسم المستخدم، والصف الدراسي'
+        error: 'الحقول الإلزامية مطلوبة: اسم الطالب، اسم المستخدم، الصف الدراسي، ونوع المدرسة (عربى / لغات)'
       });
     }
 
@@ -501,13 +501,22 @@ router.post('/students/bulk', async (req: AuthenticatedRequest, res) => {
 
         const rawSchoolType = String(
           row['School Type'] || row['schoolType'] || row['نوع المدرسة'] || row['نوع التعليم'] || row['التعليم'] || ''
-        ).trim().toLowerCase();
-        const globalDefaultSchoolType = String(req.body.defaultSchoolType || 'عربى').trim();
-        let cleanSchoolType = globalDefaultSchoolType.includes('لغات') ? 'لغات' : 'عربى';
-        if (rawSchoolType.includes('لغات') || rawSchoolType.includes('lang') || rawSchoolType.includes('english')) {
+        ).trim();
+
+        if (!rawSchoolType) {
+          errors.push(`السطر ${i + 1} (${cleanFullName}): نوع المدرسة غير محدد (School Type). يجب تحديد (عربى أو لغات) في ملف الإكسيل.`);
+          continue;
+        }
+
+        const lowerSt = rawSchoolType.toLowerCase();
+        let cleanSchoolType: 'عربى' | 'لغات' = 'عربى';
+        if (lowerSt.includes('لغات') || lowerSt.includes('lang') || lowerSt.includes('english')) {
           cleanSchoolType = 'لغات';
-        } else if (rawSchoolType.includes('عرب') || rawSchoolType.includes('arabic')) {
+        } else if (lowerSt.includes('عرب') || lowerSt.includes('arabic')) {
           cleanSchoolType = 'عربى';
+        } else {
+          errors.push(`السطر ${i + 1} (${cleanFullName}): نوع المدرسة غير صالح ("${rawSchoolType}"). يجب أن يكون عربى أو لغات.`);
+          continue;
         }
 
         const rawSchoolName = String(row['School Name'] || row['schoolName'] || row['المدرسة'] || '').trim();
@@ -638,6 +647,13 @@ router.post('/students/bulk', async (req: AuthenticatedRequest, res) => {
         console.warn(`Row ${i} import notice:`, rowErr.message);
         errors.push(`صف ${i + 1}: ${rowErr.message}`);
       }
+    }
+
+    if (createdCount === 0 && updatedCount === 0 && errors.length > 0) {
+      return res.status(400).json({
+        error: 'فشل استيراد الطلاب: يجب تحديد نوع المدرسة (عربى أو لغات) في عمود School Type / نوع المدرسة لكل طالب في ملف الإكسيل.',
+        details: errors.slice(0, 5)
+      });
     }
 
     return res.status(200).json({
