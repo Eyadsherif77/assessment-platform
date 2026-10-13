@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
 import { aiRagEngine, GroundedQuestion } from '../services/ai/aiRagEngine.js';
+import { GeminiProviderError } from '../services/ai/geminiClient.js';
 import { checkStudentExamLimit } from '../services/examLimitService.js';
 import { ExamCacheService } from '../services/examCacheService.js';
 import { signExamAttemptToken, verifyExamAttemptToken, ExamAttemptTokenPayload } from '../services/answerValidationService.js';
@@ -176,36 +177,52 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
         : null
     });
   } catch (err: any) {
-    console.error('AI Generate Quiz error:', err);
+    console.error('AI Generate Quiz error:', err?.name === 'GeminiProviderError' ? err.message : err);
+
+    const sendProviderError = (category: string, retryAfterMs?: number) => {
+      const retrySec = Math.min(120, Math.max(10, Math.ceil((retryAfterMs ?? 30_000) / 1000)));
+      if (category === 'AUTHENTICATION' || category === 'INVALID_CONFIGURATION') {
+        return res.status(500).json({
+          error: 'خدمة الذكاء الاصطناعي غير مهيأة بشكل صحيح حالياً. يرجى إبلاغ إدارة المنصة. هذا لا يعني أن محتوى وحدتك ناقص.',
+          code: category === 'AUTHENTICATION' ? 'AI_AUTH_ERROR' : 'AI_CONFIG_ERROR',
+          retryable: false
+        });
+      }
+      if (category === 'QUOTA_EXHAUSTED') {
+        return res.status(503).json({
+          error: 'خدمة توليد الأسئلة وصلت مؤقتاً إلى حد الاستخدام المسموح. هذا لا يعني أن محتوى الوحدة المختارة ناقص. يرجى المحاولة لاحقاً، وقد يستغرق عودة الخدمة بعض الوقت.',
+          code: 'AI_QUOTA_EXHAUSTED',
+          retryable: false
+        });
+      }
+      res.setHeader('Retry-After', String(retrySec));
+      return res.status(503).json({
+        error: 'خدمة توليد الأسئلة غير متاحة مؤقتاً بسبب ضغط على الخدمة. هذا لا يعني أن محتوى الوحدة المختارة ناقص. يرجى المحاولة مرة أخرى بعد قليل.',
+        code: 'AI_PROVIDER_UNAVAILABLE',
+        retryable: true,
+        retry_after_seconds: retrySec
+      });
+    };
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        error: 'خدمة الذكاء الاصطناعي غير مهيأة بشكل صحيح في النظام (مفتاح API مفقود).',
-        code: 'AI_CONFIG_ERROR'
-      });
+      return sendProviderError('INVALID_CONFIGURATION');
+    }
+
+    if (err instanceof GeminiProviderError) {
+      return sendProviderError(err.category, err.retryAfterMs);
     }
 
     if (err.message?.includes('[GEMINI_AUTH_ERROR]')) {
-      return res.status(500).json({
-        error: 'خطأ في مصادقة خدمة الذكاء الاصطناعي (مفتاح API غير صالح أو غير مصرح). يرجى مراجعة إعدادات الخادم.',
-        code: 'AI_AUTH_ERROR',
-        details: err.message
-      });
+      return sendProviderError('AUTHENTICATION');
     }
 
     if (
-      err.message?.includes('All Gemini candidate models failed') ||
-      err.message?.includes('GEMINI_API_KEY is not configured') ||
       err.message?.includes('quota') ||
       err.message?.includes('rate limit') ||
       err.message?.includes('TIMEOUT') ||
       err.message?.includes('fetch failed')
     ) {
-      return res.status(503).json({
-        error: 'خدمة توليد الأسئلة بالذكاء الاصطناعي غير متاحة مؤقتاً بسبب ضغط الطلبات. يرجى المحاولة مرة أخرى بعد لحظات.',
-        code: 'AI_PROVIDER_UNAVAILABLE',
-        details: err.message
-      });
+      return sendProviderError('TEMPORARY_OVERLOAD');
     }
 
     if (
@@ -214,8 +231,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
     ) {
       return res.status(422).json({
         error: 'المحتوى التعليمي المعتمد لهذه الوحدة غير كافٍ حالياً لصياغة أسئلة امتحانية (يرجى مراجعة فهرسة كتاب الوزارة).',
-        code: 'INSUFFICIENT_UNIT_CONTENT',
-        details: err.message
+        code: 'INSUFFICIENT_UNIT_CONTENT'
       });
     }
 
@@ -223,11 +239,11 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       return res.status(503).json({
         error: 'تعذر استخراج العدد الكافي من الأسئلة المطابقة لمعايير الجودة والتحقق لهذه الوحدة حالياً. يرجى المحاولة مرة أخرى.',
         code: 'EXAM_GENERATION_FAILED',
-        details: err.message
+        retryable: true
       });
     }
 
-    return res.status(500).json({ error: 'خطأ في توليد التقييم الذكي: ' + err.message, code: 'INTERNAL_ERROR' });
+    return res.status(500).json({ error: 'حدث خطأ غير متوقع أثناء توليد التقييم الذكي. يرجى المحاولة لاحقاً.', code: 'INTERNAL_ERROR' });
   }
 });
 

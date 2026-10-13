@@ -205,6 +205,18 @@ export const StudentDashboard: React.FC = () => {
   const [isEvaluatingAi, setIsEvaluatingAi] = useState(false);
   const [aiReport, setAiReport] = useState<any | null>(null);
   const [aiGenError, setAiGenError] = useState<string | null>(null);
+  // Phase 4G.3AP: provider-unavailable handling (retry guidance only when appropriate)
+  const [aiGenRetryUntil, setAiGenRetryUntil] = useState<number>(0);
+  const [aiRetryTick, setAiRetryTick] = useState<number>(Date.now());
+  useEffect(() => {
+    if (aiGenRetryUntil <= Date.now()) return;
+    const timer = setInterval(() => {
+      setAiRetryTick(Date.now());
+      if (Date.now() >= aiGenRetryUntil) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [aiGenRetryUntil]);
+  const aiRetryWaitSec = Math.max(0, Math.ceil((aiGenRetryUntil - aiRetryTick) / 1000));
   const [aiPartialNotice, setAiPartialNotice] = useState<string | null>(null);
 
   // AI Assessment Debug Mode (Development Only - Hidden in Production)
@@ -586,13 +598,19 @@ export const StudentDashboard: React.FC = () => {
     }
     setIsGeneratingAi(true);
     setAiGenError(null);
+    setAiGenRetryUntil(0);
     setAiPartialNotice(null);
     setAiReport(null);
     setAiAnswers({});
     setCurrentQuestionIndex(0);
 
+    // Hard client-side deadline so the loading indicator can never hang indefinitely
+    const genController = new AbortController();
+    const genTimeout = setTimeout(() => genController.abort(), 150000);
+
     try {
       const res = await fetch(apiUrl('/api/ai/generate-quiz'), {
+        signal: genController.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -612,6 +630,11 @@ export const StudentDashboard: React.FC = () => {
         if (data.code === 'MONTHLY_EXAM_LIMIT_REACHED') {
           fetchExamLimitStatus();
         }
+        if (data.code === 'AI_PROVIDER_UNAVAILABLE' && data.retryable) {
+          setAiGenRetryUntil(Date.now() + Math.max(10, Number(data.retry_after_seconds) || 30) * 1000);
+        } else if (data.code === 'AI_QUOTA_EXHAUSTED') {
+          setAiGenRetryUntil(Date.now() + 5 * 60 * 1000); // do not hammer an exhausted quota
+        }
         throw new Error(data.error || 'فشل توليد التقييم');
       }
 
@@ -627,8 +650,14 @@ export const StudentDashboard: React.FC = () => {
       }
       setAiStep(4); // Advance to solve step
     } catch (err: any) {
-      setAiGenError(err.message || 'فشل توليد التقييم');
+      if (err?.name === 'AbortError') {
+        setAiGenError('استغرق تجهيز الأسئلة وقتاً أطول من المتوقع، وقد تكون خدمة توليد الأسئلة مشغولة مؤقتاً. هذا لا يعني أن محتوى الوحدة ناقص. يرجى المحاولة مرة أخرى بعد قليل.');
+        setAiGenRetryUntil(Date.now() + 30000);
+      } else {
+        setAiGenError(err.message || 'فشل توليد التقييم');
+      }
     } finally {
+      clearTimeout(genTimeout);
       setIsGeneratingAi(false);
     }
   };
@@ -1306,12 +1335,14 @@ export const StudentDashboard: React.FC = () => {
                   <button
                     className="btn btn-primary btn-lg"
                     onClick={handleGenerateAiAssessment}
-                    disabled={isGeneratingAi}
+                    disabled={isGeneratingAi || aiRetryWaitSec > 0}
                     style={{ fontWeight: 800, borderRadius: 'var(--radius-full)' }}
                   >
                     {isGeneratingAi 
                       ? (isAr ? 'جاري تجهيز أسئلة الاختبار...' : 'Preparing exam questions...') 
-                      : (isAr ? 'بدء الاختبار وحل الأسئلة 🚀' : 'Start Exam & Solve Questions 🚀')}
+                      : aiRetryWaitSec > 0
+                        ? (isAr ? `يمكنك إعادة المحاولة بعد ${aiRetryWaitSec} ثانية` : `You can retry in ${aiRetryWaitSec}s`)
+                        : (isAr ? 'بدء الاختبار وحل الأسئلة 🚀' : 'Start Exam & Solve Questions 🚀')}
                   </button>
                   <button className="btn btn-outline" onClick={() => setAiStep(2)} disabled={isGeneratingAi}>
                     {isAr ? 'الرجوع للوحدات' : 'Back to Units'}

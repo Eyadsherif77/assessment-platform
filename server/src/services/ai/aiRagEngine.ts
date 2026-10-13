@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db.js';
 import { generateEmbedding, cosineSimilarity } from './vectorEmbedding.js';
 import { cleanArabicText, stripDocumentMetadataAndStructure } from '../../utils/arabicTextNormalizer.js';
-import { GeminiClient } from './geminiClient.js';
+import { GeminiClient, GeminiProviderError } from './geminiClient.js';
 import { AnswerValidationService, normalizeArabicLevel1 } from '../answerValidationService.js';
 import { createBoundedSolverAdapter, RawSolverInvoker } from './boundedSolverAdapter.js';
 import { VisualAssetExtractor } from './visualAssetExtractor.js';
@@ -1725,6 +1725,8 @@ Return valid JSON with exact keys:
 
     // 3. Call Gemini with Senior Teacher Persona & Teacher Quality Rules
     const geminiKey = process.env.GEMINI_API_KEY;
+    let providerError: GeminiProviderError | null = null;
+    const verifyStats = { solverExecFailures: 0 };
     if (geminiKey) {
       try {
         // Over-generate candidate questions to guarantee requiredCount is comfortably achieved
@@ -1759,6 +1761,7 @@ Return valid JSON with exact keys:
             contextWords,
             needed: requiredCount - validQuestions.length,
             isSeenByStudent,
+            stats: verifyStats,
             label: 'Pass 1'
           });
           validQuestions.push(...accepted);
@@ -1817,18 +1820,26 @@ Return valid JSON with exact keys:
                 contextWords,
                 needed: requiredCount - validQuestions.length,
                 isSeenByStudent,
+                stats: verifyStats,
                 label: 'Pass 2'
               });
               validQuestions.push(...accepted2);
               console.log(`⏱️ [ExamTiming] pass2_verify_ms=${Date.now() - t2} candidates=${rawTopUpQuestions.length} verified=${accepted2.length}`);
             }
           } catch (topUpErr: any) {
+            if (topUpErr instanceof GeminiProviderError) providerError = providerError || topUpErr;
             console.warn('⚠️ [AIRagEngine] Pass 2 top-up error:', topUpErr.message || topUpErr);
           }
         }
       } catch (err: any) {
+        if (err instanceof GeminiProviderError) providerError = err;
         console.warn('⚠️ Gemini generation error:', err.message || err);
       }
+    }
+
+    // 3b. Provider outage is reported as such (HTTP 503 temporary service), never as missing unit content.
+    if (validQuestions.length < 3 && (providerError || verifyStats.solverExecFailures > 0)) {
+      throw providerError || new GeminiProviderError('TEMPORARY_OVERLOAD', undefined, 'verification service unavailable');
     }
 
     // 4. Fail-closed: If verified questions cannot satisfy the required count, never fabricate or substitute generic questions
@@ -1874,6 +1885,7 @@ Return valid JSON with exact keys:
     isSeenByStudent: (q: GroundedQuestion) => boolean;
     label: string;
     concurrency?: number;
+    stats?: { solverExecFailures: number };
   }): Promise<GroundedQuestion[]> {
     const { rawQuestions, bookId, chapterId, chunks, existing, contextWords, needed, isSeenByStudent, label } = params;
     const concurrency = Math.max(1, params.concurrency ?? 4);
@@ -1935,6 +1947,7 @@ Return valid JSON with exact keys:
           };
           const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
           if (!verification.is_verified) {
+            if (verification.rejection_code === 'VERIFICATION_EXECUTION_FAILURE' && params.stats) params.stats.solverExecFailures++;
             console.warn(`⚠️ [${label}] Rejected question failing blind solver verification: [${verification.rejection_code}] ${verification.rejection_reason} (Question: "${q.question_text.slice(0, 50)}")`);
             continue;
           }
@@ -2218,6 +2231,9 @@ ${contextText}
     } catch (mErr: any) {
       if (mErr.message === 'Insufficient educational content for assessment generation.') {
         throw mErr;
+      }
+      if (mErr instanceof GeminiProviderError) {
+        throw mErr; // classified provider failure: surface it, never disguise it as 'insufficient content'
       }
       console.warn('GeminiClient generation warning:', mErr);
     }
