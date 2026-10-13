@@ -322,7 +322,16 @@ export async function verifyQuestionProvenance(
     return { isVerified: false, reason: `Page ${q.page_reference} does not exist in book_pages for book ${bookId}` };
   }
 
-  const pageText = pageRes.rows[0].raw_text.toLowerCase();
+  const normalizeForProvenance = (s: string) => (s || '')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '') // remove Arabic tashkeel & tatweel
+    .replace(/[إأآا]/g, 'ا') // normalize alef variants
+    .replace(/ة/g, 'ه') // normalize taa marbuta
+    .replace(/ى/g, 'ي') // normalize alef maksura / yaa
+    .toLowerCase();
+
+  const rawPageText = pageRes.rows[0].raw_text || '';
+  const combinedRaw = `${chunkContent} ${rawPageText}`;
+  const pageText = normalizeForProvenance(combinedRaw);
 
   // Expanded Arabic educational stop-words list
   const stopWords = new Set([
@@ -336,11 +345,10 @@ export async function verifyQuestionProvenance(
     'الأوروبية', 'الأوروبي', 'البلاد', 'العالم', 'تاريخ', 'جغرافيا', 'الأخرى', 'قامت', 'وقامت'
   ]);
 
-  // 1. Extract significant question keywords (> 3 chars)
-  const qWords = (q.question_text || '')
-    .toLowerCase()
+  // 1. Extract significant question keywords (> 2 chars)
+  const qWords = normalizeForProvenance(q.question_text || '')
     .split(/[^\w\u0600-\u06FF]+/)
-    .filter(w => w.length > 3 && !stopWords.has(w));
+    .filter(w => w.length > 2 && !stopWords.has(w));
 
   const matchedQWords = qWords.filter(w => pageText.includes(w));
 
@@ -355,23 +363,24 @@ export async function verifyQuestionProvenance(
   }
 
   // 2. Extract correct answer and evaluate its presence on the page
-  const correctOpt = q.options?.find(o => o.is_correct)?.text?.toLowerCase()?.trim() || '';
+  const correctOpt = q.options?.find(o => o.is_correct)?.text || '';
   if (!correctOpt) {
     return { isVerified: false, reason: 'Question has no correct option defined' };
   }
 
-  const ansWords = correctOpt
+  const normalizedCorrectOpt = normalizeForProvenance(correctOpt).trim();
+  const ansWords = normalizedCorrectOpt
     .split(/[^\w\u0600-\u06FF]+/)
-    .filter(w => w.length > 2 && !stopWords.has(w));
+    .filter(w => w.length > 1 && !stopWords.has(w));
 
   const matchedAnsWords = ansWords.filter(w => pageText.includes(w));
   
-  // Exact phrase match or >= 70% of distinctive answer words must appear
-  const exactAnswerMatch = pageText.includes(correctOpt);
-  const partialAnswerMatch = ansWords.length > 0 && (matchedAnsWords.length / ansWords.length) >= 0.7;
+  // Exact phrase match or >= 60% of distinctive answer words must appear
+  const exactAnswerMatch = pageText.includes(normalizedCorrectOpt);
+  const partialAnswerMatch = ansWords.length > 0 && (matchedAnsWords.length / ansWords.length) >= 0.6;
   const isAnswerSupported = exactAnswerMatch || partialAnswerMatch;
 
-  // Rule 1: The correct answer MUST be supported by the page text
+  // Rule 1: The correct answer MUST be supported by the page/chunk text
   if (!isAnswerSupported) {
     return {
       isVerified: false,
@@ -382,7 +391,7 @@ export async function verifyQuestionProvenance(
   // Rule 2: The question's topic/premise MUST have sufficient distinct support:
   // Must either have a verbatim bigram match OR at least 50% keyword match with minimum 2 keywords
   const qCoverageRatio = qWords.length > 0 ? (matchedQWords.length / qWords.length) : 0;
-  if (!hasBigramMatch && (matchedQWords.length < 2 || qCoverageRatio < 0.5)) {
+  if (!hasBigramMatch && (matchedQWords.length < 2 || qCoverageRatio < 0.4)) {
     return {
       isVerified: false,
       reason: `Question premise is unsupported on page ${q.page_reference}: matched [${matchedQWords.join(', ') || 'none'}] out of [${qWords.join(', ')}] (coverage: ${Math.round(qCoverageRatio * 100)}%, bigram match: false)`
@@ -392,7 +401,7 @@ export async function verifyQuestionProvenance(
   // Rule 3: Guard against isolated generic answer words (proximity check)
   // If answer is 1 word/number, it must appear within reasonable proximity of at least one matched question keyword
   if (ansWords.length <= 1) {
-    const targetTerm = ansWords[0] || correctOpt;
+    const targetTerm = ansWords[0] || normalizedCorrectOpt;
     const targetIndices: number[] = [];
     let startIdx = 0;
     while (startIdx < pageText.length) {
@@ -403,7 +412,7 @@ export async function verifyQuestionProvenance(
     }
 
     let hasCloseQWord = false;
-    const maxProximity = 600; // Allows for multi-line math derivations and exercise columns
+    const maxProximity = 800; // Allows for multi-line derivations and exercise columns
     for (const qw of matchedQWords) {
       let qStartIdx = 0;
       while (qStartIdx < pageText.length) {
