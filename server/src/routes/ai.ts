@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
 import { aiRagEngine, GroundedQuestion } from '../services/ai/aiRagEngine.js';
-import { GeminiProviderError } from '../services/ai/geminiClient.js';
+import { GeminiClient, GeminiProviderError } from '../services/ai/geminiClient.js';
 import { checkStudentExamLimit } from '../services/examLimitService.js';
 import { ExamCacheService } from '../services/examCacheService.js';
 import { signExamAttemptToken, verifyExamAttemptToken, ExamAttemptTokenPayload } from '../services/answerValidationService.js';
@@ -84,11 +84,12 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       examParams: { count: parsedCount }
     });
 
-    let questions: any[];
-    let cachedExamId: string;
-    let configHash: string;
-    let contentHash: string;
-    let versionNumber: number;
+    let questions: any[] = [];
+    let cachedExamId: string = '';
+    let configHash: string = cacheResult.configHash;
+    let contentHash: string = '';
+    let versionNumber: number = 1;
+    let isFallbackExam = false;
 
     if (cacheResult.hit && cacheResult.exam) {
       console.log(`⚡ [Shared Exam Cache HIT] Reusing cached exam for student ${req.user!.id} (Book: ${identity.titleAr})`);
@@ -99,30 +100,79 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       versionNumber = cacheResult.exam.versionNumber || 1;
       await ExamCacheService.recordStudentAssignment(cacheResult.cacheKey, req.user!.id, cacheResult.exam.examId);
     } else {
-      console.log(`🔄 [Shared Exam Cache ${cacheResult.reason}] Generating fresh exam for student ${req.user!.id}`);
-      questions = await aiRagEngine.generateQuestions({
-        studentId: req.user!.id,
-        academicStageId: identity.academicStageId,
-        gradeId: identity.gradeId,
-        subjectId: identity.subjectId,
-        bookId: identity.bookId,
-        chapterId: chapter_id,
-        count: parsedCount
-      });
+      console.log(`🔄 [Shared Exam Cache ${cacheResult.reason}] Coordinating fresh exam generation for student ${req.user!.id}`);
 
-      // Cache the generated exam with authoritative identity and assign to current student
-      const stored = await ExamCacheService.storeExamInCache({
-        examId: `ai_exam_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        identity,
-        unitIds: [chapter_id],
-        examParams: { count: parsedCount },
-        questions,
-        assignedStudentId: req.user!.id
-      });
-      cachedExamId = stored.examId;
-      configHash = stored.configHash;
-      contentHash = stored.contentHash;
-      versionNumber = stored.versionNumber || 1;
+      // Multi-instance concurrency coordination: only 1 Vercel instance generates for this configHash at a time
+      const lock = await ExamCacheService.acquireGenerationLock(configHash);
+      let generationLockAcquired = lock.acquired;
+
+      if (!generationLockAcquired) {
+        console.log(`⏳ [Multi-Instance Coordination] Another instance generating for config ${configHash.slice(0, 8)}. Awaiting concurrent result...`);
+        const awaitedExam = await ExamCacheService.waitForConcurrentGeneration(configHash, 25000);
+        if (awaitedExam) {
+          console.log(`⚡ [Multi-Instance Coordination] Reused exam generated concurrently!`);
+          questions = awaitedExam.questions;
+          cachedExamId = awaitedExam.examId;
+          configHash = awaitedExam.configHash;
+          contentHash = awaitedExam.contentHash;
+          versionNumber = awaitedExam.versionNumber || 1;
+          await ExamCacheService.recordStudentAssignment(awaitedExam.configKey, req.user!.id, awaitedExam.examId);
+        }
+      }
+
+      if (questions.length === 0) {
+        try {
+          questions = await aiRagEngine.generateQuestions({
+            studentId: req.user!.id,
+            academicStageId: identity.academicStageId,
+            gradeId: identity.gradeId,
+            subjectId: identity.subjectId,
+            bookId: identity.bookId,
+            chapterId: chapter_id,
+            count: parsedCount
+          });
+
+          // Cache the generated exam with authoritative identity and assign to current student
+          const stored = await ExamCacheService.storeExamInCache({
+            examId: `ai_exam_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            identity,
+            unitIds: [chapter_id],
+            examParams: { count: parsedCount },
+            questions,
+            assignedStudentId: req.user!.id
+          });
+          cachedExamId = stored.examId;
+          configHash = stored.configHash;
+          contentHash = stored.contentHash;
+          versionNumber = stored.versionNumber || 1;
+        } catch (genErr: any) {
+          console.warn('⚠️ AI generation failed, checking verified cache fallback:', genErr?.name || genErr?.message || genErr);
+          // Verified Cache Fallback: If Gemini hits 429 quota exhaustion or 503 overload, check if a verified cached exam exists
+          const fallback = await ExamCacheService.getVerifiedFallbackExam({
+            bookId: book_id,
+            chapterIds: chapter_id,
+            examParams: { count: parsedCount }
+          });
+
+          if (fallback && fallback.questions && fallback.questions.length > 0) {
+            console.log(`🛡️ [Verified Cache Fallback] Provider unavailable; serving verified exam version ${fallback.versionNumber} for student ${req.user!.id}`);
+            questions = fallback.questions;
+            cachedExamId = fallback.examId;
+            configHash = fallback.configHash;
+            contentHash = fallback.contentHash;
+            versionNumber = fallback.versionNumber || 1;
+            isFallbackExam = true;
+            await ExamCacheService.recordStudentAssignment(fallback.configKey, req.user!.id, fallback.examId);
+          } else {
+            // No compatible verified cached exam exists; fail closed and bubble up provider error
+            throw genErr;
+          }
+        } finally {
+          if (generationLockAcquired) {
+            await ExamCacheService.releaseGenerationLock(configHash, lock.lockId);
+          }
+        }
+      }
     }
 
     // Issue cryptographic attempt token bound to authenticated student and authoritative exam version
@@ -171,7 +221,11 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       requested_count: parsedCount,
       generated_count: sanitizedQuestions.length,
       is_partial: isPartial,
+      is_fallback: isFallbackExam,
       exam_status: isPartial ? 'PARTIAL' : 'COMPLETE',
+      fallback_notice: isFallbackExam
+        ? 'تم إعداد هذا الاختبار المعتمد من بنك أسئلة كتاب الوزارة نظراً لضغط مؤقت على خدمة الذكاء الاصطناعي.'
+        : null,
       partial_notice: isPartial
         ? `تم إعداد ${sanitizedQuestions.length} أسئلة معتمدة من أصل ${parsedCount} مطلوبة للحفاظ على معايير الجودة والتوثيق من كتاب الوزارة دون تكرار.`
         : null
@@ -678,6 +732,64 @@ router.get('/evaluations/:id/review', authenticateToken, async (req: Authenticat
     console.error('AI Evaluation review error:', err);
     return res.status(500).json({ error: 'خطأ في جلب تفاصيل تقييم الذكاء الاصطناعي: ' + err.message });
   }
+});
+
+// ── Gemini Diagnostic Endpoint (Phase 4G.3AX) ──────────────────────────────
+// Safe, admin-only endpoint.  No key text is ever included in the response.
+// Returns: key_configured (bool), candidate_models[], and a live connectivity
+// probe result for each model (status / category only — no secrets, no quota-heavy calls).
+router.get('/diagnostic', authenticateToken, requireRole(['ADMIN', 'CENTRAL_ADMIN']), async (_req, res) => {
+  const apiKeyConfigured = !!(process.env.GEMINI_API_KEY);
+  const candidateModels = GeminiClient.candidateModels;
+
+  const probeResults: Array<{model: string; status: string; category?: string; httpStatus?: number}> = [];
+
+  for (const model of candidateModels) {
+    if (!apiKeyConfigured) {
+      probeResults.push({ model, status: 'SKIP', category: 'INVALID_CONFIGURATION' });
+      continue;
+    }
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      const res2 = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'Say OK.' }] }], generationConfig: { maxOutputTokens: 4 } }),
+          signal: controller.signal
+        }
+      );
+      clearTimeout(timer);
+      if (res2.ok) {
+        const data = await res2.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        probeResults.push({ model, status: text.trim().length > 0 ? 'PASS' : 'EMPTY_RESPONSE', httpStatus: res2.status });
+      } else {
+        const errData = await res2.json().catch(() => ({}));
+        const msg: string = errData.error?.message || '';
+        let category = 'UNKNOWN';
+        if (res2.status === 401 || res2.status === 403) category = 'AUTHENTICATION';
+        else if (res2.status === 429) category = 'QUOTA_EXHAUSTED';
+        else if (res2.status === 404 || res2.status === 400) category = 'INVALID_CONFIGURATION';
+        else if (res2.status >= 500) category = 'TEMPORARY_OVERLOAD';
+        probeResults.push({ model, status: 'FAIL', category, httpStatus: res2.status });
+      }
+    } catch (e: any) {
+      const isTimeout = e?.name === 'AbortError' || /aborted/i.test(e?.message || '');
+      probeResults.push({ model, status: 'FAIL', category: isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR' });
+    }
+  }
+
+  const overallPass = probeResults.some(r => r.status === 'PASS');
+  return res.json({
+    api_key_configured: apiKeyConfigured,
+    candidate_models: candidateModels,
+    probe_results: probeResults,
+    overall: overallPass ? 'PASS' : 'FAIL',
+    timestamp: new Date().toISOString()
+  });
 });
 
 export default router;

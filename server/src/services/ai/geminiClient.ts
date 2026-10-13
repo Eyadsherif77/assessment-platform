@@ -1,4 +1,4 @@
-﻿import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 dotenv.config();
 
 export interface GeminiContentPart {
@@ -65,11 +65,9 @@ const num = (v: string | undefined, d: number) => {
 export class GeminiClient {
   public static candidateModels: string[] = Array.from(new Set([
     process.env.GEMINI_MODEL || '',
-    'gemini-3.5-flash',
-    'gemini-3.6-flash',
-    'gemini-3.1-flash-lite',
-    'gemini-flash-lite-latest',
-    'gemini-flash-latest'
+    'gemini-2.0-flash',        // primary — fast, free tier
+    'gemini-1.5-flash',        // fallback — stable, free tier
+    'gemini-1.5-flash-8b'      // final fallback — lightest, free tier
   ].filter(Boolean)));
 
   // ---- Tunables (documented in docs/phase4g3ap_provider_reliability.md) ----
