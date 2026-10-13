@@ -65,10 +65,9 @@ const num = (v: string | undefined, d: number) => {
 export class GeminiClient {
   public static candidateModels: string[] = Array.from(new Set([
     process.env.GEMINI_MODEL || '',
-    'gemini-flash-latest',             // primary — latest stable Flash (verified 200 OK on Google API)
-    'gemini-3-flash-preview',          // fallback 1 — next-gen flash preview
-    'gemini-pro-latest',               // fallback 2 — latest stable Pro
-    'gemini-3.1-flash-lite-preview'    // fallback 3 — lightweight flash
+    'gemini-3-flash-preview',          // primary — verified working (HTTP 200) on current API key
+    'gemini-flash-latest',             // fallback 1 — latest stable Flash
+    'gemini-3.1-flash-lite-preview'    // fallback 2 — lightweight flash
   ].filter(Boolean)));
 
   // ---- Tunables (documented in docs/phase4g3ap_provider_reliability.md) ----
