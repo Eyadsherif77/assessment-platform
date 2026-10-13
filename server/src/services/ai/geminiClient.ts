@@ -36,6 +36,8 @@ export class GeminiClient {
   public static modelCooldownUntil = new Map<string, number>();
   public static quotaCooldownMs = 60_000;
   public static notFoundCooldownMs = 10 * 60_000;
+  public static overloadCooldownMs = 20_000;
+  public static timeoutCooldownMs = 45_000;
 
   /** Models to try now: skip cooling models; if every model is cooling, try them all (bounded failover). */
   private static activeModels(): string[] {
@@ -125,6 +127,8 @@ export class GeminiClient {
           this.modelCooldownUntil.set(model, Date.now() + this.quotaCooldownMs);
         } else if (res.status === 404) {
           this.modelCooldownUntil.set(model, Date.now() + this.notFoundCooldownMs);
+        } else if (res.status === 503) {
+          this.modelCooldownUntil.set(model, Date.now() + this.overloadCooldownMs);
         }
         console.warn(`[GeminiClient] ${model} failed with ${category} (${errMsg.slice(0, 60)}). Trying next candidate...`);
       } catch (err: any) {
@@ -132,6 +136,9 @@ export class GeminiClient {
           throw err;
         }
         lastError = err;
+        if (err?.name === 'AbortError' || /aborted/i.test(err?.message || '')) {
+          this.modelCooldownUntil.set(model, Date.now() + this.timeoutCooldownMs);
+        }
         console.warn(`[GeminiClient] ${model} error: ${err.message}. Trying next candidate...`);
       }
     }

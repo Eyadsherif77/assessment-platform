@@ -2037,6 +2037,7 @@ Teacher Language & Educational Quality Rules (STRICT):
 6. Explanation:
    - Maximum 1–2 short sentences written as a teacher's direct answer key using clear, simple school-level English.
 7. ZERO document structure: Never mention page numbers, chapters, lessons, units, headings, or publisher info.
+8. MANDATORY GROUNDING: The correct answer (or its key terms) must appear explicitly in the provided content. Do not ask questions whose answers must come from outside the provided content.
 ${avoidanceNotice}
 Educational Textbook Content:
 ${contextText}
@@ -2085,6 +2086,7 @@ Respond ONLY with a valid JSON array of objects (no markdown, no code fences, no
 6. التفسير/شرح الإجابة (explanation):
    - جملة أو جملتان قصيرتان كنموذج إجابة معلم (مباشر ومحدد بلغة فصحى تعليمية واضحة ورصينة).
 7. ممنوع تماماً ذكر أرقام الصفحات أو الفصول أو الوحدات أو أي معلومات وصفية.
+8. التوثيق الإلزامي: يجب أن تكون الإجابة الصحيحة (أو مصطلحها/كلماتها الأساسية) واردة صراحةً في المحتوى المرفق، وأن تُبنى أسئلة النحو والإعراب والصرف على كلمات وجمل وقواعد وردت فعلاً في المحتوى. يُمنع طرح أسئلة تتطلب إجابات من خارج المحتوى (مثل أوزان أو إعراب كلمات لم ترد فيه)، ويُمنع أن تختلف خيارات السؤال عن بعضها بالتشكيل فقط.
 ${avoidanceNotice}
 المحتوى التعليمي المقرر لمادة (${subjTitleAr}):
 ${contextText}
