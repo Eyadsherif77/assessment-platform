@@ -20,5 +20,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false
+  },
+  define: {
+    '__VERCEL_ENV__': JSON.stringify(process.env.VERCEL_ENV || '')
   }
 })

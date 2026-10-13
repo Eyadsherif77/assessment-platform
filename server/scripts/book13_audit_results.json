@@ -1,0 +1,241 @@
+{
+  "bookId": "9e702109-7d92-445c-b814-567c1f6cba49",
+  "pageIntegrity": {
+    "sourcePageCount": 114,
+    "storedPageCount": 114,
+    "isContiguous": true,
+    "lowTextCount": 1,
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 6,
+    "totalChunks": 83,
+    "totalAssignedChunks": 83,
+    "unitAudits": [
+      {
+        "chapter_number": 1,
+        "id": "f8d4d833-792d-408b-8b72-1417c85282bc",
+        "title_ar": "الوحدة الأولى: الهوية الشخصية",
+        "title_en": "Unit 1: Personal Identity",
+        "start_page": 14,
+        "end_page": 27,
+        "chunk_count": 14,
+        "min_page": 14,
+        "max_page": 27
+      },
+      {
+        "chapter_number": 2,
+        "id": "498b0ea7-ad68-4e00-9fcb-194601fa721a",
+        "title_ar": "الوحدة الثانية: التواصل مع العائلة والأصدقاء",
+        "title_en": "Unit 2: Communication with Family and Friends",
+        "start_page": 28,
+        "end_page": 41,
+        "chunk_count": 14,
+        "min_page": 28,
+        "max_page": 41
+      },
+      {
+        "chapter_number": 3,
+        "id": "5b8f39d4-30f8-43d5-97ce-39057d9f63da",
+        "title_ar": "الوحدة الثالثة: الذكاء الاصطناعي",
+        "title_en": "Unit 3: Artificial Intelligence",
+        "start_page": 42,
+        "end_page": 55,
+        "chunk_count": 14,
+        "min_page": 42,
+        "max_page": 55
+      },
+      {
+        "chapter_number": 4,
+        "id": "f13a0004-9e70-445c-b814-567c1f6cba49",
+        "title_ar": "الوحدة الرابعة: وقت الشاشة",
+        "title_en": "Unit 4: Screen Time",
+        "start_page": 60,
+        "end_page": 72,
+        "chunk_count": 13,
+        "min_page": 60,
+        "max_page": 72
+      },
+      {
+        "chapter_number": 5,
+        "id": "f13a0005-9e70-445c-b814-567c1f6cba49",
+        "title_ar": "الوحدة الخامسة: التفكير التصميمي",
+        "title_en": "Unit 5: Design Thinking",
+        "start_page": 73,
+        "end_page": 85,
+        "chunk_count": 13,
+        "min_page": 73,
+        "max_page": 85
+      },
+      {
+        "chapter_number": 6,
+        "id": "f13a0006-9e70-445c-b814-567c1f6cba49",
+        "title_ar": "الوحدة السادسة: لماذا نحب القصص؟",
+        "title_en": "Unit 6: Why Do We Like Stories?",
+        "start_page": 86,
+        "end_page": 100,
+        "chunk_count": 15,
+        "min_page": 86,
+        "max_page": 100
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 14,
+        "char_count": 484,
+        "snippet": "UNIT 1 Personal Identity\n\nLearning Outcomes\n\nReading\n- Identify specific details in texts related to personal identity\n- Use vocabulary related to personal identity\n\nListening\n- An interview with a te"
+      },
+      {
+        "page_number": 20,
+        "char_count": 1427,
+        "snippet": "3 Read the text again. Then do the following tasks.\na Choose the correct answer from a, b, c or d.\n1. Nour stood in front of the mirror because she was trying to ..................... .\na. draw her fa"
+      },
+      {
+        "page_number": 28,
+        "char_count": 658,
+        "snippet": "UNIT 2 Communication with Family and Friends\n\nLearning Outcomes\nReading\n- Identify main ideas and specific details in texts about communication\n- Recognize meanings of new words related to communicati"
+      },
+      {
+        "page_number": 35,
+        "char_count": 1133,
+        "snippet": "LESSON 4 Story Time\n\nChapter Two\nTaking Initiative and Building a Team\n\nThe School Garden Project\n\nBefore you read, discuss in pairs\n\n1 Answer the following questions.\n1. Have you ever tried to speak "
+      },
+      {
+        "page_number": 42,
+        "char_count": 720,
+        "snippet": "UNIT 3 Artificial Intelligence\n\nLearning Outcomes\nReading\n- Identify the main idea of a text about Artificial Intelligence\n- Identify specific details of a text about Artificial Intelligence\n- Recogni"
+      },
+      {
+        "page_number": 50,
+        "char_count": 1325,
+        "snippet": "Read together again. Then, in pairs, do the following tasks\n3 Match the words in column A with their meanings in column B.\nA\n1. initiative\n2. donations\n3. quit\n4. climate\n5. disappointed\nB\nmoney or gi"
+      },
+      {
+        "page_number": 60,
+        "char_count": 801,
+        "snippet": "UNIT 4 Screen Time\n\nLearning Outcomes\nReading\n- Identify main ideas and details in texts about screen time\n- Recognize the benefits and drawbacks of screen time\n\nListening\n- Understand main ideas in c"
+      },
+      {
+        "page_number": 73,
+        "char_count": 778,
+        "snippet": "UNIT\n5\nDesign Thinking\nLearning Outcomes\nReading\n- Identify main ideas and details in texts\nabout the innovation process.\n- Understand and explain the steps of\ndesign thinking in a reading passage.\nLi"
+      },
+      {
+        "page_number": 86,
+        "char_count": 1031,
+        "snippet": "UNIT 6\nWhy Do We Like Stories?\n\nLearning Outcomes\n\nReading\n- Identify main ideas and details in informational and fictional texts about stories\n- Understand the elements of a story (setting, conflict,"
+      },
+      {
+        "page_number": 95,
+        "char_count": 1152,
+        "snippet": "LESSON 5 Let's Talk\nBefore you read this conversation, ask a classmate\n- What makes a story interesting to you: characters, setting, message, or something else?\n- Can stories teach us something import"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "f8d4d833-792d-408b-8b72-1417c85282bc",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          26,
+          24,
+          16,
+          22,
+          25,
+          23
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "498b0ea7-ad68-4e00-9fcb-194601fa721a",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          40,
+          38,
+          41,
+          34,
+          37,
+          36
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "5b8f39d4-30f8-43d5-97ce-39057d9f63da",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          47,
+          54,
+          48,
+          53,
+          46,
+          52
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      },
+      {
+        "unit": 4,
+        "chapterId": "f13a0004-9e70-445c-b814-567c1f6cba49",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          66,
+          64,
+          61,
+          67,
+          68,
+          65
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      },
+      {
+        "unit": 5,
+        "chapterId": "f13a0005-9e70-445c-b814-567c1f6cba49",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          84,
+          81,
+          79,
+          80,
+          75,
+          78
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      },
+      {
+        "unit": 6,
+        "chapterId": "f13a0006-9e70-445c-b814-567c1f6cba49",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          91,
+          99,
+          89,
+          88,
+          92,
+          86
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      }
+    ],
+    "negativeRetrievalCount": 0,
+    "crossBookLeak": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "baselinePass": true,
+    "platformPass": true,
+    "passed": true
+  }
+}

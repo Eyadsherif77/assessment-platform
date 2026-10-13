@@ -1,0 +1,149 @@
+{
+  "bookId": "bc6bb834-7192-474c-8507-c53265028b4e",
+  "pageIntegrity": {
+    "sourcePageCount": 162,
+    "storedPageCount": 162,
+    "isContiguous": true,
+    "lowTextCount": 1,
+    "lowTextPages": [
+      {
+        "page": 160,
+        "chars": 11
+      }
+    ],
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 3,
+    "totalChunks": 142,
+    "totalAssignedChunks": 142,
+    "unitAudits": [
+      {
+        "unit": 1,
+        "title_en": "Theme 1: My Belonging is My Strength",
+        "title_ar": "المحور الأول: انتمائي قوتي",
+        "id": "902f6adf-8043-4247-b80c-42bb48d200b8",
+        "start_page": 11,
+        "end_page": 56,
+        "chunk_count": 49,
+        "min_page": 1,
+        "max_page": 56
+      },
+      {
+        "unit": 2,
+        "title_en": "Theme 2: My Environment is My Responsibility",
+        "title_ar": "المحور الثاني: بيئتي مسئوليتي",
+        "id": "c1fb0f60-6123-40be-8933-33c725c75d63",
+        "start_page": 57,
+        "end_page": 105,
+        "chunk_count": 49,
+        "min_page": 57,
+        "max_page": 105
+      },
+      {
+        "unit": 3,
+        "title_en": "Theme 3: Science and Values",
+        "title_ar": "المحور الثالث: علم وقيم",
+        "id": "6db2a082-2dda-4fe9-9b30-f8ab8c106cce",
+        "start_page": 106,
+        "end_page": 149,
+        "chunk_count": 44,
+        "min_page": 106,
+        "max_page": 149
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 11,
+        "char_count": 508,
+        "snippet": "الوحدة الأُولَى\nانْتِمَائِي قُوَّتِي\n. الدَّرْسُ الأَوَّلُ (نَصُّ اسْتِمَاعِ):\nسَيِّدَةُ الْمُقَاوَمَةِ الْمِصْرِيَّةِ (آمِنَة دَهْشَان).\n. الدَّرْسُ الثَّانِي (نَصُّ قِرَاءَة):\nالْعُبُورُ إِلَى الْمُ"
+      },
+      {
+        "page_number": 25,
+        "char_count": 2067,
+        "snippet": "نِشاط (١) : أَضَعُ خَطًّا تَحْتَ الْأَسْمَاءِ، ثُمَّ أُحَدِّدُ نَوْعَهَا مِنْ حَيْثُ الْإِعْرَابُ وَالْبِنَاءِ:\n١. حَرَبَ أُكْتُوبَرَ مَعْرَكَةٌ تَارِيخِيَّةٌ.\n٢. مَنْ يُحِبُّ وَطَنَهُ يَعْمَلْ بِجِدّ"
+      },
+      {
+        "page_number": 57,
+        "char_count": 527,
+        "snippet": "الوَحْدَةُ الثَّانِيَةُ\nبِيئَتِي مَسْئُولِيَّتِي\n• الدَّرْسُ الْأَوَّلُ (نَصُّ اسْتِمَاعٍ):\nأُقَدِّمُ وَدِيعَةً فِي يَدِ الْمِصْرِيِّ.\n• الدَّرْسُ الثَّانِي (نَصُّ قِرَاءَةٍ):\nمِنْ أَجْلِ غَدٍ.\n• الدّ"
+      },
+      {
+        "page_number": 75,
+        "char_count": 1522,
+        "snippet": "تَدْرِيبَاتٌ شَامِلَةٌ عَلَى الضَّمَائِرِ\nنَشَاط (١): أَضَعُ خَطًّا تَحْتَ الضَّمِيرِ الْبَارِزِ، ثُمَّ أَذْكُرُ نَوْعَهُ، وَمَحَلَّهُ:\n١. يَحْتَاجُ عَقْلُكَ إِلَى الْقِرَاءَةِ لِيُضِيءَ.\n٢. نَحْنُ مُ"
+      },
+      {
+        "page_number": 106,
+        "char_count": 519,
+        "snippet": "الْوَحْدَةُ الثَّالِثَةُ: عِلْمٌ وَقِيَمٌ. الدَّرْسُ الْأَوَّلُ (نَصُّ اسْتِمَاعٍ): إِنْسَانٌ أَمْ ظِلُّ إِنْسَانٍ؟ لِـ «د. هَانِم أَحْمَد». الدَّرْسُ الثَّانِي (نَصُّ قِرَاءَةٍ): عِنْدَمَا يُصْبِحُ ا"
+      },
+      {
+        "page_number": 125,
+        "char_count": 989,
+        "snippet": "الدَّرْسُ الثَّالِثُ\nالقِرَاءَةُ حَيَاةٌ\nلِـ: «أَحْمَد أَمِين» (بِتَصَرُّف)\nنَصُّ قِرَاءَةٍ\nأَتَأَمَّلُ وَأَتَوَقَّعُ\nمِنْ وِجْهَةِ نَظَرِكَ،\nمَا الْفَرْقُ بَيْنَ إِنْسَانٍ يَقْرَأُ\nوَآخَرَ لَا يَقْرَ"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "902f6adf-8043-4247-b80c-42bb48d200b8",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          37,
+          47,
+          49,
+          14,
+          24,
+          29
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "c1fb0f60-6123-40be-8933-33c725c75d63",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          59,
+          78,
+          65,
+          70,
+          88,
+          103
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "6db2a082-2dda-4fe9-9b30-f8ab8c106cce",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          120,
+          109,
+          119,
+          127,
+          145,
+          110
+        ],
+        "foreignCount": 0,
+        "passed": true
+      }
+    ],
+    "crossLeakage": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "books1to5Intact": true,
+    "tablesIntact": true,
+    "passed": true
+  },
+  "overallStatus": "PASS"
+}

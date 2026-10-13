@@ -1,0 +1,120 @@
+{
+  "recoveredPagesInspection": [
+    {
+      "pageNumber": 77,
+      "charCount": 1408,
+      "matchedLandmarks": true,
+      "description": "Contains Activity 2 Practical on Starch Formation in Photosynthesis with variegated leaf procedure"
+    },
+    {
+      "pageNumber": 78,
+      "charCount": 1421,
+      "matchedLandmarks": true,
+      "description": "Contains conclusions on the necessity of chlorophyll and light in starch formation verified by iodine test"
+    },
+    {
+      "pageNumber": 103,
+      "charCount": 1767,
+      "matchedLandmarks": true,
+      "description": "Contains Lesson Two Evaluation Questions on Earth minerals, silicates, and pyroxene"
+    },
+    {
+      "pageNumber": 104,
+      "charCount": 510,
+      "matchedLandmarks": true,
+      "description": "Contains textbook editorial board, composition committee, and reviewers list"
+    }
+  ],
+  "unitIsolation": [
+    {
+      "unit": 1,
+      "title": "Unit 1: Matter and Energy",
+      "chapterId": "d8b969af-fa0a-4f96-a54c-bbcf33ddc188",
+      "retrievedCount": 8,
+      "pages": [
+        21,
+        42,
+        29,
+        13,
+        34,
+        10,
+        9,
+        24
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 2,
+      "title": "Unit 2: Matter and Chemical Reactions",
+      "chapterId": "12122d52-126c-452a-a555-a942bc570946",
+      "retrievedCount": 8,
+      "pages": [
+        45,
+        65,
+        62,
+        52,
+        57,
+        55,
+        66,
+        61
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 3,
+      "title": "Unit 3: Energy Flow in Photosynthesis and Cellular Respiration",
+      "chapterId": "147144a2-8e01-413d-89e2-45393236f87c",
+      "retrievedCount": 8,
+      "pages": [
+        77,
+        86,
+        84,
+        78,
+        73,
+        72,
+        83,
+        75
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 4,
+      "title": "Unit 4: Geological Processes",
+      "chapterId": "e4000000-fa0a-4f96-a54c-bbcf33ddc184",
+      "retrievedCount": 8,
+      "pages": [
+        103,
+        96,
+        100,
+        88,
+        90,
+        102,
+        93,
+        89
+      ],
+      "foreignCount": 0,
+      "passed": true
+    }
+  ],
+  "inventory": {
+    "pages": 104,
+    "distinctPages": 104,
+    "chunks": 97,
+    "chapters": 4,
+    "consistentWithReport": true
+  },
+  "externalTables": {
+    "books1to4AllMatch": true,
+    "usersMatch": true,
+    "profilesMatch": true,
+    "evaluationsMatch": true,
+    "examsMatch": true,
+    "qbItemsMatch": true,
+    "qbOptsMatch": true,
+    "book5PdfChunksMatch": true,
+    "totalPdfChunksMatch": true
+  }
+}

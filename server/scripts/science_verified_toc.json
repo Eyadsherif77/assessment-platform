@@ -1,0 +1,108 @@
+{
+  "units": [
+    {
+      "unit_number": 1,
+      "title_en": "The Matter",
+      "title_ar": "المادة",
+      "printed_start_page": 2,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "Structure of the Atom",
+          "title_ar": "تركيب الذرة",
+          "printed_page": 2
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "The Periodic Table of Elements",
+          "title_ar": "الجدول الدوري للعناصر",
+          "printed_page": 10
+        },
+        {
+          "lesson_number": 3,
+          "title_en": "Matter and Its Properties",
+          "title_ar": "المادة وخواصها",
+          "printed_page": 18
+        },
+        {
+          "lesson_number": 4,
+          "title_en": "Chemical Bonds",
+          "title_ar": "الروابط الكيميائية",
+          "printed_page": 26
+        }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title_en": "Force Fields",
+      "title_ar": "مجالات القوى",
+      "printed_start_page": 33,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "Electric Forces",
+          "title_ar": "القوى الكهربية",
+          "printed_page": 33
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "Magnetic Forces",
+          "title_ar": "القوى المغناطيسية",
+          "printed_page": 41
+        },
+        {
+          "lesson_number": 3,
+          "title_en": "Gravitational Forces",
+          "title_ar": "قوى الجاذبية",
+          "printed_page": 47
+        }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title_en": "Living Organisms, Their Structure and Processes",
+      "title_ar": "الكائنات الحية، تركيبها والعمليات الحيوية",
+      "printed_start_page": 56,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "Cells and Life",
+          "title_ar": "الخلايا والحياة",
+          "printed_page": 56
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "General Characteristics of Living Organisms",
+          "title_ar": "الخصائص العامة للكائنات الحية",
+          "printed_page": 64
+        },
+        {
+          "lesson_number": 3,
+          "title_en": "Microbes",
+          "title_ar": "الكائنات الدقيقة",
+          "printed_page": 72
+        }
+      ]
+    },
+    {
+      "unit_number": 4,
+      "title_en": "The (Earth - Sun - Moon) System",
+      "title_ar": "نظام الأرض والشمس والقمر",
+      "printed_start_page": 80,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "The Earth and the Solar System",
+          "title_ar": "الأرض والمجموعة الشمسية",
+          "printed_page": 80
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "Lunar Eclipse",
+          "title_ar": "خسوف القمر",
+          "printed_page": 88
+        }
+      ]
+    }
+  ]
+}

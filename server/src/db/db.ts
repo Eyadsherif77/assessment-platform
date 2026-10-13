@@ -71,16 +71,39 @@ class DatabaseManager {
     console.log('🗄️  Initializing embedded SQLite database...');
     try {
       const { default: Database } = await import('better-sqlite3');
-      const dataDir = process.env.VERCEL
-        ? '/tmp/assessment_platform_data'
-        : path.join(
-            process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\temp', 'AppData', 'Local'),
-            'assessment_platform_data'
-          );
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      const persistentDir = path.join(
+        process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\temp', 'AppData', 'Local'),
+        'assessment_platform_data'
+      );
+      const persistentDbPath = path.normalize(path.join(persistentDir, 'platform.db')).toLowerCase();
+
+      let dbPath: string;
+      const isTestEnv = process.env.NODE_ENV === 'test' ||
+        process.argv.some(arg => arg.toLowerCase().includes('test'));
+
+      if (process.env.SQLITE_DB_PATH) {
+        dbPath = path.resolve(process.env.SQLITE_DB_PATH);
+        const norm = path.normalize(dbPath).toLowerCase();
+        if (isTestEnv && (norm === persistentDbPath || norm.includes('assessment_platform_data'))) {
+          throw new Error(`CRITICAL TEST ISOLATION FAILURE: SQLITE_DB_PATH resolved to persistent DB: ${dbPath}`);
+        }
+        const dir = path.dirname(dbPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+      } else {
+        if (isTestEnv) {
+          throw new Error('CRITICAL TEST ISOLATION FAILURE: Automated test executed without disposable SQLITE_DB_PATH! Refusing to connect to persistent database.');
+        }
+        const dataDir = process.env.VERCEL
+          ? '/tmp/assessment_platform_data'
+          : persistentDir;
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+        dbPath = path.join(dataDir, 'platform.db');
       }
-      const dbPath = path.join(dataDir, 'platform.db');
+
       this.sqlite = new Database(dbPath, { verbose: undefined });
       this.sqlite.pragma('journal_mode = WAL');
       this.sqlite.pragma('foreign_keys = ON');
@@ -93,6 +116,23 @@ class DatabaseManager {
     }
 
     // If all providers failed, leave isInitialized false so subsequent requests can retry
+    this.isInitialized = false;
+  }
+
+  public getSqlitePath(): string | null {
+    if (this.sqlite) {
+      return this.sqlite.name;
+    }
+    return process.env.SQLITE_DB_PATH || null;
+  }
+
+  public close(): void {
+    if (this.sqlite) {
+      try {
+        this.sqlite.close();
+      } catch (_) {}
+      this.sqlite = null;
+    }
     this.isInitialized = false;
   }
 
@@ -122,7 +162,20 @@ class DatabaseManager {
       tidbSql = tidbSql.replace(/datetime\(['"]now['"]\)/gi, 'NOW()');
       tidbSql = tidbSql.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
 
-      const res = (await this.tidbConn.execute(tidbSql, orderedParams, { fullResult: true })) as any;
+      let res: any;
+      try {
+        res = await this.tidbConn.execute(tidbSql, orderedParams, { fullResult: true });
+      } catch (err: any) {
+        if (err.message?.includes('invalid connection') || err.message?.includes('fetch failed')) {
+          console.warn('🔄 Reconnecting to TiDB Cloud Serverless after connection drop...');
+          this.isInitialized = false;
+          this.tidbConn = null;
+          await this.init();
+          res = await this.tidbConn!.execute(tidbSql, orderedParams, { fullResult: true });
+        } else {
+          throw err;
+        }
+      }
       const rows = (res.rows || []) as T[];
       return {
         rows,
@@ -191,6 +244,15 @@ class DatabaseManager {
   }
 
   private async applySchema(): Promise<void> {
+    // Prevent unsafe automatic DDL execution during production/serverless startup
+    const isProductionOrServerless = Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
+    const explicitAutoApply = process.env.AUTO_APPLY_SCHEMA === 'true';
+
+    if (isProductionOrServerless && !explicitAutoApply) {
+      console.log('🔒 Skipping automatic DDL schema execution in production/serverless environment.');
+      return;
+    }
+
     try {
       if (this.tidbConn) {
         let schemaPath = path.resolve(__dirname, 'schema_mysql.sql');
@@ -392,6 +454,33 @@ class DatabaseManager {
               setting_value TEXT NOT NULL,
               updated_at TEXT,
               updated_by TEXT
+            )
+          `);
+        } catch (_) {}
+
+        // Ensure chunked uploads storage table for SQLite
+        try {
+          await this.query(`
+            CREATE TABLE IF NOT EXISTS file_upload_chunks (
+              upload_id TEXT NOT NULL,
+              chunk_index INTEGER NOT NULL,
+              total_chunks INTEGER NOT NULL,
+              chunk_data BLOB NOT NULL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (upload_id, chunk_index)
+            )
+          `);
+        } catch (_) {}
+
+        // Ensure persistent book PDF chunks storage table for SQLite
+        try {
+          await this.query(`
+            CREATE TABLE IF NOT EXISTS book_pdf_chunks (
+              book_id TEXT NOT NULL,
+              chunk_index INTEGER NOT NULL,
+              chunk_data BLOB NOT NULL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (book_id, chunk_index)
             )
           `);
         } catch (_) {}

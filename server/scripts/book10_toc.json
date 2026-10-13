@@ -1,0 +1,134 @@
+{
+  "book_id": "fa2a1525-c46f-4b34-9f48-b762be88e5c5",
+  "book_number": 10,
+  "official_title": "الدراسات الاجتماعية: إفريقيا ومصر - معًا على طريق التنمية والحضارة",
+  "subject": "SOCIAL_STUDIES",
+  "grade": "الصف الأول الإعدادي",
+  "term": "Term 1",
+  "total_pdf_pages": 12,
+  "units": [
+    {
+      "unit_number": 1,
+      "title_ar": "الملامح الطبيعية لقارة إفريقيا وحضاراتها القديمة",
+      "title_en": "Natural Features of the Continent of Africa and its Ancient Civilizations",
+      "printed_start_page": 7,
+      "printed_end_page": 29,
+      "pdf_start_page": 7,
+      "pdf_end_page": 29,
+      "description": "Explores the geography, location, and ancient civilizations of the African continent.",
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title": "قارة إفريقيا (الموقع والكشوف الجغرافية)",
+          "printed_page": 8,
+          "pdf_page": 8
+        },
+        {
+          "lesson_number": 2,
+          "title": "مظاهر سطح قارة إفريقيا",
+          "printed_page": 14,
+          "pdf_page": 14
+        },
+        {
+          "lesson_number": 3,
+          "title": "نهر النيل والحضارات القديمة في إفريقيا",
+          "printed_page": 20,
+          "pdf_page": 20
+        }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title_ar": "الحضارة المصرية القديمة وعلاقتها بحضارات إفريقيا",
+      "title_en": "Ancient Egyptian Civilization and its Relationship with African Civilizations",
+      "printed_start_page": 30,
+      "printed_end_page": 51,
+      "pdf_start_page": 30,
+      "pdf_end_page": 51,
+      "description": "Focuses on the history of Ancient Egypt and its interactions with other African civilizations.",
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title": "عصر الدولة القديمة (عصر بناة الأهرام)",
+          "printed_page": 30,
+          "pdf_page": 30
+        },
+        {
+          "lesson_number": 2,
+          "title": "عصر الدولة الوسطى (عصر الرخاء الاقتصادي)",
+          "printed_page": 36,
+          "pdf_page": 36
+        },
+        {
+          "lesson_number": 3,
+          "title": "عصر الدولة الحديثة (عصر المجد الحربي)",
+          "printed_page": 42,
+          "pdf_page": 42
+        }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title_ar": "النظم البيئية في قارة إفريقيا",
+      "title_en": "Ecosystems in the Continent of Africa",
+      "printed_start_page": 52,
+      "printed_end_page": 79,
+      "pdf_start_page": 52,
+      "pdf_end_page": 79,
+      "description": "Covers the various ecosystems, forests, grasslands, and water systems in Africa.",
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title": "نظم الغابات في إفريقيا (الغابات المدارية المطيرة وغابات البحر المتوسط)",
+          "printed_page": 52,
+          "pdf_page": 52
+        },
+        {
+          "lesson_number": 2,
+          "title": "نظم الحشائش (الحارة والمعتدلة) والصحاري الحارة في إفريقيا",
+          "printed_page": 60,
+          "pdf_page": 60
+        },
+        {
+          "lesson_number": 3,
+          "title": "النظم البيئية المائية في إفريقيا",
+          "printed_page": 68,
+          "pdf_page": 68
+        }
+      ]
+    },
+    {
+      "unit_number": 4,
+      "title_ar": "علاقة مصر بإفريقيا خلال العصور الوسطى",
+      "title_en": "Egypt's Relationship with Africa during the Middle Ages",
+      "printed_start_page": 80,
+      "printed_end_page": 96,
+      "pdf_start_page": 80,
+      "pdf_end_page": 96,
+      "description": "Examines the historical ties between Egypt and Africa during the medieval period.",
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title": "انتشار الإسلام في إفريقيا",
+          "printed_page": 80,
+          "pdf_page": 80
+        },
+        {
+          "lesson_number": 2,
+          "title": "دور مصر الحضاري في قارة إفريقيا",
+          "printed_page": 88,
+          "pdf_page": 88
+        }
+      ]
+    }
+  ],
+  "front_matter": {
+    "pdf_pages": "1..6",
+    "description": "Cover, title page, introduction, and curriculum map."
+  },
+  "back_matter": {
+    "pdf_pages": "96..96",
+    "description": "General review for the first term."
+  },
+  "notes": "The PDF provided contains only the first 12 pages of the textbook. The printed page numbers in the table of contents refer to the full textbook, which is longer than the provided PDF sample."
+}

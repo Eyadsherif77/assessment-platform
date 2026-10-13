@@ -11,6 +11,7 @@ yarn-debug.log*
 pnpm-debug.log*
 uploads/*.pdf
 !uploads/sample_book_prep1.txt
+server/uploads/*.pdf
 
 server/pgdata_local/
 *.db
@@ -25,3 +26,5 @@ server/test_*.mjs
 server/migrate_*.mjs
 server/src/scratch_*.mjs
 server/src/migrate_*.mjs
+backups/
+server/backups/

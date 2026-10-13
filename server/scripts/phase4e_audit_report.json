@@ -1,0 +1,1533 @@
+[
+  {
+    "bookId": "fa2a1525-c46f-4b34-9f48-b762be88e5c5",
+    "titleAr": "الدراسات الاجتماعية",
+    "titleEn": "Social Studies",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الأول الإعدادي",
+    "subject": "الدراسات الاجتماعية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_fa2a1525-c46f-4b34-9f48-b762be88e5c5.pdf",
+      "sizeMB": "81.21"
+    },
+    "pageStats": {
+      "totalInDb": 110,
+      "totalPagesMeta": 110,
+      "totalChars": 159413,
+      "avgCharsPerPage": 1449,
+      "emptyPagesCount": 0,
+      "emptyPagesList": [],
+      "shortPagesCount": 0
+    },
+    "chunkStats": {
+      "totalChunks": 90,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 4,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: الملامح الطبيعية لقارة إفريقيا وحضاراتها القديمة",
+          "start": 7,
+          "end": 29
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: الحضارة المصرية القديمة وعلاقتها بحضارات إفريقيا",
+          "start": 30,
+          "end": 51
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: النظم البيئية في قارة إفريقيا",
+          "start": 52,
+          "end": 79
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: علاقة مصر بإفريقيا خلال العصور الوسطى",
+          "start": 80,
+          "end": 96
+        }
+      ],
+      "unmappedPagesCount": 20,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 1199,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": false,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "خريطة المنهج: جوانب تعلم مادة الدراسات الاجتماعية. الوحدة الثالثة: النظم البيئية في قارة إفريقيا. الدرس الثالث: عصر الدولة الحديثة (عصر المجد الحربي):"
+      },
+      {
+        "pageNumber": 56,
+        "charCount": 1209,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": false,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "الفصل الدراسي الأول - الدرس الأول: نظم الغابات في إفريقيا (الغابات المدارية المطيرة وغابات البحر المتوسط). الحيوانات: تتميز الغابات المدارية المطيرة ب"
+      },
+      {
+        "pageNumber": 106,
+        "charCount": 741,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "ب ما العلاقة بين...؟ ١ - تطور بناء المقابر، والأسرة الفرعونية الرابعة. ٢ - هضبة الحبشة، والزراعة في مصر. السؤال الرابع: أ اختر الإجابة الصحيحة مما بين"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "808104ec-b861-434b-80c6-579f715d8bdf",
+    "titleAr": "الرياضيات (لغات)",
+    "titleEn": "Mathematics",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الأول الإعدادي",
+    "subject": "الرياضيات",
+    "term": 1,
+    "schoolType": "لغات",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_808104ec-b861-434b-80c6-579f715d8bdf.pdf",
+      "sizeMB": "135.01"
+    },
+    "pageStats": {
+      "totalInDb": 122,
+      "totalPagesMeta": 122,
+      "totalChars": 179863,
+      "avgCharsPerPage": 1474,
+      "emptyPagesCount": 1,
+      "emptyPagesList": [
+        3
+      ],
+      "shortPagesCount": 1
+    },
+    "chunkStats": {
+      "totalChunks": 104,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 4,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: الأعداد والعمليات عليها",
+          "start": 8,
+          "end": 38
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: الجبر",
+          "start": 39,
+          "end": 53
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: الإحصاء",
+          "start": 54,
+          "end": 75
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: الهندسة والقياس",
+          "start": 76,
+          "end": 111
+        }
+      ],
+      "unmappedPagesCount": 18,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 267,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "UNIT 3: Statistics 3-1 Organizing Data: 47 3-2 Arithmetic Mean: 55 3-3 Pie Charts: 60 UNIT 4: Geometry & Measurement 4-1 Types of Angles and Relations"
+      },
+      {
+        "pageNumber": 62,
+        "charCount": 1973,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "Lesson 3-2: Arithmetic Mean. Learning Outcomes: Learn the measures of central tendency. Learn how to calculate the arithmetic mean of a set of values."
+      },
+      {
+        "pageNumber": 118,
+        "charCount": 1413,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "10. In the opposite figure: \\overline{BE} \\cap \\overline{CF} = \\{A\\} Prove that: \\overline{AD} bisects \\angle EAC. 11. ABCD is a rectangle whose diag"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "d7bbfca2-6d8f-461b-8e39-2015981e86ec",
+    "titleAr": "العلوم (لغات)",
+    "titleEn": "Science (English)",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الأول الإعدادي",
+    "subject": "العلوم",
+    "term": 1,
+    "schoolType": "لغات",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_d7bbfca2-6d8f-461b-8e39-2015981e86ec.pdf",
+      "sizeMB": "26.82"
+    },
+    "pageStats": {
+      "totalInDb": 102,
+      "totalPagesMeta": 102,
+      "totalChars": 142851,
+      "avgCharsPerPage": 1401,
+      "emptyPagesCount": 0,
+      "emptyPagesList": [],
+      "shortPagesCount": 2
+    },
+    "chunkStats": {
+      "totalChunks": 101,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 1
+    },
+    "chapterStats": {
+      "totalChapters": 3,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: المادة وخواصها وتركيبها",
+          "start": 1,
+          "end": 36
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: الطاقة ومصادرها وصورها",
+          "start": 37,
+          "end": 71
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: التنوع والتكيف في الكائنات الحية",
+          "start": 72,
+          "end": 102
+        }
+      ],
+      "unmappedPagesCount": 0,
+      "unmappedPagesList": []
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 833,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "Unit 3 Living Organisms, Their Structure and Processes Lesson one: Cells and Life ..................................................................."
+      },
+      {
+        "pageNumber": 52,
+        "charCount": 1669,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "Magnetic Field What is the similarity between an electric field and a magnetic field? An electric charge has an electric field that extends through th"
+      },
+      {
+        "pageNumber": 98,
+        "charCount": 1751,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "It is clear from the previous that : The presence of an opaque object in the path of light rays leads to the formation of a dark area known as a shado"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "21e1d639-9f59-4a58-a8f8-8373b8e7fc90",
+    "titleAr": "اللغة الإنجليزية",
+    "titleEn": "English (Student Book)",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الأول الإعدادي",
+    "subject": "اللغة الإنجليزية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_21e1d639-9f59-4a58-a8f8-8373b8e7fc90.pdf",
+      "sizeMB": "82.69"
+    },
+    "pageStats": {
+      "totalInDb": 113,
+      "totalPagesMeta": 113,
+      "totalChars": 146479,
+      "avgCharsPerPage": 1296,
+      "emptyPagesCount": 3,
+      "emptyPagesList": [
+        3,
+        107,
+        108
+      ],
+      "shortPagesCount": 0
+    },
+    "chunkStats": {
+      "totalChunks": 87,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 6,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: الحياة في عالم رقمي",
+          "start": 14,
+          "end": 27
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: التعلم من أجل التعلم",
+          "start": 28,
+          "end": 41
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: القدوة الحسنة",
+          "start": 42,
+          "end": 55
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: اختيارات ذكية",
+          "start": 60,
+          "end": 73
+        },
+        {
+          "num": 5,
+          "titleAr": "الوحدة الخامسة: أحلام المستقبل",
+          "start": 74,
+          "end": 87
+        },
+        {
+          "num": 6,
+          "titleAr": "الوحدة السادسة: المواطنون العالميون",
+          "start": 88,
+          "end": 101
+        }
+      ],
+      "unmappedPagesCount": 29,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        56,
+        57,
+        58,
+        59,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 1307,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "Scope and Sequence Term 1 Unit Vocabulary Language Skills Life Skill[s] Core Value[s] Integrated learning activities 1. Life in a Digital World digit"
+      },
+      {
+        "pageNumber": 57,
+        "charCount": 1258,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "4. In what way does digital learning improve communication skills? 5. Why are people still important in education, even with technology? 4 Writing an"
+      },
+      {
+        "pageNumber": 109,
+        "charCount": 1789,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "Glossary Word Definition Achievement Success in reaching a goal Achieve Successfully bring about or reach by effort Admire To respect or look up to so"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "0758fc7a-c9b2-4e25-a32b-6cacb6bb418d",
+    "titleAr": "اللغة العربية",
+    "titleEn": "Arabic Language",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الأول الإعدادي",
+    "subject": "اللغة العربية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_0758fc7a-c9b2-4e25-a32b-6cacb6bb418d.pdf",
+      "sizeMB": "52.61"
+    },
+    "pageStats": {
+      "totalInDb": 142,
+      "totalPagesMeta": 142,
+      "totalChars": 502126,
+      "avgCharsPerPage": 3536,
+      "emptyPagesCount": 0,
+      "emptyPagesList": [],
+      "shortPagesCount": 4
+    },
+    "chunkStats": {
+      "totalChunks": 119,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 3,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: أنا مصري",
+          "start": 11,
+          "end": 50
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: أصنع مستقبلي",
+          "start": 51,
+          "end": 92
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: مواقف إنسانية",
+          "start": 93,
+          "end": 129
+        }
+      ],
+      "unmappedPagesCount": 23,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 1809,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "الدَّرْسُ الثَّالِث: - نَصُّ قِرَاءَة (بُطُولَاتٌ مِصْرِيَّة: مُحَمَّد صَلَاح - عَلِي فَرَج - أَحْمَد الجُنْدِي) ص ٦٩ - القَوَاعِدُ النَّحْوِيَّة (أَن"
+      },
+      {
+        "pageNumber": 72,
+        "charCount": 2113,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "عُرِفَ بِذَكَائِهِ فِي الْمَلْعَبِ وَأَخْلَاقِهِ الْعَالِيَةِ. وَيُعَدُّ نَمُوذَجًا رَائِعًا لِلشَّبَابِ الْمُثَقَّفِ الرِّيَاضِيِّ. كَانَ دَائِمًا يَ"
+      },
+      {
+        "pageNumber": 138,
+        "charCount": 1022,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "٢ تَقْيِيمُ الْوَحْدَةِ الثَّانِيَةِ «لَا شَكَّ أَنَّ مُدَرِّسَ اللُّغَةِ الْعَرَبِيَّةِ كَانَ لَهُ أَثَرٌ كَبِيرٌ فِي تَوْجِيهِنَا لِقِرَاءَةِ الْأَد"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+    "titleAr": "الدراسات الاجتماعية",
+    "titleEn": "Social Studies",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثاني الإعدادي",
+    "subject": "الدراسات الاجتماعية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_81b8a308-7fcf-4938-8c45-aa0056624f32.pdf",
+      "sizeMB": "30.83"
+    },
+    "pageStats": {
+      "totalInDb": 106,
+      "totalPagesMeta": 106,
+      "totalChars": 149822,
+      "avgCharsPerPage": 1413,
+      "emptyPagesCount": 0,
+      "emptyPagesList": [],
+      "shortPagesCount": 0
+    },
+    "chunkStats": {
+      "totalChunks": 98,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 8,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 4,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: الملامح الطبيعية لقارتي آسيا وأوروبا",
+          "start": 7,
+          "end": 26
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: الحضارات القديمة في قارة آسيا وعلاقتها بمصر",
+          "start": 27,
+          "end": 56
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: النُّظم البيئية في قارتي آسيا وأوروبا",
+          "start": 57,
+          "end": 80
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: الحضارات القديمة في قارة أوروبا وعلاقتها بمصر",
+          "start": 81,
+          "end": 96
+        }
+      ],
+      "unmappedPagesCount": 16,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 853,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": false,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "خريطة المنهج جوانب تعلم مادة الدراسات الاجتماعية الوحدات | الدروس | المعارف | المفاهيم الرئيسية | المهارات الأكاديمية | القيم | المهارات العابرة للتخص"
+      },
+      {
+        "pageNumber": 54,
+        "charCount": 961,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "الدرس الرابع | الحضارة الإسلامية ب اختر الإجابَة الصحيحة مما بين القوسين: 1 - تحول نظام الحكم من الشورى إلى الوراثة في عهد الخلافة (الراشدة - الأموية "
+      },
+      {
+        "pageNumber": 102,
+        "charCount": 1155,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "المراجعة العامة على الفصل الدراسي الأول السؤال الثامن: دلل على صحة العبارات التالية: ١ - كانت قارة آسيا معبرًا رئيسيًا لطرق التجارة البرية والبحرية م"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": [
+      "8 chunks lack chapter assignment"
+    ]
+  },
+  {
+    "bookId": "19886434-1839-427d-af31-4c64fcf79525",
+    "titleAr": "الرياضيات (لغات)",
+    "titleEn": "Mathematics",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثاني الإعدادي",
+    "subject": "الرياضيات",
+    "term": 1,
+    "schoolType": "لغات",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_19886434-1839-427d-af31-4c64fcf79525.pdf",
+      "sizeMB": "31.98"
+    },
+    "pageStats": {
+      "totalInDb": 130,
+      "totalPagesMeta": 130,
+      "totalChars": 207044,
+      "avgCharsPerPage": 1593,
+      "emptyPagesCount": 3,
+      "emptyPagesList": [
+        3,
+        4,
+        128
+      ],
+      "shortPagesCount": 0
+    },
+    "chunkStats": {
+      "totalChunks": 128,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 4,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: الأعداد الحقيقية والعمليات عليها",
+          "start": 4,
+          "end": 34
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: الجبر (التحليل)",
+          "start": 35,
+          "end": 63
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: الهندسة (النظريات والمثلثات)",
+          "start": 64,
+          "end": 107
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: الإحصاء والمراجعة العامة",
+          "start": 108,
+          "end": 130
+        }
+      ],
+      "unmappedPagesCount": 3,
+      "unmappedPagesList": [
+        1,
+        2,
+        3
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 853,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "UNIT 1 Numbers and Their Operations Unit Lessons 1-1 Real Numbers 1-2 Intervals and Their Operations 1-3 Operations on Real Numbers 1-4 Laws of Squar"
+      },
+      {
+        "pageNumber": 66,
+        "charCount": 677,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "UNIT 3 Geometry Unit Lessons: 3-1 Congruence 3-2 Pythagoras' Theorem and Its Converse 3-3 Applications of Parallelism 3-4 Medians of the Triangle 3-5 "
+      },
+      {
+        "pageNumber": 126,
+        "charCount": 1278,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "Final Assessment Evaluate your understanding! How well do you understand the lessons of second preparatory? Tick the right box First Group - Choose t"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "543f2746-460c-41c1-ba38-0933f479272f",
+    "titleAr": "العلوم (لغات)",
+    "titleEn": "Science (English)",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثاني الإعدادي",
+    "subject": "العلوم",
+    "term": 1,
+    "schoolType": "لغات",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_543f2746-460c-41c1-ba38-0933f479272f.pdf",
+      "sizeMB": "48.15"
+    },
+    "pageStats": {
+      "totalInDb": 104,
+      "totalPagesMeta": 104,
+      "totalChars": 145821,
+      "avgCharsPerPage": 1402,
+      "emptyPagesCount": 0,
+      "emptyPagesList": [],
+      "shortPagesCount": 2
+    },
+    "chunkStats": {
+      "totalChunks": 97,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 4,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: المادة والطاقة",
+          "start": 7,
+          "end": 44
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: المادة والتفاعلات الكيميائية",
+          "start": 45,
+          "end": 69
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: تدفق الطاقة في البناء الضوئي والتنفس الخلوي",
+          "start": 70,
+          "end": 87
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: العمليات الجيولوجية",
+          "start": 88,
+          "end": 103
+        }
+      ],
+      "unmappedPagesCount": 7,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        104
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 2,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": false,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "vi"
+      },
+      {
+        "pageNumber": 53,
+        "charCount": 1699,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "It can be concluded from the previous that: • Heating sugar gradually converts it into a brown melt, and when this melt burns, a chemical reaction occ"
+      },
+      {
+        "pageNumber": 100,
+        "charCount": 1546,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "2 The formation of minerals from the crystallization of solutions from hydrothermal vents : • The process of mineral formation from the crystallizatio"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "37bfa0c0-c4ce-419f-930a-000043d8d3f9",
+    "titleAr": "اللغة الإنجليزية",
+    "titleEn": "English Language",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثاني الإعدادي",
+    "subject": "اللغة الإنجليزية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_37bfa0c0-c4ce-419f-930a-000043d8d3f9.pdf",
+      "sizeMB": "88.40"
+    },
+    "pageStats": {
+      "totalInDb": 114,
+      "totalPagesMeta": 114,
+      "totalChars": 163961,
+      "avgCharsPerPage": 1438,
+      "emptyPagesCount": 1,
+      "emptyPagesList": [
+        3
+      ],
+      "shortPagesCount": 4
+    },
+    "chunkStats": {
+      "totalChunks": 86,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 2
+    },
+    "chapterStats": {
+      "totalChapters": 6,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: جين ألفا",
+          "start": 14,
+          "end": 27
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: بصمتي الرقمية",
+          "start": 28,
+          "end": 41
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: مواجهة التحديات",
+          "start": 42,
+          "end": 55
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: الفن والتعبير",
+          "start": 58,
+          "end": 71
+        },
+        {
+          "num": 5,
+          "titleAr": "الوحدة الخامسة: حول العالم",
+          "start": 72,
+          "end": 85
+        },
+        {
+          "num": 6,
+          "titleAr": "الوحدة السادسة: المبتكرون الشباب",
+          "start": 86,
+          "end": 99
+        }
+      ],
+      "unmappedPagesCount": 30,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        56,
+        57,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 1131,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "Scope and Sequence Term 1. Unit 1. Gen Alpha. Vocabulary: generation, digital natives, trends, emojis, memes, balance, computer, screen, social media,"
+      },
+      {
+        "pageNumber": 58,
+        "charCount": 773,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "UNIT 4 Art and Expression Learning Outcomes Reading - Identify different types of artwork mentioned in a text - Use context clues to understand the me"
+      },
+      {
+        "pageNumber": 110,
+        "charCount": 2484,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": false,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "Word: Geothermal, Definition: Relating to the heat produced inside the earth. Word: Generation, Definition: A group of people born around the same tim"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "bc6bb834-7192-474c-8507-c53265028b4e",
+    "titleAr": "اللغة العربية",
+    "titleEn": "Arabic Language",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثاني الإعدادي",
+    "subject": "اللغة العربية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_bc6bb834-7192-474c-8507-c53265028b4e.pdf",
+      "sizeMB": "101.57"
+    },
+    "pageStats": {
+      "totalInDb": 162,
+      "totalPagesMeta": 162,
+      "totalChars": 249356,
+      "avgCharsPerPage": 1539,
+      "emptyPagesCount": 0,
+      "emptyPagesList": [],
+      "shortPagesCount": 1
+    },
+    "chunkStats": {
+      "totalChunks": 142,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 3,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "المحور الأول: انتمائي قوتي",
+          "start": 11,
+          "end": 56
+        },
+        {
+          "num": 2,
+          "titleAr": "المحور الثاني: بيئتي مسئوليتي",
+          "start": 57,
+          "end": 105
+        },
+        {
+          "num": 3,
+          "titleAr": "المحور الثالث: علم وقيم",
+          "start": 106,
+          "end": 149
+        }
+      ],
+      "unmappedPagesCount": 23,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 1794,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": false,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "الدَّرْس الثَّالِث: نَصُّ قِرَاءَة (وَاحَةٌ مِصْرِيَّةٌ صَدِيقَةٌ لِلْبِيئَةِ: مَدِينَةُ الخَارِجَةِ)، القَوَاعِد النَّحْوِيَّة (أُسْلُوبُ الشَّرْطِ «"
+      },
+      {
+        "pageNumber": 82,
+        "charCount": 718,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": false,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "الدَّرْسُ الثَّالِثُ: وَاحَةٌ مِصْرِيَّةٌ صَدِيقَةٌ لِلْبِيئَةِ: مَدِينَةُ الْخَارِجَةِ نَصُّ قِرَاءَةٍ أَتَأَمَّلُ وَأَتَوَقَّعُ لِمَاذَا أَطْمَحُ مِ"
+      },
+      {
+        "pageNumber": 158,
+        "charCount": 1095,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "٢ تَقْيِيمُ الوَحْدَةِ الثَّانِيَةِ «الحِفَاظُ عَلَى البِيئَةِ أَمْرٌ نَادَتْ بِهِ الشَّرَائِعُ السَّمَاوِيَّةُ كُلُّهَا؛ فَهُوَ أَمْرٌ مَحْمُودٌ، وَو"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "f19276d3-4adb-4297-bb77-5ed87ba638b9",
+    "titleAr": "الدراسات الاجتماعية",
+    "titleEn": "Social Studies",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثالث الإعدادي",
+    "subject": "الدراسات الاجتماعية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_f19276d3-4adb-4297-bb77-5ed87ba638b9.pdf",
+      "sizeMB": "27.49"
+    },
+    "pageStats": {
+      "totalInDb": 113,
+      "totalPagesMeta": 113,
+      "totalChars": 146490,
+      "avgCharsPerPage": 1296,
+      "emptyPagesCount": 4,
+      "emptyPagesList": [
+        21,
+        27,
+        66,
+        75
+      ],
+      "shortPagesCount": 0
+    },
+    "chunkStats": {
+      "totalChunks": 104,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 3,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 4,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: الملامح الطبيعية والحضارية لقارات العالم الجديد",
+          "start": 9,
+          "end": 36
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: مصر في عصر محمد علي وخلفائه",
+          "start": 37,
+          "end": 62
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: النظم البيئية في قارات العالم الجديد",
+          "start": 63,
+          "end": 90
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: الحركة الوطنية في مواجهة الاحتلال البريطاني",
+          "start": 91,
+          "end": 113
+        }
+      ],
+      "unmappedPagesCount": 8,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 588,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "الوحدة الثالثة: النُّصُم البيئية في قارات العالم الجديد الدرس الأول: نُظُم الغابات والحشائش في قارات العالم الجديد (٦٤) الدرس الثاني: النُّصُم البيئية"
+      },
+      {
+        "pageNumber": 57,
+        "charCount": 1756,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "الوحدة الثانية | مصر في عصر «محمد علي» وخلفائه | الدراسات الاجتماعية: الصف الثالث الإعدادي • مجلس شورى النواب: أنشأ الخديوي إسماعيل مجلس شورى النواب "
+      },
+      {
+        "pageNumber": 109,
+        "charCount": 2354,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "المراجعة العامة على الفصل الدراسي الأول السؤال الأول: أمامك خريطة صماء للأمريكتين، حدد مدلول الأرقام التالية: ١ - نظام الغابات ......................."
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": [
+      "3 chunks lack chapter assignment"
+    ]
+  },
+  {
+    "bookId": "9e702109-7d92-445c-b814-567c1f6cba49",
+    "titleAr": "اللغة الإنجليزية",
+    "titleEn": "English Language",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثالث الإعدادي",
+    "subject": "اللغة الإنجليزية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_9e702109-7d92-445c-b814-567c1f6cba49.pdf",
+      "sizeMB": "83.79"
+    },
+    "pageStats": {
+      "totalInDb": 114,
+      "totalPagesMeta": 114,
+      "totalChars": 160674,
+      "avgCharsPerPage": 1409,
+      "emptyPagesCount": 1,
+      "emptyPagesList": [
+        3
+      ],
+      "shortPagesCount": 0
+    },
+    "chunkStats": {
+      "totalChunks": 83,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 6,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: الهوية الشخصية",
+          "start": 14,
+          "end": 27
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: التواصل مع العائلة والأصدقاء",
+          "start": 28,
+          "end": 41
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: الذكاء الاصطناعي",
+          "start": 42,
+          "end": 55
+        },
+        {
+          "num": 4,
+          "titleAr": "الوحدة الرابعة: وقت الشاشة",
+          "start": 60,
+          "end": 72
+        },
+        {
+          "num": 5,
+          "titleAr": "الوحدة الخامسة: التفكير التصميمي",
+          "start": 73,
+          "end": 85
+        },
+        {
+          "num": 6,
+          "titleAr": "الوحدة السادسة: لماذا نحب القصص؟",
+          "start": 86,
+          "end": 100
+        }
+      ],
+      "unmappedPagesCount": 31,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        56,
+        57,
+        58,
+        59,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 1306,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "Scope and Sequence Term 1. Unit 1. Personal Identity. Vocabulary: identity, personality, values, background, beliefs, character, confidence, weakness,"
+      },
+      {
+        "pageNumber": 58,
+        "charCount": 1500,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "a. Choose the correct answer from a, b, c, or d. 1. What is the main idea of the passage? a. Artificial intelligence will replace teachers completely."
+      },
+      {
+        "pageNumber": 110,
+        "charCount": 2009,
+        "hasArabic": false,
+        "hasLatin": true,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "Creativity | Producing or using unusual and original ideas; the ability to make new ideas Critically | Thinking in a careful and thoughtful way rather"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  },
+  {
+    "bookId": "013411b8-edec-477b-bd42-3dbdda9fb6a9",
+    "titleAr": "اللغة العربية",
+    "titleEn": "Arabic Language",
+    "stage": "المرحلة الإعدادية",
+    "grade": "الصف الثالث الإعدادي",
+    "subject": "اللغة العربية",
+    "term": 1,
+    "schoolType": "كلاهما",
+    "pdfStatus": {
+      "exists": true,
+      "readable": true,
+      "path": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\uploads\\book_013411b8-edec-477b-bd42-3dbdda9fb6a9.pdf",
+      "sizeMB": "129.84"
+    },
+    "pageStats": {
+      "totalInDb": 162,
+      "totalPagesMeta": 162,
+      "totalChars": 275037,
+      "avgCharsPerPage": 1698,
+      "emptyPagesCount": 0,
+      "emptyPagesList": [],
+      "shortPagesCount": 4
+    },
+    "chunkStats": {
+      "totalChunks": 134,
+      "avgChunkLen": null,
+      "unassignedChunksCount": 0,
+      "shortChunksCount": 0
+    },
+    "chapterStats": {
+      "totalChapters": 3,
+      "chapters": [
+        {
+          "num": 1,
+          "titleAr": "الوحدة الأولى: قيم تحمي شبابنا",
+          "start": 15,
+          "end": 59
+        },
+        {
+          "num": 2,
+          "titleAr": "الوحدة الثانية: نحو تفكير سليم",
+          "start": 60,
+          "end": 105
+        },
+        {
+          "num": 3,
+          "titleAr": "الوحدة الثالثة: أنا والمستقبل",
+          "start": 106,
+          "end": 148
+        }
+      ],
+      "unmappedPagesCount": 28,
+      "unmappedPagesList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162
+      ]
+    },
+    "samples": [
+      {
+        "pageNumber": 6,
+        "charCount": 1794,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "الْمُحْتَوَيَاتُ مُرَاجَعَةٌ عَامَّةٌ، ص ٧ الْوَحْدَةُ الْأُولَى : قِيَمٌ تَحْمِي شَبَابَنَا الدَّرْسُ الْأَوَّلُ: نَصُّ اسْتِمَاعٍ (آدَابُ التَّعَ"
+      },
+      {
+        "pageNumber": 82,
+        "charCount": 1851,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": true,
+        "hasQuestionMarks": true,
+        "suspiciousChars": false,
+        "preview": "«أَتَعْرِفُ هَؤُلَاءِ الْأَصْدِقَاءَ؟ أَنْتَ بَيْنَهُمْ لَا تُحِسُّ أَنَّكَ وَحْدَكَ أَبَدًا، وَكَيْفَ تُحِسُّ الْوَحْدَةَ وَهُمْ حَوْلَكَ مِنْ كُلِّ"
+      },
+      {
+        "pageNumber": 158,
+        "charCount": 6,
+        "hasArabic": true,
+        "hasLatin": false,
+        "hasNumbers": false,
+        "hasQuestionMarks": false,
+        "suspiciousChars": false,
+        "preview": "مذكرات"
+      }
+    ],
+    "reliability": "RELIABLE",
+    "issues": []
+  }
+]

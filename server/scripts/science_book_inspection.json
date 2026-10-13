@@ -1,0 +1,143 @@
+{
+  "book": {
+    "id": "d7bbfca2-6d8f-461b-8e39-2015981e86ec",
+    "title_ar": "Science book",
+    "title_en": "Science book",
+    "academic_stage_id": "61998777-4c5f-4e51-bc0a-38de938c842a",
+    "grade_id": "4baa5084-112d-45e5-908e-1ae67ea8b4e8",
+    "subject_id": "5ebb5fc2-6edb-4f65-9057-bdb09ccae74e",
+    "teacher_id": "admin-owner-001",
+    "file_url": "/uploads/Science_EN_Prp1_TR1. (1).pdf",
+    "file_size": "28121647",
+    "total_pages": 102,
+    "processing_status": "COMPLETED",
+    "processing_error": null,
+    "school_type": "لغات",
+    "created_at": "2026-10-06 00:49:18",
+    "term": 1
+  },
+  "chapters": [
+    {
+      "id": "8bf8f8e5-09a7-4c42-a220-181f7f984cb9",
+      "chapter_number": 1,
+      "title_ar": "الوحدة الأولى: المادة",
+      "title_en": "Unit 1: The Matter",
+      "start_page": 1,
+      "end_page": 32,
+      "description": "تركيب الذرة، الجدول الدوري للعناصر، المادة وخصائصها، الروابط الكيميائية"
+    },
+    {
+      "id": "b9f1cf9a-61a1-4dc7-bccf-320291177934",
+      "chapter_number": 2,
+      "title_ar": "الوحدة الثانية: مجالات القوى",
+      "title_en": "Unit 2: Force Fields",
+      "start_page": 33,
+      "end_page": 55,
+      "description": "القوى الكهربية، القوى المغناطيسية، قوى الجاذبية"
+    },
+    {
+      "id": "90077bb5-2d35-4cde-8bf0-82d2d1a3e440",
+      "chapter_number": 3,
+      "title_ar": "الوحدة الثالثة: الكائنات الحية، تركيبها وعملياتها",
+      "title_en": "Unit 3: Living Organisms, Their Structure and Processes",
+      "start_page": 56,
+      "end_page": 79,
+      "description": "الخلايا والحياة، الخصائص العامة للكائنات الحية، الميكروبات"
+    },
+    {
+      "id": "895ea0da-7a39-441a-ad0f-fd3a0acc1b03",
+      "chapter_number": 4,
+      "title_ar": "الوحدة الرابعة: نظام (الأرض - الشمس - القمر)",
+      "title_en": "Unit 4: The (Earth - Sun - Moon) System",
+      "start_page": 80,
+      "end_page": 95,
+      "description": "الأرض والنظام الشمسي، خسوف القمر"
+    }
+  ],
+  "pages": [
+    {
+      "page_number": 1,
+      "char_count": 766,
+      "sample_text": "(CaCuSi\n10\nGlass\nHair\nWood\nSynthetic leather\nSilk\nWool\nCotton\nPaper\nEbonite\nSoft Iron\nSouth magnetic pole\nNorth magnetic"
+    },
+    {
+      "page_number": 2,
+      "char_count": 27,
+      "sample_text": "Name : \n\nClass : \n\nSchool :"
+    },
+    {
+      "page_number": 3,
+      "char_count": 2825,
+      "sample_text": "Introduction\n\nDear student,\n\nWe are delighted to present the science book to our first-year preparatory students. We wan"
+    },
+    {
+      "page_number": 4,
+      "char_count": 306,
+      "sample_text": "Contents\n\nUnit 1: The Matter\nLesson one: Structure of the Atom 2\nLesson two: The Periodic Table of Elements 10\nLesson th"
+    },
+    {
+      "page_number": 5,
+      "char_count": 286,
+      "sample_text": "Unit 3: Living Organisms, Their Structure and Processes\nLesson one: Cells and Life 56\nLesson two: General Characteristic"
+    },
+    {
+      "page_number": 7,
+      "char_count": 2417,
+      "sample_text": "UNIT 1: The Matter\nThe lessons\nLesson one: Structure of the Atom\nLesson two: The Periodic Table of Elements\nLesson three"
+    }
+  ],
+  "chunks": [
+    {
+      "id": "1f945225-53a7-47c7-a19d-ca0ac61fcba1",
+      "chapter_id": null,
+      "page_number": 1,
+      "chunk_index": 1,
+      "content_len": "768",
+      "sample_content": "(CaCuSi\n10\nGlass\nHair\nWood\nSynthetic leather\nSilk\nWool\nCotton\nPaper\nEbonite\nSoft Iron\nSouth magnetic"
+    },
+    {
+      "id": "42ddc60e-a50a-4e70-97e6-e76e0ac9751a",
+      "chapter_id": "8bf8f8e5-09a7-4c42-a220-181f7f984cb9",
+      "page_number": 2,
+      "chunk_index": 0,
+      "content_len": "27",
+      "sample_content": "Name : \n\nClass : \n\nSchool :"
+    },
+    {
+      "id": "c1064afa-880b-405f-9af6-3f99b24d7f00",
+      "chapter_id": "8bf8f8e5-09a7-4c42-a220-181f7f984cb9",
+      "page_number": 3,
+      "chunk_index": 0,
+      "content_len": "2825",
+      "sample_content": "Introduction\n\nDear student,\n\nWe are delighted to present the science book to our first-year preparat"
+    },
+    {
+      "id": "1057b5f2-1785-433b-923f-2f354f90dbdc",
+      "chapter_id": "8bf8f8e5-09a7-4c42-a220-181f7f984cb9",
+      "page_number": 4,
+      "chunk_index": 0,
+      "content_len": "306",
+      "sample_content": "Contents\n\nUnit 1: The Matter\nLesson one: Structure of the Atom 2\nLesson two: The Periodic Table of E"
+    },
+    {
+      "id": "7643d1ac-886b-468a-ac0f-e937d573d1eb",
+      "chapter_id": "8bf8f8e5-09a7-4c42-a220-181f7f984cb9",
+      "page_number": 5,
+      "chunk_index": 0,
+      "content_len": "286",
+      "sample_content": "Unit 3: Living Organisms, Their Structure and Processes\nLesson one: Cells and Life 56\nLesson two: Ge"
+    },
+    {
+      "id": "6316139a-8f04-42de-84dd-36550da1a749",
+      "chapter_id": "8bf8f8e5-09a7-4c42-a220-181f7f984cb9",
+      "page_number": 7,
+      "chunk_index": 0,
+      "content_len": "2417",
+      "sample_content": "UNIT 1: The Matter\nThe lessons\nLesson one: Structure of the Atom\nLesson two: The Periodic Table of E"
+    }
+  ],
+  "pdfChunksInDb": {
+    "cnt": "9",
+    "total_size": "28121647"
+  }
+}

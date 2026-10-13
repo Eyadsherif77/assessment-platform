@@ -1,0 +1,129 @@
+{
+  "book_title": "الدراسات الاجتماعية: مصر وعلاقتها بآسيا وأوروبا (الأرض والحضارة والتنمية)",
+  "grade": "Second Preparatory",
+  "term": "First Term",
+  "units": [
+    {
+      "unit_number": 1,
+      "title_ar": "الملامح الطبيعية لقارتي آسيا وأوروبا",
+      "title_en": "Natural Features of Asia and Europe Continents",
+      "printed_start_page": 7,
+      "printed_end_page": 27,
+      "pdf_start_page": 7,
+      "pdf_end_page": 27,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "موقع ومظاهر سطح قارتي آسيا وأوروبا",
+          "title_en": "Location and Surface Features of Asia and Europe Continents",
+          "printed_page": 8,
+          "pdf_page": 8
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "المعادن ومصادر الطاقة في قارتي آسيا وأوروبا",
+          "title_en": "Minerals and Energy Sources in Asia and Europe Continents",
+          "printed_page": 16,
+          "pdf_page": 16
+        }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title_ar": "الحضارات القديمة في قارة آسيا وعلاقتها بمصر",
+      "title_en": "Ancient Civilizations in Asia Continent and Their Relations with Egypt",
+      "printed_start_page": 28,
+      "printed_end_page": 57,
+      "pdf_start_page": 28,
+      "pdf_end_page": 57,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "نماذج للحضارات القديمة بالشرق الأدنى",
+          "title_en": "Models of Ancient Civilizations in the Near East",
+          "printed_page": 28,
+          "pdf_page": 28
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "نماذج لحضارات بلاد اليمن القديم",
+          "title_en": "Models of Ancient Yemen Civilizations",
+          "printed_page": 36,
+          "pdf_page": 36
+        },
+        {
+          "lesson_number": 3,
+          "title_ar": "نماذج للحضارات القديمة بالشرق الأقصى",
+          "title_en": "Models of Ancient Civilizations in the Far East",
+          "printed_page": 42,
+          "pdf_page": 42
+        },
+        {
+          "lesson_number": 4,
+          "title_ar": "الحضارة الإسلامية",
+          "title_en": "Islamic Civilization",
+          "printed_page": 48,
+          "pdf_page": 48
+        }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title_ar": "النُّظم البيئية في قارتي آسيا وأوروبا",
+      "title_en": "Ecosystems in Asia and Europe Continents",
+      "printed_start_page": 58,
+      "printed_end_page": 81,
+      "pdf_start_page": 58,
+      "pdf_end_page": 81,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "نُظم الغابات في قارتي آسيا وأوروبا",
+          "title_en": "Forest Systems in Asia and Europe Continents",
+          "printed_page": 58,
+          "pdf_page": 58
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "نُظم الحشائش ونُظم الصحاري في قارتي آسيا وأوروبا",
+          "title_en": "Grassland and Desert Systems in Asia and Europe Continents",
+          "printed_page": 64,
+          "pdf_page": 64
+        },
+        {
+          "lesson_number": 3,
+          "title_ar": "النُّظم البيئية المائية في قارتي آسيا وأوروبا",
+          "title_en": "Aquatic Ecosystems in Asia and Europe Continents",
+          "printed_page": 70,
+          "pdf_page": 70
+        }
+      ]
+    },
+    {
+      "unit_number": 4,
+      "title_ar": "الحضارات القديمة في قارة أوروبا وعلاقتها بمصر",
+      "title_en": "Ancient Civilizations in Europe Continent and Their Relations with Egypt",
+      "printed_start_page": 82,
+      "printed_end_page": 98,
+      "pdf_start_page": 82,
+      "pdf_end_page": 98,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "الحضارة اليونانية",
+          "title_en": "Greek Civilization",
+          "printed_page": 82,
+          "pdf_page": 82
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "الحضارة الرومانية",
+          "title_en": "Roman Civilization",
+          "printed_page": 88,
+          "pdf_page": 88
+        }
+      ]
+    }
+  ],
+  "notes": "المراجعة العامة على الفصل الدراسي الأول تبدأ من الصفحة رقم 96 مطبوعة. الصفحات من 1 إلى 6 تخص الغلاف والصفحات التمهيدية والمقدمة وفهرس المحتويات وخريطة المنهج."
+}

@@ -1,0 +1,184 @@
+{
+  "bookId": "808104ec-b861-434b-80c6-579f715d8bdf",
+  "pageIntegrity": {
+    "sourcePageCount": 122,
+    "storedPageCount": 122,
+    "isContiguous": true,
+    "lowTextCount": 2,
+    "lowTextPages": [
+      {
+        "page": 3,
+        "chars": 0
+      },
+      {
+        "page": 4,
+        "chars": 25
+      }
+    ],
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 4,
+    "totalChunks": 104,
+    "totalAssignedChunks": 104,
+    "unitAudits": [
+      {
+        "unit": 1,
+        "title_en": "Unit 1: Numbers and Their Operations",
+        "title_ar": "الوحدة الأولى: الأعداد والعمليات عليها",
+        "id": "e57a89eb-1cc9-46ac-a3dd-598f3de7b06c",
+        "start_page": 8,
+        "end_page": 38,
+        "chunk_count": 31,
+        "min_page": 8,
+        "max_page": 38
+      },
+      {
+        "unit": 2,
+        "title_en": "Unit 2: Algebra",
+        "title_ar": "الوحدة الثانية: الجبر",
+        "id": "dec90b76-3479-40a3-b720-4a06a61a4b3f",
+        "start_page": 39,
+        "end_page": 53,
+        "chunk_count": 15,
+        "min_page": 39,
+        "max_page": 53
+      },
+      {
+        "unit": 3,
+        "title_en": "Unit 3: Statistics",
+        "title_ar": "الوحدة الثالثة: الإحصاء",
+        "id": "d00b0570-8269-4ec6-9ccb-2536fb338131",
+        "start_page": 54,
+        "end_page": 75,
+        "chunk_count": 22,
+        "min_page": 54,
+        "max_page": 75
+      },
+      {
+        "unit": 4,
+        "title_en": "Unit 4: Geometry & Measurement",
+        "title_ar": "الوحدة الرابعة: الهندسة والقياس",
+        "id": "1b9f4377-6ae0-4c24-b588-c221900597ec",
+        "start_page": 76,
+        "end_page": 111,
+        "chunk_count": 36,
+        "min_page": 76,
+        "max_page": 111
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 9,
+        "char_count": 1660,
+        "snippet": "Lesson 1-1 Proportion. Learning Outcomes: Learn the concept of proportion, Write a proportional relationship, Identify proportional and non-proportional relationships, Solve proportions using cross mu"
+      },
+      {
+        "page_number": 20,
+        "char_count": 1712,
+        "snippet": "16) Alloys: Medals are made of a bronze alloy consisting of three metals, copper, tin, and zinc, in the ratio of 1/5 : 1/18 : 1/45. Given that the mass of one medal is 425 grams, calculate the mass of"
+      },
+      {
+        "page_number": 39,
+        "char_count": 2268,
+        "snippet": "Lesson 2-1 Mathematical Expressions and Formulas\nLearning Outcomes\n- Represent variables using symbols.\n- Learn algebraic term and algebraic expression.\n- Learn mathematical expression and mathematica"
+      },
+      {
+        "page_number": 45,
+        "char_count": 1549,
+        "snippet": "18. Write the missing coefficients to make the following equation true: 10X + 6Y - [ ]X + [ ]Y = 3X + 8Y. 19. Temperature is measured in Fahrenheit (F) or Celsius (C). Apply the mathematical formula F"
+      },
+      {
+        "page_number": 54,
+        "char_count": 1609,
+        "snippet": "Lesson 3-1 Organizing Data. Learning Outcomes: Recall the different methods of organizing data. Learn how to create a frequency table with intervals. Learn how to represent data using a stem-and-leaf "
+      },
+      {
+        "page_number": 76,
+        "char_count": 1981,
+        "snippet": "Lesson 4-1 Types of Angles and Relations between Angles\n\nLearning Outcomes\n• Learn the concept of angles and their units of measurement.\n• Identify and differentiate between various types of angles.\n•"
+      },
+      {
+        "page_number": 95,
+        "char_count": 1605,
+        "snippet": "Think: Can a square be considered as a rhombus that has one right angle? Can a square be considered as a rectangle that has two adjacent sides are equal in length? When does a parallelogram become a r"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "e57a89eb-1cc9-46ac-a3dd-598f3de7b06c",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          22,
+          8,
+          16,
+          25,
+          13,
+          37
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "dec90b76-3479-40a3-b720-4a06a61a4b3f",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          41,
+          45,
+          50,
+          47,
+          48,
+          40
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "d00b0570-8269-4ec6-9ccb-2536fb338131",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          69,
+          56,
+          57,
+          75,
+          58,
+          71
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 4,
+        "chapterId": "1b9f4377-6ae0-4c24-b588-c221900597ec",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          97,
+          92,
+          103,
+          88,
+          94,
+          85
+        ],
+        "foreignCount": 0,
+        "passed": true
+      }
+    ],
+    "crossLeakage": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "books1to8Intact": true,
+    "tablesIntact": true,
+    "passed": true
+  },
+  "overallStatus": "PASS"
+}

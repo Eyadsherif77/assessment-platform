@@ -1,0 +1,164 @@
+{
+  "book_id": "808104ec-b861-434b-80c6-579f715d8bdf",
+  "book_number": 1,
+  "official_title": "MATHEMATICS",
+  "subject": "MATHEMATICS",
+  "grade": "First Preparatory",
+  "term": "First Term",
+  "total_pdf_pages": 12,
+  "units": [
+    {
+      "unit_number": 1,
+      "title_ar": "الأعداد والعمليات عليها",
+      "title_en": "Numbers and Their Operations",
+      "printed_start_page": 2,
+      "printed_end_page": 31,
+      "pdf_start_page": 5,
+      "pdf_end_page": 12,
+      "description": "Covers Percentage, Ratio, Proportion, Number Sets, and Operations on Numbers.",
+      "lessons": [
+        {
+          "lesson_number": "1-1",
+          "title": "Proportion",
+          "printed_page": 2,
+          "pdf_page": 9
+        },
+        {
+          "lesson_number": "1-2",
+          "title": "Applications of Ratio and Proportion",
+          "printed_page": 7,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": "1-3",
+          "title": "Sets and Their Operations",
+          "printed_page": 14,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": "1-4",
+          "title": "Operations on Integers",
+          "printed_page": 19,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": "1-5",
+          "title": "Operations on Rational Numbers",
+          "printed_page": 24,
+          "pdf_page": 5
+        }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title_ar": "الجبر",
+      "title_en": "Algebra",
+      "printed_start_page": 32,
+      "printed_end_page": 46,
+      "pdf_start_page": 5,
+      "pdf_end_page": 6,
+      "description": "Covers Mathematical Expressions, Formulas, and Linear Equations.",
+      "lessons": [
+        {
+          "lesson_number": "2-1",
+          "title": "Mathematical Expressions and Formulas",
+          "printed_page": 32,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": "2-2",
+          "title": "Linear Equations",
+          "printed_page": 39,
+          "pdf_page": 5
+        }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title_ar": "الإحصاء",
+      "title_en": "Statistics",
+      "printed_start_page": 47,
+      "printed_end_page": 68,
+      "pdf_start_page": 6,
+      "pdf_end_page": 6,
+      "description": "Covers Organizing Data, Arithmetic Mean, and Pie Charts.",
+      "lessons": [
+        {
+          "lesson_number": "3-1",
+          "title": "Organizing Data",
+          "printed_page": 47,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": "3-2",
+          "title": "Arithmetic Mean",
+          "printed_page": 55,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": "3-3",
+          "title": "Pie Charts",
+          "printed_page": 60,
+          "pdf_page": 6
+        }
+      ]
+    },
+    {
+      "unit_number": 4,
+      "title_ar": "الهندسة والقياس",
+      "title_en": "Geometry & Measurement",
+      "printed_start_page": 69,
+      "printed_end_page": 104,
+      "pdf_start_page": 6,
+      "pdf_end_page": 6,
+      "description": "Covers Types of Angles, Parallelism, Triangles, Quadrilaterals, Polygons, and Coordinates.",
+      "lessons": [
+        {
+          "lesson_number": "4-1",
+          "title": "Types of Angles and Relations between Angles",
+          "printed_page": 69,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": "4-2",
+          "title": "Parallelism",
+          "printed_page": 77,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": "4-3",
+          "title": "Triangle",
+          "printed_page": 84,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": "4-4",
+          "title": "Quadrilaterals",
+          "printed_page": 90,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": "4-5",
+          "title": "Polygons",
+          "printed_page": 98,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": "4-6",
+          "title": "Coordinates",
+          "printed_page": 104,
+          "pdf_page": 6
+        }
+      ]
+    }
+  ],
+  "front_matter": {
+    "pdf_pages": "1..4",
+    "description": "Cover, Title page, Student identification page."
+  },
+  "back_matter": {
+    "pdf_pages": "N/A",
+    "description": "None provided in the sample."
+  },
+  "notes": "The PDF provided is a partial sample of the textbook. Page numbers in the Table of Contents refer to the printed book pagination."
+}

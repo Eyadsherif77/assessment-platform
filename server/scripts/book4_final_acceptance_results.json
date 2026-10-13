@@ -1,0 +1,139 @@
+{
+  "unitIsolation": [
+    {
+      "unit": 1,
+      "chapterId": "b123b656-03b1-4af5-be4e-971dd5ba74a6",
+      "retrievedCount": 10,
+      "pages": [
+        16,
+        26,
+        25,
+        20,
+        22,
+        11,
+        21,
+        18,
+        15,
+        12
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 2,
+      "chapterId": "ae5ca8ad-b23f-4875-ba5d-8b3f0091ffa2",
+      "retrievedCount": 10,
+      "pages": [
+        56,
+        46,
+        47,
+        37,
+        35,
+        41,
+        45,
+        49,
+        30,
+        51
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 3,
+      "chapterId": "5b304263-9134-470a-81c6-677db64ce02a",
+      "retrievedCount": 10,
+      "pages": [
+        62,
+        64,
+        58,
+        73,
+        57,
+        77,
+        61,
+        59,
+        76,
+        70
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 4,
+      "chapterId": "c4000000-7fcf-4938-8c45-aa0056624f34",
+      "retrievedCount": 10,
+      "pages": [
+        91,
+        90,
+        95,
+        92,
+        86,
+        81,
+        84,
+        89,
+        96,
+        93
+      ],
+      "foreignCount": 0,
+      "passed": true
+    }
+  ],
+  "reviewScope": {
+    "nullInUnitScopedCount": 0,
+    "unitScopedExcludesReview": true,
+    "reviewChunksInDbCount": 8,
+    "reviewPages": [
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104
+    ]
+  },
+  "questionBank": {
+    "totalItems": 20,
+    "totalOptions": 80,
+    "allHaveExactly4Options": true,
+    "allHaveExactly1Correct": true,
+    "quarantinedCount": 10,
+    "unquarantinedCount": 10
+  },
+  "inventory": {
+    "pages": 106,
+    "distinctPages": 106,
+    "chunks": 98,
+    "chapters": 4
+  },
+  "retrievalSuite": [
+    {
+      "test": "Unit 1-only retrieval",
+      "passed": true
+    },
+    {
+      "test": "Unit 2-only retrieval",
+      "passed": true
+    },
+    {
+      "test": "General review chunks retrieval",
+      "passed": true
+    },
+    {
+      "test": "Invalid chapter ID returns 0 chunks",
+      "passed": true
+    },
+    {
+      "test": "Foreign book question rejected",
+      "passed": true
+    }
+  ],
+  "externalBaselines": {
+    "users": 229,
+    "student_profiles": 226,
+    "ai_evaluations": 345,
+    "exams": 0,
+    "book4_pdf_chunks": 11,
+    "total_pdf_chunks": 314
+  }
+}

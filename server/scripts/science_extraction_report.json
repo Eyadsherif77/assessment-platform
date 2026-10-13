@@ -1,0 +1,19 @@
+{
+  "book_id": "d7bbfca2-6d8f-461b-8e39-2015981e86ec",
+  "total_pdf_pages": 102,
+  "pages_in_db": "102",
+  "total_chars": "142851",
+  "total_chunks": "101",
+  "short_pages": [
+    {
+      "page_number": 3,
+      "length": 26,
+      "reason": "SHORT_OR_IMAGE"
+    },
+    {
+      "page_number": 7,
+      "length": 2,
+      "reason": "SHORT_OR_IMAGE"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "book_id": "37bfa0c0-c4ce-419f-930a-000043d8d3f9",
+  "book_number": 8,
+  "official_title": "ENGLISH Preparatory Schools - Year Two - Term 1",
+  "subject": "ENGLISH",
+  "grade": "Preparatory Schools - Year Two",
+  "term": "Term 1",
+  "total_pdf_pages": 10,
+  "units": [
+    {
+      "unit_number": 1,
+      "title_ar": "جين ألفا",
+      "title_en": "Gen Alpha",
+      "printed_start_page": 13,
+      "printed_end_page": 26,
+      "pdf_start_page": 9,
+      "pdf_end_page": 10,
+      "description": "Explores Gen Alpha, daily life, trends, and technology usage using the Present Continuous tense.",
+      "lessons": []
+    },
+    {
+      "unit_number": 2,
+      "title_ar": "بصمتي الرقمية",
+      "title_en": "My Digital Footprint",
+      "printed_start_page": 27,
+      "printed_end_page": 40,
+      "pdf_start_page": 10,
+      "pdf_end_page": 10,
+      "description": "Covers privacy, digital habits, and online safety using Present Simple, Passive, and modal verbs.",
+      "lessons": []
+    },
+    {
+      "unit_number": 3,
+      "title_ar": "مواجهة التحديات",
+      "title_en": "Facing Challenges",
+      "printed_start_page": 41,
+      "printed_end_page": 54,
+      "pdf_start_page": 10,
+      "pdf_end_page": 10,
+      "description": "Focuses on overcoming challenges, courage, and determination using the Past Simple and Past Continuous tenses.",
+      "lessons": []
+    },
+    {
+      "unit_number": 4,
+      "title_ar": "الفن والتعبير",
+      "title_en": "Art and Expression",
+      "printed_start_page": 58,
+      "printed_end_page": 71,
+      "pdf_start_page": 10,
+      "pdf_end_page": 10,
+      "description": "Discusses art, artists, materials, and expression using Cause, Result and Contrast connectors.",
+      "lessons": []
+    },
+    {
+      "unit_number": 5,
+      "title_ar": "حول العالم",
+      "title_en": "Around the World",
+      "printed_start_page": 72,
+      "printed_end_page": 86,
+      "pdf_start_page": 10,
+      "pdf_end_page": 10,
+      "description": "Explores different countries, cultures, and landmarks using Comparative and Superlative Adjectives.",
+      "lessons": []
+    },
+    {
+      "unit_number": 6,
+      "title_ar": "المبتكرون الشباب",
+      "title_en": "Young Innovators",
+      "printed_start_page": 87,
+      "printed_end_page": 99,
+      "pdf_start_page": 10,
+      "pdf_end_page": 10,
+      "description": "Highlights inventors and innovative machines using Conditional sentences (type 1 and 2).",
+      "lessons": []
+    }
+  ],
+  "front_matter": {
+    "pdf_pages": "1..8",
+    "description": "Covers front cover, title page, copyright information, message from the Ministry of Education and Technical Education, and the Scope and Sequence."
+  },
+  "back_matter": {
+    "pdf_pages": "10..10",
+    "description": "Contains the table of contents and lesson components overview."
+  },
+  "notes": "Extracted from the official English Prep 2 Term 1 Student's Book sample pages."
+}

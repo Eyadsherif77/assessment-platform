@@ -1,0 +1,665 @@
+{
+  "counts": {
+    "users": 229,
+    "student_profiles": 226,
+    "ai_evaluations": 345,
+    "book_pdf_chunks": 314,
+    "book_pages": 1594,
+    "book_chunks": 1373,
+    "book_chapters": 54,
+    "books": 13,
+    "exams": 0,
+    "exam_questions": 0,
+    "exam_attempts": 0,
+    "student_answers": 0,
+    "question_banks": 13,
+    "question_bank_items": 298
+  },
+  "bookChapterSummary": [
+    {
+      "num": 1,
+      "id": "0758fc7a-c9b2-4e25-a32b-6cacb6bb418d",
+      "grade_ar": "الصف الأول الإعدادي",
+      "subject_ar": "اللغة العربية",
+      "title_ar": "اللغة العربية",
+      "title_en": "Arabic Language",
+      "chapterRecordsCount": 3,
+      "chapters": [
+        {
+          "id": "de726b08-631a-465c-82b4-8d7e3b7be4cb",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: أنا مصري",
+          "title_en": "Theme 1: I am Egyptian",
+          "start_page": 11,
+          "end_page": 50,
+          "description": "نصوص الاستماع والقراءة (مصر مهد العلم لأحمد زويل، البطل أحمد منسي، رسالة إلى المرأة المصرية لنعمات فؤاد) ونص شعري (وجه الوطن لفاروق جويدة) مع القواعد النحوية والإملائية والتعبير"
+        },
+        {
+          "id": "f6f91ad0-8bc3-4a34-856e-90f51d60f888",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: أصنع مستقبلي",
+          "title_en": "Theme 2: I Build My Future",
+          "start_page": 51,
+          "end_page": 92,
+          "description": "نصوص الاستماع والقراءة (تاريخنا أساس لمستقبلنا، أشياء صنعت مني كاتبا للعقاد، بطولات مصرية لمحمد صلاح وعلي فرج وأحمد الجندي) ونص شعري (شباب اليوم صناع الغد لإبراهيم ناجي) وقواعد النحو والإملاء"
+        },
+        {
+          "id": "2c4282bc-00d1-4ad6-b0fe-9d70f7a4614b",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: مواقف إنسانية",
+          "title_en": "Theme 3: Human Situations",
+          "start_page": 93,
+          "end_page": 129,
+          "description": "نصوص الاستماع والقراءة (دروس من الحياة، رحمة تداوي وعلم يضيء لابن النفيس، إنسان في عصر التكنولوجيا) ونص شعري (دعاء شاعرة لجليلة رضا) وقواعد النحو والتعبير والتطبيقات"
+        }
+      ]
+    },
+    {
+      "num": 2,
+      "id": "808104ec-b861-434b-80c6-579f715d8bdf",
+      "grade_ar": "الصف الأول الإعدادي",
+      "subject_ar": "الرياضيات",
+      "title_ar": "الرياضيات (لغات)",
+      "title_en": "Mathematics",
+      "chapterRecordsCount": 4,
+      "chapters": [
+        {
+          "id": "e57a89eb-1cc9-46ac-a3dd-598f3de7b06c",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: الأعداد والعمليات عليها",
+          "title_en": "Unit 1: Numbers and Their Operations",
+          "start_page": 8,
+          "end_page": 38,
+          "description": "Proportion, Applications of Ratio and Proportion, Sets and Their Operations, Operations on Integers, and Operations on Rational Numbers"
+        },
+        {
+          "id": "dec90b76-3479-40a3-b720-4a06a61a4b3f",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: الجبر",
+          "title_en": "Unit 2: Algebra",
+          "start_page": 39,
+          "end_page": 53,
+          "description": "Mathematical Expressions and Formulas, Linear Equations, algebraic manipulation, solving equations, and applications"
+        },
+        {
+          "id": "d00b0570-8269-4ec6-9ccb-2536fb338131",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: الإحصاء",
+          "title_en": "Unit 3: Statistics",
+          "start_page": 54,
+          "end_page": 75,
+          "description": "Organizing Data, Arithmetic Mean, Pie Charts, and statistical representations and data analysis"
+        },
+        {
+          "id": "1b9f4377-6ae0-4c24-b588-c221900597ec",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: الهندسة والقياس",
+          "title_en": "Unit 4: Geometry & Measurement",
+          "start_page": 76,
+          "end_page": 111,
+          "description": "Types of Angles and Relations between Angles, Parallelism, Triangles, Quadrilaterals, Polygons, and Coordinates"
+        }
+      ]
+    },
+    {
+      "num": 3,
+      "id": "d7bbfca2-6d8f-461b-8e39-2015981e86ec",
+      "grade_ar": "الصف الأول الإعدادي",
+      "subject_ar": "العلوم",
+      "title_ar": "العلوم (لغات)",
+      "title_en": "Science (English)",
+      "chapterRecordsCount": 3,
+      "chapters": [
+        {
+          "id": "1d68b948-4326-41cc-b9f9-51169b931c1f",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: المادة وخواصها وتركيبها",
+          "title_en": "Unit 1: Matter and its Properties",
+          "start_page": 1,
+          "end_page": 36,
+          "description": "المادة وخواصها الكيميائية والفيزيائية والكثافة والتركيب الذري."
+        },
+        {
+          "id": "9a2761f7-de4c-4d09-a455-ef33a2c0c3ce",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: الطاقة ومصادرها وصورها",
+          "title_en": "Unit 2: Energy: Sources and Forms",
+          "start_page": 37,
+          "end_page": 71,
+          "description": "طاقة الوضع والحركة والطاقة الحرارية وتحولات الطاقة."
+        },
+        {
+          "id": "5095f4e7-3505-4bb3-a7ce-8cdd5b8ce0d3",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: التنوع والتكيف في الكائنات الحية",
+          "title_en": "Unit 3: Diversity and Adaptation in Living Organisms",
+          "start_page": 72,
+          "end_page": 102,
+          "description": "تصنيف الكائنات الحية والتكيف البيئي وتنوع البيئات."
+        }
+      ]
+    },
+    {
+      "num": 4,
+      "id": "fa2a1525-c46f-4b34-9f48-b762be88e5c5",
+      "grade_ar": "الصف الأول الإعدادي",
+      "subject_ar": "الدراسات الاجتماعية",
+      "title_ar": "الدراسات الاجتماعية",
+      "title_en": "Social Studies",
+      "chapterRecordsCount": 4,
+      "chapters": [
+        {
+          "id": "c2387de6-beda-4c55-b93b-b65bfced4e45",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: الملامح الطبيعية لقارة إفريقيا وحضاراتها القديمة",
+          "title_en": "Unit 1: Natural Features of Africa and Ancient Civilizations",
+          "start_page": 7,
+          "end_page": 29,
+          "description": "قارة إفريقيا الموقع والكشوف الجغرافية، مظاهر سطح قارة إفريقيا، ونهر النيل والحضارات القديمة في إفريقيا والأنشطة والتدريبات"
+        },
+        {
+          "id": "d7ab2e95-aaa0-478f-8162-edc4c30b6abd",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: الحضارة المصرية القديمة وعلاقتها بحضارات إفريقيا",
+          "title_en": "Unit 2: Ancient Egyptian Civilization and African Ties",
+          "start_page": 30,
+          "end_page": 51,
+          "description": "عصر الدولة القديمة (بناة الأهرام)، عصر الدولة الوسطى (الرخاء الاقتصادي)، وعصر الدولة الحديثة (المجد الحربي) مع التدريبات والتقييم"
+        },
+        {
+          "id": "35064c56-7bd7-4ea9-8d28-a81eeecab464",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: النظم البيئية في قارة إفريقيا",
+          "title_en": "Unit 3: Ecosystems in the Continent of Africa",
+          "start_page": 52,
+          "end_page": 79,
+          "description": "نظم الغابات في إفريقيا (المدارية المطيرة والبحر المتوسط)، نظم الحشائش والصحاري الحارة، والنظم البيئية المائية في إفريقيا"
+        },
+        {
+          "id": "2e4a8b79-5e0a-41df-a579-05a8f4c2810a",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: علاقة مصر بإفريقيا خلال العصور الوسطى",
+          "title_en": "Unit 4: Egypt Relations with Africa in the Middle Ages",
+          "start_page": 80,
+          "end_page": 96,
+          "description": "انتشار الإسلام في إفريقيا، ودور مصر الحضاري في قارة إفريقيا، والتقييمات الختامية على الوحدة الرابعة"
+        }
+      ]
+    },
+    {
+      "num": 5,
+      "id": "21e1d639-9f59-4a58-a8f8-8373b8e7fc90",
+      "grade_ar": "الصف الأول الإعدادي",
+      "subject_ar": "اللغة الإنجليزية",
+      "title_ar": "اللغة الإنجليزية",
+      "title_en": "English (Student Book)",
+      "chapterRecordsCount": 6,
+      "chapters": [
+        {
+          "id": "192c06db-b3e1-4717-b6e9-0b06a0364764",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: الحياة في عالم رقمي",
+          "title_en": "Unit 1: Life in a Digital World",
+          "start_page": 14,
+          "end_page": 27,
+          "description": "Daily life in a digital world, digital technology, daily routines with technology, present simple tense, writing emails and blogs about technology habits."
+        },
+        {
+          "id": "fd851a26-5f46-4018-b469-1d7b9d8f50fe",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: التعلم من أجل التعلم",
+          "title_en": "Unit 2: Learning to Learn",
+          "start_page": 28,
+          "end_page": 41,
+          "description": "Study skills and tips, different learning styles, learning plans, overcoming learning challenges, and study advice."
+        },
+        {
+          "id": "7410734d-e306-451c-b252-4deb1b8c62cf",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: القدوة الحسنة",
+          "title_en": "Unit 3: Role Models",
+          "start_page": 42,
+          "end_page": 55,
+          "description": "Inspiring role models, biography writing, leadership qualities, making a positive difference in society."
+        },
+        {
+          "id": "e6000000-9f59-4a58-a8f8-8373b8e7fc94",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: اختيارات ذكية",
+          "title_en": "Unit 4: Smart Choices",
+          "start_page": 60,
+          "end_page": 73,
+          "description": "Making smart decisions, choices and consequences, conditional if sentences, discussing options and problem solving."
+        },
+        {
+          "id": "e6000000-9f59-4a58-a8f8-8373b8e7fc95",
+          "chapter_number": 5,
+          "title_ar": "الوحدة الخامسة: أحلام المستقبل",
+          "title_en": "Unit 5: Future Dreams",
+          "start_page": 74,
+          "end_page": 87,
+          "description": "Future dreams and ambitions, career paths and requirements, job interviews, personal future goals."
+        },
+        {
+          "id": "e6000000-9f59-4a58-a8f8-8373b8e7fc96",
+          "chapter_number": 6,
+          "title_ar": "الوحدة السادسة: المواطنون العالميون",
+          "title_en": "Unit 6: Global Citizens",
+          "start_page": 88,
+          "end_page": 101,
+          "description": "Global citizenship, community responsibilities, public service announcements, civic duties, local and global issues."
+        }
+      ]
+    },
+    {
+      "num": 6,
+      "id": "bc6bb834-7192-474c-8507-c53265028b4e",
+      "grade_ar": "الصف الثاني الإعدادي",
+      "subject_ar": "اللغة العربية",
+      "title_ar": "اللغة العربية",
+      "title_en": "Arabic Language",
+      "chapterRecordsCount": 3,
+      "chapters": [
+        {
+          "id": "902f6adf-8043-4247-b80c-42bb48d200b8",
+          "chapter_number": 1,
+          "title_ar": "المحور الأول: انتمائي قوتي",
+          "title_en": "Theme 1: My Belonging is My Strength",
+          "start_page": 11,
+          "end_page": 56,
+          "description": "نصوص الاستماع والقراءة والنصوص الشعرية (سيدة المقاومة، العبور إلى المستقبل، مصر التي في خاطري) وقواعد النحو والإملاء والتعبير الكتابي"
+        },
+        {
+          "id": "c1fb0f60-6123-40be-8933-33c725c75d63",
+          "chapter_number": 2,
+          "title_ar": "المحور الثاني: بيئتي مسئوليتي",
+          "title_en": "Theme 2: My Environment is My Responsibility",
+          "start_page": 57,
+          "end_page": 105,
+          "description": "نصوص الاستماع والقراءة والشعر (أقدم وديعة، من أجل غد، واحة مصرية، ريفنا المصري) وقواعد النحو والإملاء والتعبير وحصاد التعلم"
+        },
+        {
+          "id": "6db2a082-2dda-4fe9-9b30-f8ab8c106cce",
+          "chapter_number": 3,
+          "title_ar": "المحور الثالث: علم وقيم",
+          "title_en": "Theme 3: Science and Values",
+          "start_page": 106,
+          "end_page": 149,
+          "description": "نصوص الاستماع والقراءة والشعر (إنسان أم ظل إنسان، الخوارزمي، القراءة حياة، الكد سبيل المعالي) وقواعد النحو والصرف والتعبير الكتابي"
+        }
+      ]
+    },
+    {
+      "num": 7,
+      "id": "19886434-1839-427d-af31-4c64fcf79525",
+      "grade_ar": "الصف الثاني الإعدادي",
+      "subject_ar": "الرياضيات",
+      "title_ar": "الرياضيات (لغات)",
+      "title_en": "Mathematics",
+      "chapterRecordsCount": 4,
+      "chapters": [
+        {
+          "id": "8ccdd54b-87ed-419f-a737-a35f11620f15",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: الأعداد الحقيقية والعمليات عليها",
+          "title_en": "Unit 1: Real Numbers and Their Operations",
+          "start_page": 4,
+          "end_page": 34,
+          "description": "Real numbers, intervals and operations on intervals, operations on real numbers, laws of square and cube roots, laws of exponents in R."
+        },
+        {
+          "id": "7b7aa659-9203-46e2-97f9-341484e882fc",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: الجبر (التحليل)",
+          "title_en": "Unit 2: Algebra (Factorization)",
+          "start_page": 35,
+          "end_page": 63,
+          "description": "Factorizing by taking out GCF, factorizing trinomials, special cases (difference of squares, sum/difference of cubes), factorizing by grouping."
+        },
+        {
+          "id": "dba6933a-2b80-4d3b-ada4-3ac6acfb58c1",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: الهندسة (النظريات والمثلثات)",
+          "title_en": "Unit 3: Geometry (Theorems & Triangles)",
+          "start_page": 64,
+          "end_page": 107,
+          "description": "Congruence of triangles, Pythagoras theorem and its converse, parallelism, medians of the triangle, isosceles triangle properties, interior and exterior angles of polygons."
+        },
+        {
+          "id": "ccb5b2a6-d55a-40b7-9d20-673fc9764c72",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: الإحصاء والمراجعة العامة",
+          "title_en": "Unit 4: Statistics & General Revision",
+          "start_page": 108,
+          "end_page": 130,
+          "description": "Ascending cumulative frequency table, graphical representation, measures of central tendency (mean, median, mode), and model examination papers."
+        }
+      ]
+    },
+    {
+      "num": 8,
+      "id": "543f2746-460c-41c1-ba38-0933f479272f",
+      "grade_ar": "الصف الثاني الإعدادي",
+      "subject_ar": "العلوم",
+      "title_ar": "العلوم (لغات)",
+      "title_en": "Science (English)",
+      "chapterRecordsCount": 4,
+      "chapters": [
+        {
+          "id": "d8b969af-fa0a-4f96-a54c-bbcf33ddc188",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: المادة والطاقة",
+          "title_en": "Unit 1: Matter and Energy",
+          "start_page": 7,
+          "end_page": 44,
+          "description": "States of matter, changes in states of matter, internal energy and temperature, methods of heat transfer, activities and evaluation questions."
+        },
+        {
+          "id": "12122d52-126c-452a-a555-a942bc570946",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: المادة والتفاعلات الكيميائية",
+          "title_en": "Unit 2: Matter and Chemical Reactions",
+          "start_page": 45,
+          "end_page": 69,
+          "description": "Chemical reactions, chemical equations, nutritional chemistry, protein detection, activities and evaluation questions."
+        },
+        {
+          "id": "147144a2-8e01-413d-89e2-45393236f87c",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: تدفق الطاقة في البناء الضوئي والتنفس الخلوي",
+          "title_en": "Unit 3: Energy Flow in Photosynthesis and Cellular Respiration",
+          "start_page": 70,
+          "end_page": 87,
+          "description": "Photosynthesis, light and dark reactions, cellular respiration, aerobic and anaerobic respiration, energy flow, activities and evaluation questions."
+        },
+        {
+          "id": "e4000000-fa0a-4f96-a54c-bbcf33ddc184",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: العمليات الجيولوجية",
+          "title_en": "Unit 4: Geological Processes",
+          "start_page": 88,
+          "end_page": 103,
+          "description": "Changes in Earth surface, weathering, erosion, sedimentation, formation of minerals and soil, activities and evaluation questions."
+        }
+      ]
+    },
+    {
+      "num": 9,
+      "id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "grade_ar": "الصف الثاني الإعدادي",
+      "subject_ar": "الدراسات الاجتماعية",
+      "title_ar": "الدراسات الاجتماعية",
+      "title_en": "Social Studies",
+      "chapterRecordsCount": 4,
+      "chapters": [
+        {
+          "id": "b123b656-03b1-4af5-be4e-971dd5ba74a6",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: الملامح الطبيعية لقارتي آسيا وأوروبا",
+          "title_en": "Unit 1: Natural Features of Asia and Europe Continents",
+          "start_page": 7,
+          "end_page": 26,
+          "description": "موقع ومظاهر سطح قارتي آسيا وأوروبا، المعادن ومصادر الطاقة في قارتي آسيا وأوروبا، وأنشطة وتقييم ختامي للوحدة الأولى"
+        },
+        {
+          "id": "ae5ca8ad-b23f-4875-ba5d-8b3f0091ffa2",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: الحضارات القديمة في قارة آسيا وعلاقتها بمصر",
+          "title_en": "Unit 2: Ancient Civilizations in Asia Continent and Their Relations with Egypt",
+          "start_page": 27,
+          "end_page": 56,
+          "description": "نماذج للحضارات القديمة بالشرق الأدنى (العراق وفينيقيا)، حضارات بلاد اليمن القديم، حضارات الشرق الأقصى (الهند والصين)، الحضارة الإسلامية، وأنشطة وتقييم ختامي للوحدة الثانية"
+        },
+        {
+          "id": "5b304263-9134-470a-81c6-677db64ce02a",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: النُّظم البيئية في قارتي آسيا وأوروبا",
+          "title_en": "Unit 3: Ecosystems in Asia and Europe Continents",
+          "start_page": 57,
+          "end_page": 80,
+          "description": "نُظم الغابات في قارتي آسيا وأوروبا، نُظم الحشائش ونُظم الصحاري، النُّظم البيئية المائية، وأنشطة وتقييم ختامي للوحدة الثالثة"
+        },
+        {
+          "id": "c4000000-7fcf-4938-8c45-aa0056624f34",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: الحضارات القديمة في قارة أوروبا وعلاقتها بمصر",
+          "title_en": "Unit 4: Ancient Civilizations in Europe Continent and Their Relations with Egypt",
+          "start_page": 81,
+          "end_page": 96,
+          "description": "الحضارة اليونانية، الحضارة الرومانية وعلاقتها بمصر والمسرح الروماني بالإسكندرية، وأنشطة وتقييم ختامي للوحدة الرابعة"
+        }
+      ]
+    },
+    {
+      "num": 10,
+      "id": "37bfa0c0-c4ce-419f-930a-000043d8d3f9",
+      "grade_ar": "الصف الثاني الإعدادي",
+      "subject_ar": "اللغة الإنجليزية",
+      "title_ar": "اللغة الإنجليزية",
+      "title_en": "English Language",
+      "chapterRecordsCount": 6,
+      "chapters": [
+        {
+          "id": "af732e7e-1a38-4b17-b23e-d09ac0ac92f1",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: جين ألفا",
+          "title_en": "Unit 1: Gen Alpha",
+          "start_page": 14,
+          "end_page": 27,
+          "description": "Explores Gen Alpha, daily life, digital habits, language in use, and vocabulary using Present Continuous."
+        },
+        {
+          "id": "28366e22-1307-4063-a959-f13963009d84",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: بصمتي الرقمية",
+          "title_en": "Unit 2: My Digital Footprint",
+          "start_page": 28,
+          "end_page": 41,
+          "description": "Covers online privacy, digital safety, cyber habits, and language structures (Present Simple, Passive, modals)."
+        },
+        {
+          "id": "56d94016-da00-49cf-bb1f-828ecbdaa3b4",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: مواجهة التحديات",
+          "title_en": "Unit 3: Facing Challenges",
+          "start_page": 42,
+          "end_page": 55,
+          "description": "Focuses on overcoming obstacles, determination, courage, and narrative grammar (Past Simple and Past Continuous)."
+        },
+        {
+          "id": "8c2a41d9-761e-4589-9a10-2f1d93b1e004",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: الفن والتعبير",
+          "title_en": "Unit 4: Art and Expression",
+          "start_page": 58,
+          "end_page": 71,
+          "description": "Discusses visual art, artists, creative expression, and connectors of Cause, Result, and Contrast."
+        },
+        {
+          "id": "e5d33bf1-897b-4177-bc45-873d2a01f005",
+          "chapter_number": 5,
+          "title_ar": "الوحدة الخامسة: حول العالم",
+          "title_en": "Unit 5: Around the World",
+          "start_page": 72,
+          "end_page": 85,
+          "description": "Explores global cultures, geographical landmarks, traditions, and comparative/superlative structures."
+        },
+        {
+          "id": "64a71bc9-93b5-4b31-9257-2c9381ea7006",
+          "chapter_number": 6,
+          "title_ar": "الوحدة السادسة: المبتكرون الشباب",
+          "title_en": "Unit 6: Young Innovators",
+          "start_page": 86,
+          "end_page": 99,
+          "description": "Highlights young inventors, machines, technological advancements, and conditional sentences (Types 1 and 2)."
+        }
+      ]
+    },
+    {
+      "num": 11,
+      "id": "013411b8-edec-477b-bd42-3dbdda9fb6a9",
+      "grade_ar": "الصف الثالث الإعدادي",
+      "subject_ar": "اللغة العربية",
+      "title_ar": "اللغة العربية",
+      "title_en": "Arabic Language",
+      "chapterRecordsCount": 3,
+      "chapters": [
+        {
+          "id": "c7043f86-6a40-4417-a1b8-60e3301e7cb7",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: قيم تحمي شبابنا",
+          "title_en": "Unit 1: Values That Protect Our Youth",
+          "start_page": 15,
+          "end_page": 59,
+          "description": "نصوص الاستماع والقراءة (آداب التعامل مع الوالدين، أغلى من الذهب، تحية للشباب لأحمد شوقي) وقواعد النحو (اسم الفاعل، اسم المفعول) والإملاء والتعبير"
+        },
+        {
+          "id": "e75bad6f-9189-4f0c-8bc1-d2152ce2bb6c",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: نحو تفكير سليم",
+          "title_en": "Unit 2: Towards Sound Thinking",
+          "start_page": 60,
+          "end_page": 105,
+          "description": "نصوص الاستماع والقراءة (ثمرة القراءة، أفضل النعم، خير جليس لأحمد زكي، تاج الفضائل للإمام علي) وقواعد النحو (صيغ المبالغة، اسم المكان) والإملاء والتعبير"
+        },
+        {
+          "id": "e478df26-829f-4cbd-95cc-56b5428af702",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: أنا والمستقبل",
+          "title_en": "Unit 3: Me and the Future",
+          "start_page": 106,
+          "end_page": 148,
+          "description": "نصوص الاستماع والقراءة (بناء المستقبل في عصر الآلة، حرفتك بين يديك، مستقبل مصر في الزراعة، ابن بيدك مجدك للرصافي) وقواعد النحو (اسم الزمان، اسم الآلة) والإملاء والتعبير"
+        }
+      ]
+    },
+    {
+      "num": 12,
+      "id": "f19276d3-4adb-4297-bb77-5ed87ba638b9",
+      "grade_ar": "الصف الثالث الإعدادي",
+      "subject_ar": "الدراسات الاجتماعية",
+      "title_ar": "الدراسات الاجتماعية",
+      "title_en": "Social Studies",
+      "chapterRecordsCount": 4,
+      "chapters": [
+        {
+          "id": "3fa3ec4a-2af8-43e2-980f-dbd70ac62640",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: الملامح الطبيعية والحضارية لقارات العالم الجديد",
+          "title_en": "Unit 1: Natural and Civilizational Features of the New World Continents",
+          "start_page": 9,
+          "end_page": 36,
+          "description": "موقع ومظاهر سطح قارات العالم الجديد، الحضارات القديمة في الأميركتين، الكشوف الجغرافية"
+        },
+        {
+          "id": "73d2b274-fef2-4282-abbb-2e7c828eb1c7",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: مصر في عصر محمد علي وخلفائه",
+          "title_en": "Unit 2: Egypt in the Era of Muhammad Ali and His Successors",
+          "start_page": 37,
+          "end_page": 62,
+          "description": "تولية محمد علي حكم مصر وتثبيت دعائم حكمه، محمد علي وبناء الدولة الحديثة في مصر، مصر في عصر خلفاء محمد علي"
+        },
+        {
+          "id": "f1aef779-d047-4af8-be1e-b03938944c05",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: النظم البيئية في قارات العالم الجديد",
+          "title_en": "Unit 3: Environmental Systems in the New World Continents",
+          "start_page": 63,
+          "end_page": 90,
+          "description": "نظم الغابات والحشائش، النظم البيئية الصحراوية والمائية، التغير المناخي وتأثيره على النظم البيئية"
+        },
+        {
+          "id": "9c3643fa-641c-4af5-a376-44a63ef0d170",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: الحركة الوطنية في مواجهة الاحتلال البريطاني",
+          "title_en": "Unit 4: The National Movement Facing British Occupation",
+          "start_page": 91,
+          "end_page": 113,
+          "description": "الثورة العرابية وبداية الاحتلال البريطاني لمصر، كفاح الحركة الوطنية (مصطفى كامل ومحمد فريد)"
+        }
+      ]
+    },
+    {
+      "num": 13,
+      "id": "9e702109-7d92-445c-b814-567c1f6cba49",
+      "grade_ar": "الصف الثالث الإعدادي",
+      "subject_ar": "اللغة الإنجليزية",
+      "title_ar": "اللغة الإنجليزية",
+      "title_en": "English Language",
+      "chapterRecordsCount": 6,
+      "chapters": [
+        {
+          "id": "f8d4d833-792d-408b-8b72-1417c85282bc",
+          "chapter_number": 1,
+          "title_ar": "الوحدة الأولى: الهوية الشخصية",
+          "title_en": "Unit 1: Personal Identity",
+          "start_page": 14,
+          "end_page": 27,
+          "description": "Personal identity, values, background, beliefs, character, strengths, Present Perfect Active and Passive, since vs for."
+        },
+        {
+          "id": "498b0ea7-ad68-4e00-9fcb-194601fa721a",
+          "chapter_number": 2,
+          "title_ar": "الوحدة الثانية: التواصل مع العائلة والأصدقاء",
+          "title_en": "Unit 2: Communication with Family and Friends",
+          "start_page": 28,
+          "end_page": 41,
+          "description": "Interpersonal communication, active listening, dialogue, body language, family ties, and friendship skills."
+        },
+        {
+          "id": "5b8f39d4-30f8-43d5-97ce-39057d9f63da",
+          "chapter_number": 3,
+          "title_ar": "الوحدة الثالثة: الذكاء الاصطناعي",
+          "title_en": "Unit 3: Artificial Intelligence",
+          "start_page": 42,
+          "end_page": 55,
+          "description": "AI concepts, machine learning, robots, smart technology, innovation, Future Simple Passive."
+        },
+        {
+          "id": "f13a0004-9e70-445c-b814-567c1f6cba49",
+          "chapter_number": 4,
+          "title_ar": "الوحدة الرابعة: وقت الشاشة",
+          "title_en": "Unit 4: Screen Time",
+          "start_page": 60,
+          "end_page": 72,
+          "description": "Screen habits, digital wellbeing, social media, technology balance, health effects of prolonged device use."
+        },
+        {
+          "id": "f13a0005-9e70-445c-b814-567c1f6cba49",
+          "chapter_number": 5,
+          "title_ar": "الوحدة الخامسة: التفكير التصميمي",
+          "title_en": "Unit 5: Design Thinking",
+          "start_page": 73,
+          "end_page": 85,
+          "description": "Problem-solving process, brainstorming, prototyping, testing, feedback, sequence connectors, and imperatives."
+        },
+        {
+          "id": "f13a0006-9e70-445c-b814-567c1f6cba49",
+          "chapter_number": 6,
+          "title_ar": "الوحدة السادسة: لماذا نحب القصص؟",
+          "title_en": "Unit 6: Why Do We Like Stories?",
+          "start_page": 86,
+          "end_page": 100,
+          "description": "Narrative structure, moral lessons, characters, traditional tales, cultural story traditions, narrative past tenses."
+        }
+      ]
+    }
+  ],
+  "correctionsAllMatch": true,
+  "integrityIssues": [
+    "Book 1 (0758fc7a-c9b2-4e25-a32b-6cacb6bb418d) has integrity anomaly.",
+    "Book 2 (808104ec-b861-434b-80c6-579f715d8bdf) has integrity anomaly.",
+    "Book 3 (d7bbfca2-6d8f-461b-8e39-2015981e86ec) has integrity anomaly.",
+    "Book 4 (fa2a1525-c46f-4b34-9f48-b762be88e5c5) has integrity anomaly.",
+    "Book 5 (21e1d639-9f59-4a58-a8f8-8373b8e7fc90) has integrity anomaly.",
+    "Book 6 (bc6bb834-7192-474c-8507-c53265028b4e) has integrity anomaly.",
+    "Book 7 (19886434-1839-427d-af31-4c64fcf79525) has integrity anomaly.",
+    "Book 8 (543f2746-460c-41c1-ba38-0933f479272f) has integrity anomaly.",
+    "Book 9 (81b8a308-7fcf-4938-8c45-aa0056624f32) has integrity anomaly.",
+    "Book 10 (37bfa0c0-c4ce-419f-930a-000043d8d3f9) has integrity anomaly.",
+    "Book 11 (013411b8-edec-477b-bd42-3dbdda9fb6a9) has integrity anomaly.",
+    "Book 12 (f19276d3-4adb-4297-bb77-5ed87ba638b9) has integrity anomaly.",
+    "Book 13 (9e702109-7d92-445c-b814-567c1f6cba49) has integrity anomaly."
+  ]
+}

@@ -32,6 +32,16 @@ export const StudentDashboard: React.FC = () => {
 
   const [selectedTerm, setSelectedTerm] = useState<number>(activeTerm || 1);
 
+  const resolveDiagramUrl = (rawUrl?: string): string => {
+    if (!rawUrl) return '';
+    const fullUrl = rawUrl.startsWith('http') ? rawUrl : apiUrl(rawUrl);
+    if (token && !fullUrl.includes('token=')) {
+      const sep = fullUrl.includes('?') ? '&' : '?';
+      return `${fullUrl}${sep}token=${token}`;
+    }
+    return fullUrl;
+  };
+
   useEffect(() => {
     if (activeTerm) {
       setSelectedTerm(activeTerm);
@@ -189,7 +199,7 @@ export const StudentDashboard: React.FC = () => {
   const [selectedAiChapterId, setSelectedAiChapterId] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<any[]>([]);
-  const [serverContextQuestions, setServerContextQuestions] = useState<any[]>([]);
+  const [aiAttemptToken, setAiAttemptToken] = useState<string>('');
   const [aiAnswers, setAiAnswers] = useState<Record<string, string>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [isEvaluatingAi, setIsEvaluatingAi] = useState(false);
@@ -604,7 +614,7 @@ export const StudentDashboard: React.FC = () => {
       }
 
       setAiQuestions(data.questions || []);
-      setServerContextQuestions(data._server_context_questions || []);
+      setAiAttemptToken(data.attempt_token || '');
       if (isDevMode) {
         setAiDebugData(data.debug_info || data.questions || null);
       }
@@ -617,7 +627,7 @@ export const StudentDashboard: React.FC = () => {
   };
 
   const handleSubmitAiEvaluation = async () => {
-    if (!selectedAiBook || !selectedAiChapterId || aiQuestions.length === 0) return;
+    if (!selectedAiBook || !selectedAiChapterId || aiQuestions.length === 0 || !aiAttemptToken) return;
     setIsEvaluatingAi(true);
 
     try {
@@ -633,10 +643,7 @@ export const StudentDashboard: React.FC = () => {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          book_id: selectedAiBook.id,
-          chapter_id: selectedAiChapterId,
-          subject_id: selectedAiBook.subject_id,
-          questions: serverContextQuestions,
+          attempt_token: aiAttemptToken,
           answers: answersList
         })
       });
@@ -1192,14 +1199,8 @@ export const StudentDashboard: React.FC = () => {
                         : (isAr ? ch.title_ar : (ch.title_en || ch.title_ar));
 
                       const displayDescription = isBookEnglish
-                        ? (ch.description_en || (!/[\u0600-\u06FF]/.test(ch.description || '') ? ch.description : (
-                            ch.chapter_number === 1 ? 'The set of rational numbers, ordering, comparisons, fundamental arithmetic operations, and properties.' :
-                            ch.chapter_number === 2 ? 'Algebraic terms and expressions, degrees of terms, operations on polynomials, and linear equations.' :
-                            ch.chapter_number === 3 ? 'Measures of central tendency: arithmetic mean, median, mode, and probability principles.' :
-                            ch.chapter_number === 4 ? 'Angle relationships, vertically opposite angles, triangle congruence criteria, and parallelism.' :
-                            'Curriculum concepts, exercises, and diagnostic assessments.'
-                          )))
-                        : (isAr ? ch.description : (ch.description_en || ch.description));
+                        ? (ch.description_en || ch.description || (isAr ? 'مفاهيم الوحدة والتدريبات والتقييمات التشخيصية.' : 'Unit curriculum concepts, exercises, and assessments.'))
+                        : (isAr ? (ch.description || ch.description_en || 'مفاهيم الوحدة والتدريبات والتقييمات التشخيصية.') : (ch.description_en || ch.description || 'Unit curriculum concepts and assessments.'));
 
                       return (
                         <div
@@ -1430,6 +1431,59 @@ export const StudentDashboard: React.FC = () => {
                           }}>
                             {currentQ.question_text}
                           </h3>
+
+                          {/* Visual Evidence Diagram / Map (Phase 4G.3J) */}
+                          {currentQ.diagram_url && (
+                            <div style={{
+                              margin: '0 0 1.5rem',
+                              padding: '1rem',
+                              background: '#F8FAFC',
+                              borderRadius: 'var(--radius-lg)',
+                              border: '1.5px solid var(--border-light)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '0.5rem'
+                            }}>
+                              {currentQ.diagram_url.toLowerCase().split('?')[0].endsWith('.pdf') ? (
+                                <object
+                                  data={resolveDiagramUrl(currentQ.diagram_url)}
+                                  type="application/pdf"
+                                  style={{
+                                    width: '100%',
+                                    height: '360px',
+                                    borderRadius: 'var(--radius-md)',
+                                    border: '1px solid var(--border-light)'
+                                  }}
+                                >
+                                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', padding: '1rem', textAlign: 'center' }}>
+                                    {isQEn ? 'Document visual evidence: ' : 'المستند المرئي التوضيحي: '}
+                                    <a href={resolveDiagramUrl(currentQ.diagram_url)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-600)', fontWeight: 700 }}>
+                                      {isQEn ? 'Open Visual Page' : 'عرض الصفحة المرفقة'}
+                                    </a>
+                                  </p>
+                                </object>
+                              ) : (
+                                <img
+                                  src={resolveDiagramUrl(currentQ.diagram_url)}
+                                  alt="Visual diagram for question"
+                                  style={{
+                                    maxWidth: '100%',
+                                    maxHeight: '320px',
+                                    objectFit: 'contain',
+                                    borderRadius: 'var(--radius-md)',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                  }}
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              )}
+                              <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                {isQEn ? '📐 Refer to the figure above to answer' : '📐 استعن بالشكل التوضيحي أعلاه للإجابة'}
+                              </span>
+                            </div>
+                          )}
 
                           {/* Options */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
@@ -1811,7 +1865,7 @@ export const StudentDashboard: React.FC = () => {
                         </span>
                       </div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                        {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)} • {isAr ? `${book.chapters?.length || 1} وحدات مفهرسة` : `${book.chapters?.length || 1} Indexed Units`}
+                        {isAr ? book.subject_name_ar : (book.subject_name_en || book.subject_name_ar)} • {isAr ? `${book.chapters_count || book.chapters?.length || 1} وحدات مفهرسة` : `${book.chapters_count || book.chapters?.length || 1} Indexed Units`}
                       </div>
                     </div>
 

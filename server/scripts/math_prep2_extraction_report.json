@@ -1,0 +1,25 @@
+{
+  "book_id": "19886434-1839-427d-af31-4c64fcf79525",
+  "total_pdf_pages": 130,
+  "pages_in_db": "119",
+  "total_unicode_chars": "184925",
+  "total_bytes": "186823",
+  "total_chunks": "117",
+  "short_or_blank_pages": [
+    {
+      "page_number": 3,
+      "length": 0,
+      "reason": "BLANK_PAGE"
+    },
+    {
+      "page_number": 4,
+      "length": 0,
+      "reason": "BLANK_PAGE"
+    },
+    {
+      "page_number": 128,
+      "length": 0,
+      "reason": "BLANK_PAGE"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "book_id": "21e1d639-9f59-4a58-a8f8-8373b8e7fc90",
+  "book_number": 6,
+  "official_title": "ENGLISH Preparatory Schools - Year One - Term 1",
+  "subject": "ENGLISH",
+  "grade": "Preparatory Schools - Year One",
+  "term": "Term 1",
+  "total_pdf_pages": 10,
+  "units": [
+    {
+      "unit_number": 1,
+      "title_ar": "الحياة في عالم رقمي",
+      "title_en": "Life in a Digital World",
+      "printed_start_page": 13,
+      "printed_end_page": 26,
+      "pdf_start_page": 13,
+      "pdf_end_page": 26,
+      "description": "Reading a blog post about a digital day in a student's life, a text about the use of digital devices. Writing an email about daily routine using technology with the present simple tense. Listening to dialog on daily technology use. Speaking to talk about daily technology habits.",
+      "lessons": []
+    },
+    {
+      "unit_number": 2,
+      "title_ar": "التعلم من أجل التعلم",
+      "title_en": "Learning to Learn",
+      "printed_start_page": 27,
+      "printed_end_page": 40,
+      "pdf_start_page": 27,
+      "pdf_end_page": 40,
+      "description": "Reading study tips guide text about different ways people learn. Writing a paragraph about a learning plan and studying styles. Listening to an audio text about learning challenges and their solutions. Speaking to discuss personal learning difficulties and giving advice on study methods.",
+      "lessons": []
+    },
+    {
+      "unit_number": 3,
+      "title_ar": "القدوة الحسنة",
+      "title_en": "Role Models",
+      "printed_start_page": 41,
+      "printed_end_page": 54,
+      "pdf_start_page": 41,
+      "pdf_end_page": 54,
+      "description": "Reading biography of a role model's actions and qualities. Writing a biography about a role model students admire. Listening to interview with someone about their role model, stories of people who made a difference. Speaking to share your role model, discuss qualities of a good leader.",
+      "lessons": []
+    },
+    {
+      "unit_number": 4,
+      "title_ar": "اختيارات ذكية",
+      "title_en": "Smart Choices",
+      "printed_start_page": 59,
+      "printed_end_page": 72,
+      "pdf_start_page": 59,
+      "pdf_end_page": 72,
+      "description": "Reading short stories involving choices and consequences, advice on making good decisions. Writing completing 'If' statements about everyday choices, writing a blog post about a problem you faced. Listening to discussion/dialog on decision-making. Speaking to debate different options for a given situation, role-play a conversation about decision making.",
+      "lessons": []
+    },
+    {
+      "unit_number": 5,
+      "title_ar": "أحلام المستقبل",
+      "title_en": "Future Dreams",
+      "printed_start_page": 73,
+      "printed_end_page": 86,
+      "pdf_start_page": 73,
+      "pdf_end_page": 86,
+      "description": "Reading articles about different professions and their requirements, interviews with professionals about their jobs. Writing a review about a dream job description. Listening to interview with a famous scientist, students talking about their future plans. Speaking to present your future goal, discussing personal future goals and dreams, participating in a 'dream job'.",
+      "lessons": []
+    },
+    {
+      "unit_number": 6,
+      "title_ar": "المواطنون العالميون",
+      "title_en": "Global Citizens",
+      "printed_start_page": 87,
+      "printed_end_page": 100,
+      "pdf_start_page": 87,
+      "pdf_end_page": 100,
+      "description": "Reading article about global citizenship. Writing a social media post about global citizenship. Listening to discussions about local or global problems, public service announcements. Speaking to discuss responsibilities, discussing ways to be a good citizen at school and at home in pairs.",
+      "lessons": []
+    }
+  ],
+  "front_matter": {
+    "pdf_pages": "1..4",
+    "description": "Cover pages, Ministry of Education message, and Table of Contents."
+  },
+  "back_matter": {
+    "pdf_pages": "101..113",
+    "description": "Reviews and back matter (estimated based on the Table of Contents ending at page 101 for Review 2)."
+  },
+  "notes": "The provided document is a partial preview containing pages 1 to 10, including the cover, front matter, scope and sequence, and lesson components. Page numbers for units 1-6 are derived from the Table of Contents on PDF page 4."
+}

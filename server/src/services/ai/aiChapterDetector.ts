@@ -67,6 +67,36 @@ export class AIChapterDetector {
     const createdChapters: DetectedChapter[] = [];
     const chapterIdMap = new Map<number, string>();
 
+    // Invariant (Phase 4G.3AG): Protect Existing Verified Books
+    // Never delete chapters of a verified canonical book with existing valid chunks!
+    const verifiedCheck = await db.query(
+      `SELECT processing_status, (SELECT COUNT(*) FROM book_chunks WHERE book_id = $1) as chunk_count FROM books WHERE id = $1`,
+      [bookId]
+    ).catch(() => ({ rows: [] }));
+
+    const isVerifiedCanonical = verifiedCheck.rows.length > 0 &&
+      (verifiedCheck.rows[0].processing_status === 'COMPLETED' || verifiedCheck.rows[0].processing_status === 'VERIFIED_READY') &&
+      Number(verifiedCheck.rows[0].chunk_count) > 0;
+
+    if (isVerifiedCanonical) {
+      console.warn(`🛡️ [AIChapterDetector] Book ${bookId} is verified canonical with active chunks. Preserving existing chapters.`);
+      const existingChapters = await db.query(
+        `SELECT id, chapter_number, title_ar, title_en, start_page, end_page, description FROM book_chapters WHERE book_id = $1 ORDER BY chapter_number ASC`,
+        [bookId]
+      );
+      if (existingChapters.rows.length > 0) {
+        return existingChapters.rows.map((r: any) => ({
+          id: r.id,
+          chapter_number: r.chapter_number,
+          title_ar: r.title_ar,
+          title_en: r.title_en,
+          start_page: r.start_page,
+          end_page: r.end_page,
+          description: r.description
+        }));
+      }
+    }
+
     // Remove any previous placeholder chapters for this book if re-detecting
     await db.query(`DELETE FROM book_chapters WHERE book_id = $1`, [bookId]);
 
@@ -76,8 +106,8 @@ export class AIChapterDetector {
 
       await db.query(
         `INSERT INTO book_chapters (
-           id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description, description_en
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           chId,
           bookId,
@@ -86,8 +116,7 @@ export class AIChapterDetector {
           ch.title_en,
           ch.start_page,
           ch.end_page,
-          ch.description || `محتوى ${ch.title_ar} ومفهرس دلالياً لدعم التقييم التشخيصي وبنوك الأسئلة الذكية.`,
-          ch.description_en || ch.description || ''
+          ch.description || `محتوى ${ch.title_ar} ومفهرس دلالياً لدعم التقييم التشخيصي وبنوك الأسئلة الذكية.`
         ]
       );
       createdChapters.push({ ...ch, id: chId });
@@ -228,6 +257,20 @@ Return ONLY a valid JSON array of chapter objects (no markdown code fences):
     const { bookTitleAr, bookTitleEn, totalPages } = params;
     const title = (bookTitleAr + ' ' + (bookTitleEn || '')).toLowerCase();
     const isEnglishCurriculum = !/[\u0600-\u06FF]/.test(bookTitleAr) || title.includes('math') || title.includes('science') || (bookTitleEn && /math|science|english/i.test(bookTitleEn));
+
+    // Handle short / pilot / single-unit documents
+    if (totalPages <= 3) {
+      return [
+        {
+          chapter_number: 1,
+          title_ar: bookTitleAr.trim() || 'الوحدة الأولى',
+          title_en: bookTitleEn.trim() || 'Unit 1',
+          start_page: 1,
+          end_page: Math.max(totalPages, 1),
+          description: `محتوى ${bookTitleAr} ومفهرس دلالياً.`
+        }
+      ];
+    }
 
     // 1. Mathematics Curriculum (Prep 1 Term 1)
     if (title.includes('math') || title.includes('رياضيات') || title.includes('حساب')) {

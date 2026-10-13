@@ -1,0 +1,130 @@
+{
+  "book_title": "Science",
+  "language": "en",
+  "grade": "Second Preparatory",
+  "term": "First term",
+  "units": [
+    {
+      "unit_number": 1,
+      "title_en": "Matter and Energy",
+      "title_ar": "المادة والطاقة",
+      "printed_start_page": 2,
+      "printed_end_page": 30,
+      "pdf_start_page": 7,
+      "pdf_end_page": 35,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "States of Matter",
+          "title_ar": "حالات المادة",
+          "printed_page": 2,
+          "pdf_page": 8
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "Changes in the States of Matter",
+          "title_ar": "التغيرات في حالات المادة",
+          "printed_page": 10,
+          "pdf_page": 16
+        },
+        {
+          "lesson_number": 3,
+          "title_en": "Internal Energy and Temperature",
+          "title_ar": "الطاقة الداخلية ودرجة الحرارة",
+          "printed_page": 21,
+          "pdf_page": 27
+        },
+        {
+          "lesson_number": 4,
+          "title_en": "Methods of Heat Transfer",
+          "title_ar": "طرق انتقال الحرارة",
+          "printed_page": 30,
+          "pdf_page": 36
+        }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title_en": "Matter and Chemical Reactions",
+      "title_ar": "المادة والتفاعلات الكيميائية",
+      "printed_start_page": 40,
+      "printed_end_page": 64,
+      "pdf_start_page": 45,
+      "pdf_end_page": 69,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "Chemical Reactions",
+          "title_ar": "التفاعلات الكيميائية",
+          "printed_page": 40,
+          "pdf_page": 45
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "Chemical Equations",
+          "title_ar": "المعادلات الكيميائية",
+          "printed_page": 49,
+          "pdf_page": 54
+        },
+        {
+          "lesson_number": 3,
+          "title_en": "Nutritional Chemistry",
+          "title_ar": "كيمياء التغذية",
+          "printed_page": 57,
+          "pdf_page": 62
+        }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title_en": "Energy Flow in Photosynthesis and Cellular Respiration",
+      "title_ar": "تدفق الطاقة في البناء الضوئي والتنفس الخلوي",
+      "printed_start_page": 65,
+      "printed_end_page": 82,
+      "pdf_start_page": 70,
+      "pdf_end_page": 87,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "Photosynthesis",
+          "title_ar": "البناء الضوئي",
+          "printed_page": 65,
+          "pdf_page": 70
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "Cellular Respiration",
+          "title_ar": "التنفس الخلوي",
+          "printed_page": 75,
+          "pdf_page": 80
+        }
+      ]
+    },
+    {
+      "unit_number": 4,
+      "title_en": "Geological Processes",
+      "title_ar": "العمليات الجيولوجية",
+      "printed_start_page": 83,
+      "printed_end_page": 98,
+      "pdf_start_page": 88,
+      "pdf_end_page": 103,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_en": "Changes in Earth's surface",
+          "title_ar": "التغيرات في سطح الأرض",
+          "printed_page": 83,
+          "pdf_page": 88
+        },
+        {
+          "lesson_number": 2,
+          "title_en": "Formation of Minerals and Soil",
+          "title_ar": "تكون المعادن والتربة",
+          "printed_page": 91,
+          "pdf_page": 96
+        }
+      ]
+    }
+  ],
+  "notes": "The textbook is written entirely in English. The front matter contains cover pages, introductory letters, and the table of contents spanning printed pages i to vi (PDF pages 1 to 6)."
+}

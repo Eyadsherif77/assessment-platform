@@ -1,0 +1,44 @@
+{
+  "total_pages": 102,
+  "empty_pages": [],
+  "short_pages": [
+    {
+      "page": 3,
+      "chars": 26,
+      "text": "Name :\nClass :\nSchool :\nii"
+    },
+    {
+      "page": 7,
+      "chars": 2,
+      "text": "vi"
+    }
+  ],
+  "duplicates": [],
+  "samples": [
+    {
+      "pdf_page": 10,
+      "chars": 1440,
+      "excerpt": "The Atom is the Building Unit of Matter\nMatter is anything that has mass and occupies space.\nActivity 1 Conclude\nIn Figure (1), which shows the Sphinx statue and the Pyramids of Giza in the background, which is made of limestone rocks, which is composed mainly of calcium carbonate.\n• What are the un"
+    },
+    {
+      "pdf_page": 20,
+      "chars": 1961,
+      "excerpt": "Activity 1 Collaborate and discover\nTeam up with your classmates to form a collaborative group to study the periodic table (Figure 2), then record your observations about the following questions :\n(1) What are the blocks of the modern periodic table? and what types of elements are found in each bloc"
+    },
+    {
+      "pdf_page": 36,
+      "chars": 1458,
+      "excerpt": "Covalent Bonding\n\nIf chlorine is bonded to sodium with an ionic bond, so why doesn't it bind to hydrogen in the same way ?\nFigure (4) shows that hydrogen atom needs one electron to reach the same electron configuration as helium, and chlorine atom also needs one electron to reach the same electronic"
+    },
+    {
+      "pdf_page": 64,
+      "chars": 1320,
+      "excerpt": "The Cell as The Basic Unit of Structure and Function in Living Organisms\nYou have previously concluded in the first unit that the atom is the basic unit of structure of all matters.\nWhat is the basic unit of structure and function in living organisms?\nActivity 1 Providing evidences\nProvide evidence "
+    },
+    {
+      "pdf_page": 88,
+      "chars": 1787,
+      "excerpt": "Characteristics of The Components of The Planets of The Solar System\nThe solar system (Figure 1) consists of a star, the sun, and 8 planets that orbit the sun in elliptical paths on different distances from it, ensuring that the planets do not collide during their movement.\nSun\nMercury\nVenus\nEarth\nM"
+    }
+  ]
+}

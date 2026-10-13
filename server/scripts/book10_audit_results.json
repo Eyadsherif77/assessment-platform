@@ -1,0 +1,170 @@
+{
+  "bookId": "fa2a1525-c46f-4b34-9f48-b762be88e5c5",
+  "pageIntegrity": {
+    "sourcePageCount": 110,
+    "storedPageCount": 110,
+    "isContiguous": true,
+    "lowTextCount": 0,
+    "lowTextPages": [],
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 4,
+    "totalChunks": 90,
+    "totalAssignedChunks": 90,
+    "unitAudits": [
+      {
+        "unit": 1,
+        "title_en": "Unit 1: Natural Features of Africa and Ancient Civilizations",
+        "title_ar": "الوحدة الأولى: الملامح الطبيعية لقارة إفريقيا وحضاراتها القديمة",
+        "id": "c2387de6-beda-4c55-b93b-b65bfced4e45",
+        "start_page": 7,
+        "end_page": 29,
+        "chunk_count": 23,
+        "min_page": 7,
+        "max_page": 29
+      },
+      {
+        "unit": 2,
+        "title_en": "Unit 2: Ancient Egyptian Civilization and African Ties",
+        "title_ar": "الوحدة الثانية: الحضارة المصرية القديمة وعلاقتها بحضارات إفريقيا",
+        "id": "d7ab2e95-aaa0-478f-8162-edc4c30b6abd",
+        "start_page": 30,
+        "end_page": 51,
+        "chunk_count": 22,
+        "min_page": 30,
+        "max_page": 51
+      },
+      {
+        "unit": 3,
+        "title_en": "Unit 3: Ecosystems in the Continent of Africa",
+        "title_ar": "الوحدة الثالثة: النظم البيئية في قارة إفريقيا",
+        "id": "35064c56-7bd7-4ea9-8d28-a81eeecab464",
+        "start_page": 52,
+        "end_page": 79,
+        "chunk_count": 28,
+        "min_page": 52,
+        "max_page": 79
+      },
+      {
+        "unit": 4,
+        "title_en": "Unit 4: Egypt Relations with Africa in the Middle Ages",
+        "title_ar": "الوحدة الرابعة: علاقة مصر بإفريقيا خلال العصور الوسطى",
+        "id": "2e4a8b79-5e0a-41df-a579-05a8f4c2810a",
+        "start_page": 80,
+        "end_page": 96,
+        "chunk_count": 17,
+        "min_page": 80,
+        "max_page": 96
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 7,
+        "char_count": 1879,
+        "snippet": "الوحدة الأولى: الملامح الطبيعية لقارة إفريقيا وحضاراتها القديمة. الفكرة الرئيسية: تتميز قارة إفريقيا بموقع فريد وتضاريس متنوعة، كما تُعد مهدا للحضارات القديمة. نواتج تعلم الوحدة الأولى: بعد الانتهاء م"
+      },
+      {
+        "page_number": 20,
+        "char_count": 1413,
+        "snippet": "الفصل الدراسي الأول. الدرس الثاني | مظاهر سطح قارة إفريقيا. ج- باستخدام شبكة المعلومات الدولية (الإنترنت) ابحث عن جهود بعض الدول الإفريقية لتنفيذ مشروعات الاقتصاد الأزرق، ثم لخص ما توصلت إليه بأسلوبك "
+      },
+      {
+        "page_number": 30,
+        "char_count": 556,
+        "snippet": "المفاهيم الرئيسية: نصوص الأهرام، عصر الاضمحلال، الهكسوس، الإمبراطورية. القيم: الاعتزاز بالهوية المصرية والإفريقية، تقدير دور العلم والعلماء في بناء الحضارة، الدفاع عن الوطن، الاعتزاز بدور الجيش المصري"
+      },
+      {
+        "page_number": 45,
+        "char_count": 1678,
+        "snippet": "الوحدة الثانية: الحضارة المصرية وعلاقتها بحضارات إفريقيا. ومن أشهر المعارك الحربية التي خاضها وأظهرت براعته في التخطيط الحربي معركة «مجدو» ضد أمراء آسيا بقيادة أمير قادش، الذين خرجوا على الحكم المصري،"
+      },
+      {
+        "page_number": 52,
+        "char_count": 502,
+        "snippet": "المفاهيم الرئيسية: النظام البيئي، التوازن البيئي، المدى الحراري السنوي، الرطوبة النسبية، السافانا، النظام البيئي المائي. القيم: المسؤولية البيئية، احترام حقوق الملكية الفكرية، الاعتزاز بالهوية المصرية"
+      },
+      {
+        "page_number": 80,
+        "char_count": 304,
+        "snippet": "المفاهيم الرئيسية: الدعاة، العصور الوسطى، أروقة الأزهر الشريف. القيم: الاعتزاز بالحضارة الإسلامية، احترام الآخر، تقدير العلم والعلماء، التسامح الديني. المهارات العابرة للتخصصات: التفكير الناقد، التفكي"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "c2387de6-beda-4c55-b93b-b65bfced4e45",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          25,
+          22,
+          19,
+          14,
+          13,
+          16
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "d7ab2e95-aaa0-478f-8162-edc4c30b6abd",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          38,
+          35,
+          30,
+          44,
+          34,
+          49
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "35064c56-7bd7-4ea9-8d28-a81eeecab464",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          76,
+          70,
+          66,
+          62,
+          64,
+          60
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 4,
+        "chapterId": "2e4a8b79-5e0a-41df-a579-05a8f4c2810a",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          90,
+          92,
+          84,
+          94,
+          82,
+          93
+        ],
+        "foreignCount": 0,
+        "passed": true
+      }
+    ],
+    "crossLeakage": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "books1to8Intact": true,
+    "tablesIntact": true,
+    "passed": true
+  },
+  "overallStatus": "PASS"
+}

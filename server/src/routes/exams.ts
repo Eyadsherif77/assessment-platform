@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
 import { checkStudentExamLimit, getMonthlyExamLimit } from '../services/examLimitService.js';
+import { ExamCacheService } from '../services/examCacheService.js';
 
 const router = Router();
 
@@ -165,9 +166,6 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
       return res.status(400).json({ error: 'الرجاء إدخال البيانات الأساسية للاختبار' });
     }
 
-    const prepStageId = academic_stage_id || '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
-    const prep3GradeId = grade_id || '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
-
     // Resolve term from body or active platform term
     let finalTerm = term ? (parseInt(String(term), 10) === 2 ? 2 : 1) : null;
     if (!finalTerm) {
@@ -177,6 +175,49 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
       } catch (_) {
         finalTerm = 1;
       }
+    }
+
+    let finalStageId = academic_stage_id;
+    let finalGradeId = grade_id;
+    let finalSubjectId = subject_id;
+    let finalSchoolType = school_type || 'كلاهما';
+    let finalExamTerm = finalTerm;
+
+    if (book_id) {
+      // Authoritative curriculum identity resolution
+      const identity = await ExamCacheService.resolveCurriculumIdentity(book_id);
+
+      // Validate teacher authorization
+      const tAuth = await ExamCacheService.validateTeacherAuthorization(req.user!.id, identity);
+      if (!tAuth.isAuthorized) {
+        return res.status(403).json({ error: tAuth.reason || 'غير مصرح للمعلم بإنشاء اختبار لهذه المادة أو الكتاب' });
+      }
+
+      // Check selection consistency against authoritative DB record
+      const consistency = ExamCacheService.validateSelectionConsistency(identity, {
+        subjectId: subject_id,
+        gradeId: grade_id,
+        academicStageId: academic_stage_id,
+        term: finalTerm,
+        schoolType: school_type
+      });
+      if (!consistency.isValid) {
+        return res.status(400).json({ error: consistency.error });
+      }
+
+      // Validate chapter belongs to book
+      if (chapter_id) {
+        await ExamCacheService.normalizeAndValidateUnitSelection(book_id, chapter_id);
+      }
+
+      finalStageId = identity.academicStageId;
+      finalGradeId = identity.gradeId;
+      finalSubjectId = identity.subjectId;
+      finalSchoolType = identity.schoolType;
+      finalExamTerm = identity.term;
+    } else {
+      finalStageId = academic_stage_id || '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
+      finalGradeId = grade_id || '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
     }
 
     const creatorGovId = governorate_id || req.user?.governorateId || null;
@@ -191,16 +232,16 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
         title_ar.trim(),
         title_en ? title_en.trim() : title_ar.trim(),
         req.user!.id,
-        prepStageId,
-        prep3GradeId,
-        subject_id,
+        finalStageId,
+        finalGradeId,
+        finalSubjectId,
         book_id || null,
         chapter_id || null,
         duration_minutes,
         is_published ? 1 : 0,
-        school_type || 'كلاهما',
+        finalSchoolType,
         creatorGovId,
-        finalTerm
+        finalExamTerm
       ]
     );
 
@@ -303,7 +344,7 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
       [id]
     );
 
-    const isTeacher = req.user?.role === 'TEACHER' || req.user?.role === 'ADMIN';
+    const isTeacher = req.user?.role === 'TEACHER' || req.user?.role === 'ADMIN' || req.user?.role === 'SUPERVISOR' || req.user?.role === 'CENTRAL_ADMIN';
 
     const questionsWithOptions = await Promise.all(
       questionsRes.rows.map(async q => {
@@ -312,8 +353,17 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
           : `SELECT id, option_text FROM exam_question_options WHERE question_id = $1`;
         const optionsRes = await db.query(optSql, [q.id]);
         return {
-          ...q,
-          options: optionsRes.rows
+          id: q.id,
+          question_text: q.question_text,
+          points: q.points,
+          page_reference: q.page_reference,
+          order_index: q.order_index,
+          ...(isTeacher ? { explanation: q.explanation } : {}),
+          options: optionsRes.rows.map(opt => ({
+            id: opt.id,
+            option_text: opt.option_text,
+            ...(isTeacher ? { is_correct: opt.is_correct } : {})
+          }))
         };
       })
     );

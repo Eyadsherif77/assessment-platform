@@ -1,0 +1,310 @@
+{
+  "pageAccounting": {
+    "totalPdfPages": 104,
+    "totalPagesInDb": 104,
+    "distinctPages": 104,
+    "missingPages": [],
+    "duplicatePages": [],
+    "minChars": 2,
+    "maxChars": 2872,
+    "avgChars": "1402.1",
+    "shortPages": [
+      {
+        "page": 2,
+        "char_count": 26,
+        "text": "Name :\nClass :\nSchool :\nii"
+      },
+      {
+        "page": 6,
+        "char_count": 2,
+        "text": "vi"
+      }
+    ]
+  },
+  "ocrSamples": [
+    {
+      "page_number": 8,
+      "char_count": 1143,
+      "excerpt": "Lesson one States of Matter Lesson Terminology : • Matter. • Fluids. • Particle. • Particle Theory. • Interparticle Spaces. • Brownian Motion. • Diffusion. • Compressibility. • Plasma State. • Fluid Flow. Lesson Objectives : By the end of the lesson, the student should be able to : 1 Classify materi"
+    },
+    {
+      "page_number": 16,
+      "char_count": 1298,
+      "excerpt": "Lesson Two Changes in the States of Matter Lesson Terminology: • Energy. • States of Matter. • Melting. • Freezing. • Evaporation. • Boiling. • Condensation. • Deposition. • Sublimation. • Melting Point. • Boiling Point. Lesson Objectives: By the end of the lesson, students should be able to: 1 Conc"
+    },
+    {
+      "page_number": 46,
+      "char_count": 1128,
+      "excerpt": "Lesson One Chemical Reactions Lesson Terminology: • Physical Change. • Chemical Change. • Chemical Reaction. • Reactants. • Products. Lesson Objectives : By the end of the lesson, the student should be able to : 1 Understand the concept of chemical reactions. 2 Understand the mechanism of chemical r"
+    },
+    {
+      "page_number": 72,
+      "char_count": 1615,
+      "excerpt": "It is clear from the previous : The importance of each of : • Chlorophyll in starch formation, as evidenced by the change in the colour of iodine in the green areas only of the variegated leaf to dark blue (Figure 22). • Light in starch formation, as evidenced by the fact that the colour of iodine d"
+    },
+    {
+      "page_number": 92,
+      "char_count": 1357,
+      "excerpt": "Integration with Ecology The Red Sea (Figure 4) was named as such for the abundance of the red algae in it and the reflection of the colour of the red mountains and rocks on its shores, especially in Sinai. 2 Convergent movement • The movement of tectonic plates towards each other is known as conver"
+    },
+    {
+      "page_number": 103,
+      "char_count": 1767,
+      "excerpt": "Evaluation Questions on Lesson Two 1 Choose the correct answer for questions (1) - (5). (1) The most widespread group of minerals in Earth's crust is the .................................................... (a) carbonates. (b) oxides. (c) phosphates. (d) silicates. (2) The mineral pyroxene contain"
+    }
+  ],
+  "chaptersAndChunks": {
+    "totalChapters": 4,
+    "chapters": [
+      {
+        "chapter_number": 1,
+        "id": "d8b969af-fa0a-4f96-a54c-bbcf33ddc188",
+        "title_en": "Unit 1: Matter and Energy",
+        "title_ar": "الوحدة الأولى: المادة والطاقة",
+        "pdf_start": 7,
+        "pdf_end": 44,
+        "total_chunks": 38,
+        "page_range_in_chunks": "7..44"
+      },
+      {
+        "chapter_number": 2,
+        "id": "12122d52-126c-452a-a555-a942bc570946",
+        "title_en": "Unit 2: Matter and Chemical Reactions",
+        "title_ar": "الوحدة الثانية: المادة والتفاعلات الكيميائية",
+        "pdf_start": 45,
+        "pdf_end": 69,
+        "total_chunks": 25,
+        "page_range_in_chunks": "45..69"
+      },
+      {
+        "chapter_number": 3,
+        "id": "147144a2-8e01-413d-89e2-45393236f87c",
+        "title_en": "Unit 3: Energy Flow in Photosynthesis and Cellular Respiration",
+        "title_ar": "الوحدة الثالثة: تدفق الطاقة في البناء الضوئي والتنفس الخلوي",
+        "pdf_start": 70,
+        "pdf_end": 87,
+        "total_chunks": 18,
+        "page_range_in_chunks": "70..87"
+      },
+      {
+        "chapter_number": 4,
+        "id": "e4000000-fa0a-4f96-a54c-bbcf33ddc184",
+        "title_en": "Unit 4: Geological Processes",
+        "title_ar": "الوحدة الرابعة: العمليات الجيولوجية",
+        "pdf_start": 88,
+        "pdf_end": 103,
+        "total_chunks": 16,
+        "page_range_in_chunks": "88..103"
+      }
+    ],
+    "totalChunks": 97,
+    "unassignedChunksCount": 0
+  },
+  "unitIsolation": [
+    {
+      "unit": 1,
+      "title": "Unit 1: Matter and Energy",
+      "chapterId": "d8b969af-fa0a-4f96-a54c-bbcf33ddc188",
+      "retrievedCount": 5,
+      "pages": [
+        24,
+        9,
+        30,
+        19,
+        38
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 2,
+      "title": "Unit 2: Matter and Chemical Reactions",
+      "chapterId": "12122d52-126c-452a-a555-a942bc570946",
+      "retrievedCount": 5,
+      "pages": [
+        59,
+        49,
+        63,
+        60,
+        47
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 3,
+      "title": "Unit 3: Energy Flow in Photosynthesis and Cellular Respiration",
+      "chapterId": "147144a2-8e01-413d-89e2-45393236f87c",
+      "retrievedCount": 5,
+      "pages": [
+        78,
+        70,
+        71,
+        74,
+        76
+      ],
+      "foreignCount": 0,
+      "passed": true
+    },
+    {
+      "unit": 4,
+      "title": "Unit 4: Geological Processes",
+      "chapterId": "e4000000-fa0a-4f96-a54c-bbcf33ddc184",
+      "retrievedCount": 5,
+      "pages": [
+        92,
+        98,
+        95,
+        102,
+        91
+      ],
+      "foreignCount": 0,
+      "passed": true
+    }
+  ],
+  "provenanceTests": [
+    {
+      "test": "Supported scientific question provenance",
+      "passed": true,
+      "reason": "VERIFIED"
+    },
+    {
+      "test": "Fabricated scientific claim rejection",
+      "passed": true,
+      "reason": "Answer \"true\" is NOT supported on page 72 (matched words: none)"
+    },
+    {
+      "test": "Incorrect scientific claim rejection",
+      "passed": true,
+      "reason": "Answer \"true\" is NOT supported on page 36 (matched words: none)"
+    },
+    {
+      "test": "Foreign book question rejection",
+      "passed": true,
+      "reason": "Answer \"خطف الأطفال\" is NOT supported on page 34 (matched words: none)"
+    }
+  ],
+  "books1to4Isolation": [
+    {
+      "book_id": "d7bbfca2-6d8f-461b-8e39-2015981e86ec",
+      "title": "Book 1 (Science Prep 1)",
+      "matches": true,
+      "actual": {
+        "pages": 102,
+        "chunks": 101,
+        "chapters": 3
+      },
+      "expected": {
+        "pages": 102,
+        "chunks": 101,
+        "chapters": 3
+      }
+    },
+    {
+      "book_id": "f19276d3-4adb-4297-bb77-5ed87ba638b9",
+      "title": "Book 2 (Social Prep 3)",
+      "matches": true,
+      "actual": {
+        "pages": 113,
+        "chunks": 104,
+        "chapters": 4
+      },
+      "expected": {
+        "pages": 113,
+        "chunks": 104,
+        "chapters": 4
+      }
+    },
+    {
+      "book_id": "19886434-1839-427d-af31-4c64fcf79525",
+      "title": "Book 3 (Math Prep 2)",
+      "matches": true,
+      "actual": {
+        "pages": 130,
+        "chunks": 128,
+        "chapters": 4
+      },
+      "expected": {
+        "pages": 130,
+        "chunks": 128,
+        "chapters": 4
+      }
+    },
+    {
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "title": "Book 4 (Social Prep 2)",
+      "matches": true,
+      "actual": {
+        "pages": 106,
+        "chunks": 98,
+        "chapters": 4
+      },
+      "expected": {
+        "pages": 106,
+        "chunks": 98,
+        "chapters": 4
+      }
+    }
+  ],
+  "tablesIntegrity": {
+    "users": {
+      "actual": 229,
+      "baseline": 229,
+      "matches": true
+    },
+    "student_profiles": {
+      "actual": 226,
+      "baseline": 226,
+      "matches": true
+    },
+    "ai_evaluations": {
+      "actual": 345,
+      "baseline": 345,
+      "matches": true
+    },
+    "exams": {
+      "actual": 0,
+      "baseline": 0,
+      "matches": true
+    },
+    "question_bank_items": {
+      "actual": 45,
+      "baseline": 45,
+      "matches": true
+    },
+    "question_bank_options": {
+      "actual": 180,
+      "baseline": 180,
+      "matches": true
+    },
+    "book5_pdf_chunks": {
+      "actual": 17,
+      "baseline": 17,
+      "matches": true
+    },
+    "total_pdf_chunks": {
+      "actual": 314,
+      "baseline": 314,
+      "matches": true
+    }
+  },
+  "snapshotComparison": {
+    "before": {
+      "books": 1,
+      "book_chapters": 3,
+      "book_pages": 3,
+      "book_chunks": 3,
+      "question_bank_items": 45,
+      "question_bank_options": 180,
+      "book_pdf_chunks": 17
+    },
+    "after": {
+      "book_pages": 104,
+      "book_chunks": 97,
+      "book_chapters": 4,
+      "question_bank_items": 45,
+      "question_bank_options": 180,
+      "book_pdf_chunks": 17
+    }
+  }
+}

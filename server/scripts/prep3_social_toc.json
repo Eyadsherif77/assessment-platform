@@ -1,0 +1,106 @@
+{
+  "units": [
+    {
+      "unit_number": 1,
+      "title_ar": "الملامح الطبيعية والحضارية لقارات العالم الجديد",
+      "title_en": "Natural and Civilizational Features of the New World Continents",
+      "printed_start_page": 10,
+      "printed_end_page": 27,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "موقع ومظاهر سطح قارات العالم الجديد",
+          "title_en": "Location and Surface Features of the New World Continents",
+          "printed_page": 10
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "الحضارات القديمة في الأميركتين",
+          "title_en": "Ancient Civilizations in the Americas",
+          "printed_page": 20
+        },
+        {
+          "lesson_number": 3,
+          "title_ar": "الكشـوف الجغرافية لقارات العالم الجديد",
+          "title_en": "Geographical Discoveries of the New World Continents",
+          "printed_page": 26
+        }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title_ar": "مصر في عصر «محمد علي» وخلفائه",
+      "title_en": "Egypt in the Era of 'Muhammad Ali' and His Successors",
+      "printed_start_page": 28,
+      "printed_end_page": 63,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "تولية «محمد علي» حكم مصر وتثبيت دعائم حكمه",
+          "title_en": "Accession of 'Muhammad Ali' to Rule Egypt and Consolidation of His Rule",
+          "printed_page": 28
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "«محمد علي» وبناء الدولة الحديثة في مصر",
+          "title_en": "'Muhammad Ali' and Building the Modern State in Egypt",
+          "printed_page": 44
+        },
+        {
+          "lesson_number": 3,
+          "title_ar": "مصر في عصر خلفاء «محمد علي»",
+          "title_en": "Egypt in the Era of 'Muhammad Ali's Successors",
+          "printed_page": 52
+        }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title_ar": "النُّظُم البيئية في قارات العالم الجديد",
+      "title_en": "Environmental Systems in the New World Continents",
+      "printed_start_page": 64,
+      "printed_end_page": 91,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "نُضُم الغابات والحشائش في قارات العالم الجديد",
+          "title_en": "Forest and Grassland Systems in the New World Continents",
+          "printed_page": 64
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "النُّظُم البيئية الصحراوية والمائية في قارات العالم الجديد",
+          "title_en": "Desert and Aquatic Environmental Systems in the New World Continents",
+          "printed_page": 72
+        },
+        {
+          "lesson_number": 3,
+          "title_ar": "التغير المناخي وتأثيره على النُّظُم البيئية",
+          "title_en": "Climate Change and Its Impact on Environmental Systems",
+          "printed_page": 80
+        }
+      ]
+    },
+    {
+      "unit_number": 4,
+      "title_ar": "الحركة الوطنية في مواجهة الاحتلال البريطاني",
+      "title_en": "The National Movement in Facing British Occupation",
+      "printed_start_page": 92,
+      "printed_end_page": 108,
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title_ar": "الثورة العرابية وبداية الاحتلال البريطاني لمصر",
+          "title_en": "The Urabi Revolution and the Beginning of British Occupation of Egypt",
+          "printed_page": 92
+        },
+        {
+          "lesson_number": 2,
+          "title_ar": "كفاح الحركة الوطنية وبناء الوعي الوطني (مصطفى كامل ومحمد فريد)",
+          "title_en": "The Struggle of the National Movement and Building National Awareness (Mustafa Kamel and Mohamed Farid)",
+          "printed_page": 100
+        }
+      ]
+    }
+  ]
+}

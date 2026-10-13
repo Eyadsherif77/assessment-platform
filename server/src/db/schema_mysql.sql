@@ -345,3 +345,49 @@ CREATE TABLE IF NOT EXISTS platform_settings (
     updated_by VARCHAR(64)
 );
 
+CREATE TABLE IF NOT EXISTS shared_cached_exams (
+    id VARCHAR(64) PRIMARY KEY,
+    config_key TEXT NOT NULL,
+    config_hash VARCHAR(64) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    version_number INT NOT NULL DEFAULT 1,
+    book_id VARCHAR(64) NOT NULL,
+    academic_stage_id VARCHAR(64) NOT NULL,
+    grade_id VARCHAR(64) NOT NULL,
+    subject_id VARCHAR(64) NOT NULL,
+    term INT NOT NULL DEFAULT 1,
+    school_type VARCHAR(64) NOT NULL DEFAULT 'كلاهما',
+    unit_ids TEXT NOT NULL,
+    unit_set_key TEXT NOT NULL,
+    parameters_json TEXT NOT NULL,
+    param_hash VARCHAR(64) NOT NULL,
+    questions_data LONGTEXT NOT NULL,
+    total_questions INT NOT NULL DEFAULT 0,
+    provenance_verified INT NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_cached_config_hash (config_hash),
+    UNIQUE KEY uq_config_content (config_hash, content_hash),
+    INDEX idx_cached_exam_book (book_id),
+    INDEX idx_cached_exam_curriculum (academic_stage_id, grade_id, subject_id, term),
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_stage_id) REFERENCES academic_stages(id),
+    FOREIGN KEY (grade_id) REFERENCES grades(id),
+    FOREIGN KEY (subject_id) REFERENCES subjects(id)
+);
+
+CREATE TABLE IF NOT EXISTS student_exam_assignments (
+    id VARCHAR(64) PRIMARY KEY,
+    cached_exam_id VARCHAR(64) NOT NULL,
+    student_id VARCHAR(64) NOT NULL,
+    config_hash VARCHAR(64) NOT NULL,
+    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(32) DEFAULT 'ASSIGNED',
+    UNIQUE KEY uq_student_cached_exam (student_id, cached_exam_id),
+    INDEX idx_asgn_student_config (student_id, config_hash),
+    INDEX idx_asgn_exam (cached_exam_id),
+    INDEX idx_asgn_student (student_id),
+    FOREIGN KEY (cached_exam_id) REFERENCES shared_cached_exams(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+

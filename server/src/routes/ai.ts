@@ -1,8 +1,13 @@
 import { Router } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
-import { aiRagEngine } from '../services/ai/aiRagEngine.js';
+import { aiRagEngine, GroundedQuestion } from '../services/ai/aiRagEngine.js';
 import { checkStudentExamLimit } from '../services/examLimitService.js';
+import { ExamCacheService } from '../services/examCacheService.js';
+import { signExamAttemptToken, verifyExamAttemptToken, ExamAttemptTokenPayload } from '../services/answerValidationService.js';
+import { ReadinessValidator } from '../services/readinessValidator.js';
+import { VisualAssetExtractor } from '../services/ai/visualAssetExtractor.js';
 
 const router = Router();
 
@@ -31,114 +36,353 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
     }
 
-    // Student Safety Rule: Verify book belongs to student's academic_stage_id, grade_id & school_type
-    const bookRes = await db.query(
-      `SELECT id, title_ar, academic_stage_id, grade_id, school_type FROM books WHERE id = $1`,
-      [book_id]
-    );
+    // 1. Authoritative Curriculum Identity Resolution
+    const identity = await ExamCacheService.resolveCurriculumIdentity(book_id);
 
-    if (bookRes.rows.length === 0) {
-      return res.status(404).json({ error: 'الكتاب غير موجود' });
-    }
-
-    const book = bookRes.rows[0];
-    if (book.academic_stage_id !== studentProfile.academicStageId || book.grade_id !== studentProfile.gradeId) {
-      return res.status(403).json({ error: 'غير مصرح لك بإجراء تقييم لكتاب خارج مرحلتك وصفك الدراسي' });
-    }
-
-    const studentSchoolType = studentProfile.schoolType || 'عربي';
-    if (book.school_type && book.school_type !== 'كلاهما' && book.school_type !== studentSchoolType) {
-      return res.status(403).json({ error: 'غير مصرح لك بإجراء تقييم لكتاب غير مخصص لنوع مدرستك' });
-    }
-
-    // Verify chapter belongs to book
-    const chapterRes = await db.query(
-      `SELECT id FROM book_chapters WHERE id = $1 AND book_id = $2`,
-      [chapter_id, book_id]
-    );
-    if (chapterRes.rows.length === 0) {
-      return res.status(400).json({ error: 'الفصل الدراسي المختار لا ينتمي لهذا الكتاب' });
-    }
-
-    const questions = await aiRagEngine.generateQuestions({
-      studentId: req.user!.id,
-      academicStageId: studentProfile.academicStageId,
-      gradeId: studentProfile.gradeId,
+    // 2. Validate Selection Consistency against DB authoritative truth
+    const consistency = ExamCacheService.validateSelectionConsistency(identity, {
       subjectId: subject_id,
+      gradeId: studentProfile.gradeId,
+      academicStageId: studentProfile.academicStageId
+    });
+    if (!consistency.isValid) {
+      return res.status(400).json({ error: consistency.error });
+    }
+
+    // 3. Validate Student Eligibility (Stage, Grade, School Type)
+    const eligibility = await ExamCacheService.validateStudentEligibility(req.user!.id, identity);
+    if (!eligibility.isEligible) {
+      return res.status(403).json({ error: eligibility.reason });
+    }
+
+    // 4. Verify chapter belongs to book and normalize unit selection
+    await ExamCacheService.normalizeAndValidateUnitSelection(book_id, chapter_id);
+
+    // 4.5 Explicit Readiness Gate (Phase 4G.3J & Phase 4G.3K & Phase 4G.3AB)
+    // Fail closed if the unit is marked BLOCKED or NOT_AUDITED in the curriculum inventory or database
+    const readiness = await ReadinessValidator.getUnitReadinessAsync(book_id, chapter_id);
+    if (!readiness.isEligibleForAI) {
+      return res.status(403).json({
+        error: `هذه الوحدة غير مؤهلة حالياً لتوليد التقييم الآلي: ${readiness.reason}`,
+        code: 'UNIT_READINESS_BLOCKED',
+        readiness: {
+          status: readiness.status,
+          reason: readiness.reason,
+          visual_dependencies: readiness.visualDependencies,
+          required_actions: readiness.requiredActions
+        }
+      });
+    }
+
+    // 5. Shared Exam Cache Lookup with Strict Curriculum Identity & Student No-Repeat Rule
+    const parsedCount = parseInt(count, 10) || 3;
+    const cacheResult = await ExamCacheService.getCachedExamForStudent({
+      studentId: req.user!.id,
       bookId: book_id,
-      chapterId: chapter_id,
-      count: parseInt(count, 10) || 3
+      chapterIds: chapter_id,
+      examParams: { count: parsedCount }
     });
 
-    // Check if Development Mode inspection is requested
-    const isDevMode = process.env.NODE_ENV !== 'production' || req.headers['x-dev-debug'] === 'true' || req.query.debug === 'true';
+    let questions: any[];
+    let cachedExamId: string;
+    let configHash: string;
+    let contentHash: string;
+    let versionNumber: number;
 
-    // Strip out is_correct from options before sending to student client, but retain source grounding (chunk_id, book_id, chapter_id)
-    // In development mode only, expose debug inspection fields: chunk_text, similarity_score, validation_status
-    const sanitizedQuestions = questions.map(q => ({
-      id: q.id,
-      chunk_id: q.chunk_id,
-      book_id: q.book_id,
-      chapter_id: q.chapter_id,
-      question_text: q.question_text,
-      difficulty: q.difficulty,
-      bloom_level: q.bloom_level,
-      page_reference: q.page_reference,
-      ...(isDevMode ? {
-        chunk_text: q.chunk_text || q.source_excerpt || '',
-        similarity_score: q.similarity_score ?? 1.0,
-        validation_status: q.validation_status || { isValid: true }
-      } : {}),
-      options: q.options.map(o => ({
-        id: o.id,
-        text: o.text,
-        option_text: o.text
-      }))
-    }));
+    if (cacheResult.hit && cacheResult.exam) {
+      console.log(`⚡ [Shared Exam Cache HIT] Reusing cached exam for student ${req.user!.id} (Book: ${identity.titleAr})`);
+      questions = cacheResult.exam.questions;
+      cachedExamId = cacheResult.exam.examId;
+      configHash = cacheResult.exam.configHash;
+      contentHash = cacheResult.exam.contentHash;
+      versionNumber = cacheResult.exam.versionNumber || 1;
+      await ExamCacheService.recordStudentAssignment(cacheResult.cacheKey, req.user!.id, cacheResult.exam.examId);
+    } else {
+      console.log(`🔄 [Shared Exam Cache ${cacheResult.reason}] Generating fresh exam for student ${req.user!.id}`);
+      questions = await aiRagEngine.generateQuestions({
+        studentId: req.user!.id,
+        academicStageId: identity.academicStageId,
+        gradeId: identity.gradeId,
+        subjectId: identity.subjectId,
+        bookId: identity.bookId,
+        chapterId: chapter_id,
+        count: parsedCount
+      });
 
-    // Developer Debug Matrix (development only)
-    const debug_info = isDevMode ? questions.map(q => ({
-      question_id: q.id,
-      question_text: q.question_text,
-      bloom_level: q.bloom_level,
-      chunk_id: q.chunk_id,
-      book_id: q.book_id,
-      chapter_id: q.chapter_id,
-      chunk_text: q.chunk_text || q.source_excerpt || '',
-      similarity_score: q.similarity_score ?? 1.0,
-      validation_status: q.validation_status || { isValid: true }
-    })) : undefined;
+      // Cache the generated exam with authoritative identity and assign to current student
+      const stored = await ExamCacheService.storeExamInCache({
+        examId: `ai_exam_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        identity,
+        unitIds: [chapter_id],
+        examParams: { count: parsedCount },
+        questions,
+        assignedStudentId: req.user!.id
+      });
+      cachedExamId = stored.examId;
+      configHash = stored.configHash;
+      contentHash = stored.contentHash;
+      versionNumber = stored.versionNumber || 1;
+    }
+
+    // Issue cryptographic attempt token bound to authenticated student and authoritative exam version
+    const attemptPayload: ExamAttemptTokenPayload = {
+      schema_version: 'v1',
+      attempt_id: `att_${uuidv4()}`,
+      student_id: req.user!.id,
+      cached_exam_id: cachedExamId,
+      config_hash: configHash,
+      content_hash: contentHash,
+      version_number: versionNumber,
+      question_ids: questions.map(q => q.id),
+      issued_at: Date.now(),
+      expires_at: Date.now() + 2 * 60 * 60 * 1000 // 2 hours validity
+    };
+    const attempt_token = signExamAttemptToken(attemptPayload);
+
+    // Strip out is_correct, explanation, correct option IDs before sending to student client
+    const sanitizedQuestions = questions.map(q => {
+      const isValidDiagram = q.diagram_url && VisualAssetExtractor.isVisualAssetValid(q.diagram_url);
+      return {
+        id: q.id,
+        chunk_id: q.chunk_id,
+        book_id: q.book_id,
+        chapter_id: q.chapter_id,
+        question_text: q.question_text,
+        difficulty: q.difficulty,
+        bloom_level: q.bloom_level,
+        diagram_url: isValidDiagram ? q.diagram_url : undefined,
+        has_visual_dependency: Boolean(q.has_visual_dependency || isValidDiagram),
+        options: (q.options || []).map((o: any) => ({
+          id: o.id,
+          text: o.text || o.option_text
+        }))
+      };
+    });
 
     return res.json({
       book_id,
       chapter_id,
       subject_id,
-      questions: sanitizedQuestions,
-      debug_info,
-      _server_context_questions: questions // for verification in submit
+      attempt_token,
+      questions: sanitizedQuestions
     });
   } catch (err: any) {
     console.error('AI Generate Quiz error:', err);
-    if (err.message?.includes('Insufficient educational content for assessment generation')) {
-      return res.status(422).json({
-        error: 'المحتوى التعليمي المستخرج من هذه الوحدة غير كافٍ لصياغة أسئلة تقييمية معتمدة.',
-        code: 'INSUFFICIENT_EDUCATIONAL_CONTENT'
+    if (
+      err.message?.includes('Insufficient educational content for assessment generation') ||
+      err.message?.includes('EXAM_GENERATION_FAILED')
+    ) {
+      return res.status(503).json({
+        error: 'المحتوى التعليمي المستخرج من هذه الوحدة غير كافٍ لصياغة العدد المطلوب من الأسئلة المعتمدة.',
+        code: 'EXAM_GENERATION_FAILED',
+        details: err.message
       });
     }
     return res.status(500).json({ error: 'خطأ في توليد التقييم الذكي: ' + err.message });
   }
 });
 
-// Evaluate Student Answers with RAG diagnosis & Study Prescription
+// Evaluate Student Answers with Server-Authoritative Grading
 router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
-    const { book_id, chapter_id, subject_id, questions, answers } = req.body;
+    const { attempt_token, answers } = req.body;
 
-    if (!book_id || !chapter_id || !subject_id || !Array.isArray(questions) || !Array.isArray(answers)) {
-      return res.status(400).json({ error: 'بيانات التقييم غير مكتملة' });
+    if (!attempt_token || typeof attempt_token !== 'string') {
+      return res.status(400).json({
+        error: 'رمز محاولة الاختبار المعتمد مطلوب.',
+        code: 'ATTEMPT_TOKEN_REQUIRED'
+      });
     }
 
-    // Check student's monthly exam limit across all subjects
+    // Explicit rejection of client-controlled questions or answer keys
+    if (req.body.questions) {
+      return res.status(400).json({
+        error: 'لا يمكن إرسال أسئلة الاختبار من جهة العميل. يتم تحميل الأسئلة حصرياً من الخادم المعتمد.',
+        code: 'LEGACY_SUBMISSION_REJECTED'
+      });
+    }
+
+    let normalizedAnswers: Array<{ question_id: string; selected_option_id: string }> = [];
+    if (Array.isArray(answers)) {
+      normalizedAnswers = answers;
+    } else if (answers && typeof answers === 'object') {
+      normalizedAnswers = Object.entries(answers).map(([qId, optId]) => ({
+        question_id: qId,
+        selected_option_id: String(optId)
+      }));
+    } else {
+      return res.status(400).json({
+        error: 'قائمة إجابات الطالب غير صحيحة.',
+        code: 'INVALID_ANSWERS_PAYLOAD'
+      });
+    }
+
+    // 1. Verify Attempt Token Signature, Expiry, and Format
+    const tokenResult = verifyExamAttemptToken(attempt_token);
+    if (!tokenResult.valid || !tokenResult.payload) {
+      return res.status(401).json({
+        error: 'رمز محاولة الاختبار غير صالح أو منتهي الصلاحية أو تم التلاعب به.',
+        code: tokenResult.error || 'INVALID_ATTEMPT_TOKEN'
+      });
+    }
+
+    const payload = tokenResult.payload;
+
+    // 2. Strict Student Ownership Check
+    if (payload.student_id !== req.user!.id) {
+      return res.status(403).json({
+        error: 'غير مصرح لك بإرسال محاولة اختبار خاصة بطالب آخر.',
+        code: 'STUDENT_IDENTITY_MISMATCH'
+      });
+    }
+
+    // 3. Safe, Idempotent Attempt Handling and Recovery
+    const existingAttempt = await db.query(
+      `SELECT id, student_id, book_id, chapter_id, subject_id, score, total_questions,
+              questions_data, student_answers_data, evaluation_report
+       FROM ai_evaluations WHERE id = $1`,
+      [payload.attempt_id]
+    );
+
+    if (existingAttempt.rows.length > 0) {
+      const existingRow = existingAttempt.rows[0];
+
+      // A. Strict Student Ownership Check on existing attempt
+      if (existingRow.student_id !== req.user!.id) {
+        return res.status(403).json({
+          error: 'غير مصرح لك باسترجاع محاولة اختبار خاصة بطالب آخر.',
+          code: 'STUDENT_IDENTITY_MISMATCH'
+        });
+      }
+
+      // B. Ensure submitted answers match original attempt (No tampering with original answers on retry)
+      let storedAnswers: any[] = [];
+      try {
+        storedAnswers = typeof existingRow.student_answers_data === 'string'
+          ? JSON.parse(existingRow.student_answers_data)
+          : existingRow.student_answers_data;
+      } catch (_) {}
+
+      // Compare normalizedAnswers with storedAnswers
+      const isAnswersMatch = Array.isArray(storedAnswers) &&
+        storedAnswers.length === normalizedAnswers.length &&
+        storedAnswers.every(sa => {
+          const matching = normalizedAnswers.find(na => na.question_id === sa.question_id);
+          return matching && String(matching.selected_option_id) === String(sa.selected_option_id);
+        });
+
+      if (!isAnswersMatch) {
+        return res.status(409).json({
+          error: 'لا يمكن تعديل إجابات محاولة تم تسليمها وتقييمها مسبقاً.',
+          code: 'ATTEMPT_ANSWER_MISMATCH'
+        });
+      }
+
+      // C. Safe Evaluation Recovery: Check if dependent operations (learning history) were completed
+      let report: any;
+      try {
+        report = typeof existingRow.evaluation_report === 'string'
+          ? JSON.parse(existingRow.evaluation_report)
+          : existingRow.evaluation_report;
+      } catch (_) {
+        report = {};
+      }
+
+      // Check if student_learning_history was recorded
+      const historyCheck = await db.query(
+        `SELECT id FROM student_learning_history WHERE reference_id = $1`,
+        [payload.attempt_id]
+      );
+
+      // If learning history is missing, perform safe idempotent recovery without double-counting
+      if (historyCheck.rows.length === 0 && (report.authoritative_max_score || 0) > 0 && report.authoritative_percentage !== null) {
+        console.log(`🔄 [AI Evaluation Recovery] Attempt ${payload.attempt_id} exists but missing learning history. Recovering analytics safely...`);
+        await aiRagEngine.recoverEvaluationAnalytics({
+          attemptId: payload.attempt_id,
+          studentId: req.user!.id,
+          subjectId: existingRow.subject_id,
+          chapterId: existingRow.chapter_id,
+          report
+        });
+        report.analytics_synced = true;
+      }
+
+      return res.json({
+        message: 'تم استرجاع تقرير التقييم المعتمد لهذه المحاولة بنجاح (استرداد آمن)',
+        report,
+        recovered: true
+      });
+    }
+
+    // 4. Load Authoritative Cached Exam Questions from Database
+    const examRes = await db.query(
+      `SELECT id, config_hash, content_hash, version_number, questions_data,
+              book_id, academic_stage_id, grade_id, subject_id, unit_ids
+       FROM shared_cached_exams
+       WHERE id = $1`,
+      [payload.cached_exam_id]
+    );
+
+    if (examRes.rows.length === 0) {
+      return res.status(404).json({
+        error: 'الاختبار المعتمد غير موجود في سجلات الخادم.',
+        code: 'CACHED_EXAM_NOT_FOUND'
+      });
+    }
+
+    const cachedRow = examRes.rows[0];
+    if (cachedRow.content_hash !== payload.content_hash) {
+      return res.status(409).json({
+        error: 'تعارض في نسخة محتوى الاختبار المعتمد.',
+        code: 'EXAM_CONTENT_MISMATCH'
+      });
+    }
+
+    const authoritativeQuestions: GroundedQuestion[] = typeof cachedRow.questions_data === 'string'
+      ? JSON.parse(cachedRow.questions_data)
+      : cachedRow.questions_data;
+
+    // 5. Strict Question Membership & Answer Integrity Validation
+    const authQuestionMap = new Map<string, GroundedQuestion>();
+    for (const aq of authoritativeQuestions) {
+      authQuestionMap.set(aq.id, aq);
+    }
+
+    const seenAnsweredQuestions = new Set<string>();
+    for (const ans of normalizedAnswers) {
+      if (!ans || typeof ans !== 'object' || !ans.question_id) {
+        return res.status(400).json({
+          error: 'بيانات الإجابة غير مكتملة.',
+          code: 'MALFORMED_ANSWER_ITEM'
+        });
+      }
+      if (!authQuestionMap.has(ans.question_id)) {
+        return res.status(400).json({
+          error: `معرف السؤال '${ans.question_id}' لا ينتمي لهذا الاختبار المعتمد.`,
+          code: 'FOREIGN_QUESTION_SUBMITTED'
+        });
+      }
+      if (seenAnsweredQuestions.has(ans.question_id)) {
+        return res.status(400).json({
+          error: `تكرار إجابة السؤال '${ans.question_id}'.`,
+          code: 'DUPLICATE_QUESTION_ANSWERED'
+        });
+      }
+      seenAnsweredQuestions.add(ans.question_id);
+
+      const targetQ = authQuestionMap.get(ans.question_id)!;
+      if (ans.selected_option_id) {
+        const optionExists = targetQ.options.some(o => o.id === ans.selected_option_id);
+        if (!optionExists) {
+          return res.status(400).json({
+            error: `معرف الخيار المحدد '${ans.selected_option_id}' غير صالح للسؤال '${ans.question_id}'.`,
+            code: 'UNKNOWN_OPTION_SUBMITTED'
+          });
+        }
+      }
+    }
+
+    // 6. Check student's monthly exam limit
     const limitStatus = await checkStudentExamLimit(req.user!.id);
     if (!limitStatus.allowed) {
       return res.status(403).json({
@@ -154,29 +398,60 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
       return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
     }
 
-    // Student Safety Rule: Verify book belongs to student's academic stage and grade
-    const bookRes = await db.query(
-      `SELECT id, academic_stage_id, grade_id FROM books WHERE id = $1`,
-      [book_id]
-    );
+    // 7. Verify Academic Scope
     if (
-      bookRes.rows.length === 0 ||
-      bookRes.rows[0].academic_stage_id !== studentProfile.academicStageId ||
-      bookRes.rows[0].grade_id !== studentProfile.gradeId
+      cachedRow.academic_stage_id !== studentProfile.academicStageId ||
+      cachedRow.grade_id !== studentProfile.gradeId
     ) {
       return res.status(403).json({ error: 'غير مصرح لك بإرسال تقييم لكتاب خارج مرحلتك وصفك الدراسي' });
     }
 
-    const report = await aiRagEngine.evaluateSubmission({
-      studentId: req.user!.id,
-      academicStageId: studentProfile.academicStageId,
-      gradeId: studentProfile.gradeId,
-      subjectId: subject_id,
-      bookId: book_id,
-      chapterId: chapter_id,
-      questions: questions,
-      studentAnswers: answers
-    });
+    // 8. Grade Authoritatively with attemptId binding
+    let report: any;
+    try {
+      report = await aiRagEngine.evaluateSubmission({
+        studentId: req.user!.id,
+        academicStageId: studentProfile.academicStageId,
+        gradeId: studentProfile.gradeId,
+        subjectId: cachedRow.subject_id,
+        bookId: cachedRow.book_id,
+        chapterId: authoritativeQuestions[0]?.chapter_id || '',
+        attemptId: payload.attempt_id,
+        questions: authoritativeQuestions,
+        studentAnswers: normalizedAnswers
+      });
+    } catch (evalErr: any) {
+      const msg = String(evalErr?.message || '');
+      if (
+        msg.includes('Duplicate') ||
+        msg.includes('UNIQUE') ||
+        msg.includes('SQLITE_CONSTRAINT') ||
+        evalErr?.code === 'ER_DUP_ENTRY'
+      ) {
+        // Safe concurrent resolution: if another concurrent worker committed the row, retrieve it for the authenticated student
+        const raceAttempt = await db.query(
+          `SELECT id, student_id, evaluation_report FROM ai_evaluations WHERE id = $1`,
+          [payload.attempt_id]
+        );
+        if (raceAttempt.rows.length > 0 && raceAttempt.rows[0].student_id === req.user!.id) {
+          try {
+            const raceReport = typeof raceAttempt.rows[0].evaluation_report === 'string'
+              ? JSON.parse(raceAttempt.rows[0].evaluation_report)
+              : raceAttempt.rows[0].evaluation_report;
+            return res.json({
+              message: 'تم استرجاع تقرير التقييم المعتمد لهذه المحاولة بنجاح (تسوية تزامن)',
+              report: raceReport,
+              recovered: true
+            });
+          } catch (_) {}
+        }
+        return res.status(409).json({
+          error: 'تم تسليم وتقييم هذه المحاولة مسبقاً (تعارض تزامن).',
+          code: 'ATTEMPT_ALREADY_EVALUATED'
+        });
+      }
+      throw evalErr;
+    }
 
     return res.json({
       message: 'تم إتمام التقييم الذكي وتشخيص نقاط الضعف وخطة المراجعة بنجاح',

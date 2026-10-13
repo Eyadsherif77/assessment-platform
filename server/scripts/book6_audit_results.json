@@ -1,0 +1,235 @@
+{
+  "bookId": "21e1d639-9f59-4a58-a8f8-8373b8e7fc90",
+  "pageIntegrity": {
+    "sourcePageCount": 113,
+    "storedPageCount": 113,
+    "isContiguous": true,
+    "lowTextCount": 3,
+    "lowTextPages": [
+      {
+        "page": 3,
+        "chars": 0
+      },
+      {
+        "page": 107,
+        "chars": 0
+      },
+      {
+        "page": 108,
+        "chars": 0
+      }
+    ],
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 6,
+    "totalChunks": 87,
+    "totalAssignedChunks": 87,
+    "unitAudits": [
+      {
+        "unit": 1,
+        "title_en": "Unit 1: Life in a Digital World",
+        "title_ar": "الوحدة الأولى: الحياة في عالم رقمي",
+        "id": "192c06db-b3e1-4717-b6e9-0b06a0364764",
+        "start_page": 14,
+        "end_page": 27,
+        "chunk_count": 17,
+        "min_page": 1,
+        "max_page": 27
+      },
+      {
+        "unit": 2,
+        "title_en": "Unit 2: Learning to Learn",
+        "title_ar": "الوحدة الثانية: التعلم من أجل التعلم",
+        "id": "fd851a26-5f46-4018-b469-1d7b9d8f50fe",
+        "start_page": 28,
+        "end_page": 41,
+        "chunk_count": 14,
+        "min_page": 28,
+        "max_page": 41
+      },
+      {
+        "unit": 3,
+        "title_en": "Unit 3: Role Models",
+        "title_ar": "الوحدة الثالثة: القدوة الحسنة",
+        "id": "7410734d-e306-451c-b252-4deb1b8c62cf",
+        "start_page": 42,
+        "end_page": 55,
+        "chunk_count": 14,
+        "min_page": 42,
+        "max_page": 55
+      },
+      {
+        "unit": 4,
+        "title_en": "Unit 4: Smart Choices",
+        "title_ar": "الوحدة الرابعة: اختيارات ذكية",
+        "id": "e6000000-9f59-4a58-a8f8-8373b8e7fc94",
+        "start_page": 60,
+        "end_page": 73,
+        "chunk_count": 14,
+        "min_page": 60,
+        "max_page": 73
+      },
+      {
+        "unit": 5,
+        "title_en": "Unit 5: Future Dreams",
+        "title_ar": "الوحدة الخامسة: أحلام المستقبل",
+        "id": "e6000000-9f59-4a58-a8f8-8373b8e7fc95",
+        "start_page": 74,
+        "end_page": 87,
+        "chunk_count": 14,
+        "min_page": 74,
+        "max_page": 87
+      },
+      {
+        "unit": 6,
+        "title_en": "Unit 6: Global Citizens",
+        "title_ar": "الوحدة السادسة: المواطنون العالميون",
+        "id": "e6000000-9f59-4a58-a8f8-8373b8e7fc96",
+        "start_page": 88,
+        "end_page": 101,
+        "chunk_count": 14,
+        "min_page": 88,
+        "max_page": 101
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 14,
+        "char_count": 724,
+        "snippet": "UNIT 1\nLife in a Digital World\n\nLearning outcomes\nReading\n- Identify the main idea of a blog post about technology\n- Identify specific details of a text about technology\n- Use context clues to infer t"
+      },
+      {
+        "page_number": 28,
+        "char_count": 797,
+        "snippet": "UNIT 2 Learning to Learn\n\nLearning outcomes\n\nReading\n- Identify the main idea in texts about learning styles and tools\n- Identify specific details about different learning strategies and methods\n- Rel"
+      },
+      {
+        "page_number": 42,
+        "char_count": 883,
+        "snippet": "UNIT 3 Role Models\nLearning outcomes\nReading\n- Identify specific details about a role model's actions and qualities\n- Use context clues to understand vocabulary related to leadership and personal qual"
+      },
+      {
+        "page_number": 60,
+        "char_count": 631,
+        "snippet": "UNIT 4 Smart Choices\nLearning outcomes\nReading\n• Identify the main idea and at least two specific details in a text about your choices\n• Use context clues to understand vocabulary related to making sm"
+      },
+      {
+        "page_number": 74,
+        "char_count": 736,
+        "snippet": "UNIT 5 Future Dreams\n\nLearning outcomes\nReading\n• Identify the main idea and at least two supporting details in different text types\n• Use context clues to understand new words related to jobs and fut"
+      },
+      {
+        "page_number": 88,
+        "char_count": 720,
+        "snippet": "UNIT 6 Global Citizens\nLearning outcomes\nReading\n• Identify the main idea and specific details in texts about global citizenship and community rules\n• Use context clues to understand new vocabulary re"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "192c06db-b3e1-4717-b6e9-0b06a0364764",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          22,
+          17,
+          19,
+          24,
+          14,
+          18
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "fd851a26-5f46-4018-b469-1d7b9d8f50fe",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          41,
+          32,
+          36,
+          35,
+          30,
+          29
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "7410734d-e306-451c-b252-4deb1b8c62cf",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          42,
+          55,
+          48,
+          47,
+          49,
+          54
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 4,
+        "chapterId": "e6000000-9f59-4a58-a8f8-8373b8e7fc94",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          68,
+          72,
+          61,
+          70,
+          66,
+          73
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 5,
+        "chapterId": "e6000000-9f59-4a58-a8f8-8373b8e7fc95",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          81,
+          77,
+          83,
+          84,
+          79,
+          76
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 6,
+        "chapterId": "e6000000-9f59-4a58-a8f8-8373b8e7fc96",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          90,
+          88,
+          101,
+          97,
+          92,
+          93
+        ],
+        "foreignCount": 0,
+        "passed": true
+      }
+    ],
+    "crossLeakage": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "books1to5Intact": true,
+    "tablesIntact": true,
+    "passed": true
+  },
+  "overallStatus": "PASS"
+}

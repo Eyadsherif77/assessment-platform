@@ -1,0 +1,149 @@
+{
+  "bookId": "0758fc7a-c9b2-4e25-a32b-6cacb6bb418d",
+  "pageIntegrity": {
+    "sourcePageCount": 142,
+    "storedPageCount": 142,
+    "isContiguous": true,
+    "lowTextCount": 1,
+    "lowTextPages": [
+      {
+        "page": 140,
+        "chars": 15
+      }
+    ],
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 3,
+    "totalChunks": 119,
+    "totalAssignedChunks": 119,
+    "unitAudits": [
+      {
+        "unit": 1,
+        "title_en": "Theme 1: I am Egyptian",
+        "title_ar": "الوحدة الأولى: أنا مصري",
+        "id": "de726b08-631a-465c-82b4-8d7e3b7be4cb",
+        "start_page": 11,
+        "end_page": 50,
+        "chunk_count": 40,
+        "min_page": 11,
+        "max_page": 50
+      },
+      {
+        "unit": 2,
+        "title_en": "Theme 2: I Build My Future",
+        "title_ar": "الوحدة الثانية: أصنع مستقبلي",
+        "id": "f6f91ad0-8bc3-4a34-856e-90f51d60f888",
+        "start_page": 51,
+        "end_page": 92,
+        "chunk_count": 42,
+        "min_page": 51,
+        "max_page": 92
+      },
+      {
+        "unit": 3,
+        "title_en": "Theme 3: Human Situations",
+        "title_ar": "الوحدة الثالثة: مواقف إنسانية",
+        "id": "2c4282bc-00d1-4ad6-b0fe-9d70f7a4614b",
+        "start_page": 93,
+        "end_page": 129,
+        "chunk_count": 37,
+        "min_page": 93,
+        "max_page": 129
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 11,
+        "char_count": 473,
+        "snippet": "الوَحْدَةُ الأُولَى: أَنَا مِصْرِيٌّ. سُؤَالٌ تَمْهِيدِيٌّ: مَاذَا يُمَثِّلُ لَكَ وَطَنُكَ؟ الدَّرْسُ الأَوَّلُ (نَصُّ اسْتِمَاعٍ): مِصْرُ مَهْدُ الْعِلْمِ لِلدُّكْتُور: «أَحْمَد زويل». الدَّرْسُ الثّ"
+      },
+      {
+        "page_number": 25,
+        "char_count": 1716,
+        "snippet": "التَّحَدُّثُ\nمُسْتَعِينًا بِمَهَارَاتِ التَّحَدُّثِ (*) أَنْفُذُ مَا يَلِي:\nأُعَبِّرُ لِصَدِيقِي عَنْ عَظَمَةِ الْجَيْشِ الْمِصْرِيِّ.\nذَهَبْتُ فِي رِحْلَةٍ مَعَ أَصْدِقَائِي إِلَى بَانُورَامَا حَرْبِ"
+      },
+      {
+        "page_number": 51,
+        "char_count": 535,
+        "snippet": "الوَحْدَةُ الثَّانِيَةُ: أَصْنَعُ مُسْتَقْبَلِي. سُؤَالٌ تَمْهِيدِيٌّ: هَلْ تُحِبُّ أَنْ تَكُونَ ذَا شَخْصِيَّةٍ مُؤَثِّرَةٍ فِي مَنْ حَوْلَكَ؟ وَلِمَاذَا؟ الدَّرْسُ الأَوَّلُ (نَصُّ اسْتِمَاعٍ): تَار"
+      },
+      {
+        "page_number": 75,
+        "char_count": 1810,
+        "snippet": "الْقَوَاعِدُ النَّحْوِيَّةُ ( أَنْوَاعُ الْفِعْلِ الْمُعْتَلِّ )\n\nأَقْرَأُ الْأَمْثِلَةَ الْآتِيَةَ، وَأَتَأَمَّلُ الْكَلِمَاتِ الْمُلَوَّنَةَ فِي كُلِّ مَجْمُوعَةٍ:\n\nمجموعة (أ):\n• وُلِدَ علي فرج في ا"
+      },
+      {
+        "page_number": 93,
+        "char_count": 433,
+        "snippet": "الوَحْدَةُ الثَّالِثَةُ: مَواقِفُ إنسَانِيَّةٌ. سُؤالٌ تَمْهيدِيٌّ: كَيْفَ يَكونُ العالَمُ إذا انْتَشَرَتْ فيهِ الإنسَانِيَّةُ والرَّحْمَةُ؟ الدَّرْسُ الأوَّلُ (نَصُّ اسْتِماعٍ): دُروسٌ مِنَ الحَياةِ."
+      },
+      {
+        "page_number": 115,
+        "char_count": 1904,
+        "snippet": "القواعد النحوية ١١٥\n\nنشاط (٩): أَقْرَأُ الْفِقْرَةَ الْآتِيَةَ، ثُمَّ أُجِيبُ عَمَّا يَلِي:\n«الشَّبَابُ عِمَادُ الْأُمَّةِ، فَهُمُ الَّذِينَ يَبْنُونَ الْأَوْطَانَ وَيُعْلُونَ مَكَانَةَ الْأُمَّةِ، وَ"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "de726b08-631a-465c-82b4-8d7e3b7be4cb",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          21,
+          16,
+          14,
+          18,
+          34,
+          32
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "f6f91ad0-8bc3-4a34-856e-90f51d60f888",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          62,
+          61,
+          90,
+          64,
+          68,
+          73
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "2c4282bc-00d1-4ad6-b0fe-9d70f7a4614b",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          103,
+          120,
+          105,
+          102,
+          126,
+          96
+        ],
+        "foreignCount": 0,
+        "passed": true
+      }
+    ],
+    "crossLeakage": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "books1to8Intact": true,
+    "tablesIntact": true,
+    "passed": true
+  },
+  "overallStatus": "PASS"
+}

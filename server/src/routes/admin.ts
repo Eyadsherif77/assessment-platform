@@ -631,6 +631,18 @@ router.get('/books', async (req: AuthenticatedRequest, res) => {
 router.delete('/books/:id', async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
+
+    // Invariant (Phase 4G.3AG): Guard verified canonical books
+    const canonicalCheck = await db.query(
+      `SELECT b.id FROM books b 
+       WHERE b.id = $1 AND b.processing_status IN ('COMPLETED', 'VERIFIED_READY')
+         AND (SELECT COUNT(*) FROM book_chunks WHERE book_id = b.id) > 0`,
+      [id]
+    ).catch(() => ({ rows: [] }));
+    if (canonicalCheck.rows.length > 0) {
+      return res.status(403).json({ error: 'لا يمكن حذف الكتب المنهجية المعتمدة والمفهرسة لحماية تقييمات الطلاب وسجلاتهم.' });
+    }
+
     await db.query('DELETE FROM book_chunks WHERE book_id = $1', [id]);
     await db.query('DELETE FROM book_chapters WHERE book_id = $1', [id]);
     await db.query('DELETE FROM question_bank WHERE book_id = $1', [id]);

@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-10-12T11:46:37.159Z",
+  "backupPath": "C:\\Users\\eyadsherif\\OneDrive\\Desktop\\منصة التقييم من اجل التعليم\\server\\backups\\scoped_backup_clean_slate_artifacts_2026-10-12T11-46-28-478Z.json",
+  "backupSize": 11518769,
+  "targetCleanupPassed": true,
+  "protectedPassed": true,
+  "preCounts": {
+    "student_learning_history": 345,
+    "student_topic_mastery": 187,
+    "ai_evaluations": 345,
+    "question_bank_options": 1192,
+    "question_bank_items": 298,
+    "question_banks": 13,
+    "student_answers": 0,
+    "exam_attempts": 0,
+    "exam_question_options": 0,
+    "exam_questions": 0,
+    "exams": 0
+  },
+  "postCounts": {
+    "student_learning_history": 0,
+    "student_topic_mastery": 0,
+    "ai_evaluations": 0,
+    "question_bank_options": 0,
+    "question_bank_items": 0,
+    "question_banks": 0,
+    "student_answers": 0,
+    "exam_attempts": 0,
+    "exam_question_options": 0,
+    "exam_questions": 0,
+    "exams": 0
+  },
+  "protectedCounts": {
+    "users": 229,
+    "student_profiles": 226,
+    "books": 13,
+    "book_pages": 1594,
+    "book_chunks": 1373,
+    "book_chapters": 54,
+    "book_pdf_chunks": 314
+  }
+}

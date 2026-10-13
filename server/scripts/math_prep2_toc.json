@@ -1,0 +1,50 @@
+{
+  "units": [
+    {
+      "unit_number": 1,
+      "title": "Numbers and Their Operations",
+      "printed_pages": "2 to 32",
+      "lessons": [
+        { "title": "Real Numbers", "page": "2" },
+        { "title": "Intervals and Their Operations", "page": "8" },
+        { "title": "Operations on Real Numbers", "page": "14" },
+        { "title": "Laws of Square and Cube Roots", "page": "20" },
+        { "title": "Laws of Exponents in Real Numbers", "page": "25" }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title": "Algebra",
+      "printed_pages": "33 to 61",
+      "lessons": [
+        { "title": "Factorizing by Taking Out Greatest Common Factor GCF", "page": "33" },
+        { "title": "Factorizing Trinomial", "page": "39" },
+        { "title": "Factorizing Special Cases", "page": "46" },
+        { "title": "Factorizing by Grouping", "page": "53" }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title": "Geometry",
+      "printed_pages": "62 to 105",
+      "lessons": [
+        { "title": "Congruence", "page": "62" },
+        { "title": "Pythagoras' Theorem and Its Converse", "page": "70" },
+        { "title": "Applications of Parallelism", "page": "78" },
+        { "title": "Medians of the Triangle", "page": "83" },
+        { "title": "Isosceles Triangle", "page": "89" },
+        { "title": "Interior and Exterior Angles of Polygons", "page": "97" }
+      ]
+    },
+    {
+      "unit_number": 4,
+      "title": "Statistics",
+      "printed_pages": "106 to 112",
+      "lessons": [
+        { "title": "Ascending Cumulative Frequency Table and Its Graphical Representation", "page": "106" },
+        { "title": "Measurements of Central Tendency of the Frequency Table with Intervals", "page": "112" }
+      ]
+    }
+  ],
+  "page_offset_notes": "PDF page 1 corresponds to printed page iii (Introduction). PDF page 2 corresponds to printed page iv (Table of Contents). PDF page 3 corresponds to printed page 1 (Unit 1 cover)."
+}

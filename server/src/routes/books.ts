@@ -12,6 +12,9 @@ const pdfParse = require('pdf-parse');
 import { createSemanticVector } from '../services/ai/vectorEmbedding.js';
 import { cleanArabicText } from '../utils/arabicTextNormalizer.js';
 import { aiChapterDetector } from '../services/ai/aiChapterDetector.js';
+import { BookIngestionService } from '../services/bookIngestionService.js';
+import { getStorageProvider } from '../services/storage/storageProvider.js';
+import { VisualAssetExtractor } from '../services/ai/visualAssetExtractor.js';
 
 const router = Router();
 
@@ -53,13 +56,14 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB
 });
 
-// Upload Book (Main Admin only)
+// Upload Book (Main Admin only - Unified Authoritative Pipeline)
 router.post(
   '/upload',
   authenticateToken,
   requireRole(['ADMIN']),
   upload.single('file'),
   async (req: AuthenticatedRequest, res) => {
+    let bookId: string | null = null;
     try {
       const {
         title_ar,
@@ -68,8 +72,6 @@ router.post(
         grade_id,
         subject_id,
         term = 1,
-        chapter_number,
-        chapter_title_ar,
         school_type
       } = req.body;
 
@@ -77,215 +79,117 @@ router.post(
         return res.status(400).json({ error: 'الرجاء ملء جميع الحقول الإلزامية للكتاب' });
       }
 
-      const bookId = uuidv4();
-      const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
-      const filePath = req.file ? req.file.path : '';
-      const fileSize = req.file ? req.file.size : 0;
+      if (!req.file) {
+        return res.status(400).json({ error: 'يرجى اختيار ملف كتاب PDF للرفع' });
+      }
+
+      const fileBuffer = req.file.buffer || (req.file.path && fs.existsSync(req.file.path) ? fs.readFileSync(req.file.path) : null);
+      if (!fileBuffer || fileBuffer.length < 100) {
+        return res.status(400).json({ error: 'الملف المرفوع فارغ أو غير صالح.' });
+      }
+
+      bookId = uuidv4();
       const effectiveSchoolType = school_type || 'كلاهما';
       const cleanTerm = parseInt(String(term), 10) === 2 ? 2 : 1;
+      const fileName = req.file.originalname || `book_${bookId}.pdf`;
 
-      await db.query(
-        `INSERT INTO books (
-           id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
-           file_url, file_size, school_type, term, processing_status
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING')`,
-        [
-          bookId,
-          title_ar.trim(),
-          title_en ? title_en.trim() : title_ar.trim(),
-          academic_stage_id,
-          grade_id,
-          subject_id,
-          req.user!.id,
-          fileUrl,
-          fileSize,
-          effectiveSchoolType,
-          cleanTerm
-        ]
-      );
+      // Save PDF chunks into book_pdf_chunks so student/teacher PDF reading works
+      const CHUNK_SIZE = 2 * 1024 * 1024;
+      const totalChunks = Math.ceil(fileBuffer.length / CHUNK_SIZE);
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(fileBuffer.length, (i + 1) * CHUNK_SIZE);
+        const chunkSlice = fileBuffer.slice(start, end);
+        await db.query(
+          `INSERT INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)
+           ON DUPLICATE KEY UPDATE chunk_data = VALUES(chunk_data)`,
+          [bookId, i, chunkSlice]
+        );
+      }
 
-      // Trigger extraction & embedding job
-      if (filePath) {
-        if (process.env.VERCEL) {
-          try {
-            await jobQueue.processJobDirectly({
-              bookId,
-              filePath,
-              academicStageId: academic_stage_id,
-              gradeId: grade_id,
-              subjectId: subject_id,
-              chapterNumber: chapter_number ? parseInt(chapter_number, 10) : 1,
-              chapterTitleAr: chapter_title_ar || 'الوحدة الأولى'
-            });
-            return res.status(201).json({
-              message: 'تم رفع الكتاب ومعالجة النصوص وتوليد متجهات التضمين بنجاح.',
-              bookId,
-              status: 'COMPLETED'
-            });
-          } catch (jobErr: any) {
-            console.error('Vercel ingestion error:', jobErr);
-            return res.status(500).json({ error: 'فشلت معالجة الكتاب: ' + jobErr.message });
-          }
-        } else {
-          jobQueue.addJob({
-            bookId,
-            filePath,
-            academicStageId: academic_stage_id,
-            gradeId: grade_id,
-            subjectId: subject_id,
-            chapterNumber: chapter_number ? parseInt(chapter_number, 10) : 1,
-            chapterTitleAr: chapter_title_ar || 'الوحدة الأولى'
+      // Execute unified authoritative automated ingestion pipeline
+      const ingestionReport = await BookIngestionService.ingestTextbook({
+        bookId,
+        pdfBuffer: fileBuffer,
+        fileName,
+        titleAr: title_ar.trim(),
+        titleEn: title_en ? title_en.trim() : title_ar.trim(),
+        academicStageId: academic_stage_id,
+        gradeId: grade_id,
+        subjectId: subject_id,
+        schoolType: effectiveSchoolType,
+        term: cleanTerm,
+        teacherId: req.user!.id
+      });
+
+      // If ingestion deduplicated to an existing canonical book, clean up temporary staging upload chunks
+      if (ingestionReport.bookId && ingestionReport.bookId !== bookId) {
+        await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
+      }
+
+      if (ingestionReport.status === 'REQUIRES_REMEDIATION' || ingestionReport.status === 'BLOCKED') {
+        // Clean up temporary upload chunks if ingestion failed and book is not an existing canonical book
+        const canonicalCheck = await db.query(
+          `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
+          [bookId]
+        ).catch(() => ({ rows: [] }));
+        if (canonicalCheck.rows.length === 0) {
+          await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
+        }
+
+        if (ingestionReport.status === 'REQUIRES_REMEDIATION') {
+          return res.status(422).json({
+            error: 'يتطلب الكتاب معالجة تكميلية أو فحصاً يدوياً (OCR / صفحات ممسوحة).',
+            code: 'REQUIRES_REMEDIATION',
+            report: ingestionReport
           });
         }
+
+        return res.status(400).json({
+          error: 'فشلت معالجة الكتاب: تم حظر الكتاب بسبب عدم استيفاء شروط الجودة أو المحتوى.',
+          code: 'BOOK_INGESTION_BLOCKED',
+          report: ingestionReport
+        });
       }
 
       return res.status(201).json({
-        message: 'تم رفع الكتاب وبدء معالجة واستخراج النصوص وتوليد متجهات التضمين بالخلفية بنجاح.',
-        bookId,
-        status: 'PENDING'
+        message: ingestionReport.status === 'VERIFIED_READY'
+          ? `تم رفع ومعالجة واعتماد الكتاب بنجاح (${ingestionReport.totalPages} صفحة و ${ingestionReport.units.length} وحدات معتمدة).`
+          : `تمت معالجة الكتاب (${ingestionReport.status}).`,
+        bookId: ingestionReport.bookId,
+        totalPages: ingestionReport.totalPages,
+        status: ingestionReport.status,
+        report: ingestionReport
       });
     } catch (err: any) {
       console.error('Book upload error:', err);
-      return res.status(500).json({ error: 'حدث خطأ أثناء رفع الكتاب: ' + err.message });
+      // Clean up temporary staging chunks only if bookId is not an existing canonical book
+      if (bookId) {
+        try {
+          const canonicalCheck = await db.query(
+            `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
+            [bookId]
+          );
+          if (canonicalCheck.rows.length === 0) {
+            await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]);
+          }
+        } catch (_) {}
+      }
+      return res.status(500).json({ error: 'حدث خطأ أثناء معالجة ورفع الكتاب: ' + err.message });
     }
   }
 );
 
-// Upload parsed textbook pages (direct JSON from client-side extractor - bypassing payload limits)
+// Legacy parsed textbook upload route (Fails clearly to prevent unverified ingestion bypass)
 router.post(
   '/upload-parsed',
   authenticateToken,
-  requireRole(['TEACHER', 'ADMIN']),
+  requireRole(['ADMIN']),
   async (req: AuthenticatedRequest, res) => {
-    try {
-      const {
-        title_ar,
-        title_en,
-        academic_stage_id,
-        grade_id,
-        subject_id,
-        chapter_number,
-        chapter_title_ar,
-        school_type,
-        file_size,
-        file_name,
-        pages
-      } = req.body;
-
-      if (!title_ar || !academic_stage_id || !grade_id || !subject_id) {
-        return res.status(400).json({ error: 'الرجاء ملء جميع الحقول الإلزامية للكتاب' });
-      }
-
-      const rawPages: { pageNumber: number; text: string }[] = Array.isArray(pages) ? pages : [];
-      const pagesList = rawPages
-        .map(p => ({ pageNumber: p.pageNumber, text: cleanArabicText(p.text) }))
-        .filter(p => p.text.length > 10);
-      if (pagesList.length === 0) {
-        return res.status(400).json({ error: 'لم يتم العثور على صفحات أو نصوص مستخرجة في هذا الملف.' });
-      }
-
-      const bookId = uuidv4();
-      const effectiveSchoolType = school_type || 'كلاهما';
-      const effectiveFileSize = Number(file_size) || 0;
-      const effectiveFileName = file_name ? `/uploads/${file_name}` : '/uploads/course_book.pdf';
-
-      // 1. Insert book record
-      await db.query(
-        `INSERT INTO books (
-           id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
-           file_url, file_size, total_pages, school_type, processing_status
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'COMPLETED')`,
-        [
-          bookId,
-          title_ar.trim(),
-          title_en ? title_en.trim() : title_ar.trim(),
-          academic_stage_id,
-          grade_id,
-          subject_id,
-          req.user!.id,
-          effectiveFileName,
-          effectiveFileSize,
-          pagesList.length,
-          effectiveSchoolType
-        ]
-      );
-
-      // 2. Insert book pages
-      for (const p of pagesList) {
-        const pageId = uuidv4();
-        await db.query(
-          `INSERT INTO book_pages (id, book_id, page_number, raw_text, char_count)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [pageId, bookId, p.pageNumber, p.text, p.text.length]
-        );
-      }
-
-      // 3. AI Automatic Chapter Detection & Partitioning for ANY uploaded textbook
-      const detectedChapters = await aiChapterDetector.detectAndCreateChapters({
-        bookId,
-        bookTitleAr: title_ar.trim(),
-        bookTitleEn: title_en ? title_en.trim() : title_ar.trim(),
-        totalPages: pagesList.length,
-        pages: pagesList,
-        academicStageId: academic_stage_id,
-        gradeId: grade_id,
-        subjectId: subject_id
-      });
-
-      // 4. Create semantic chunks linked to their respective chapter
-      let chunkIdx = 1;
-      const maxChunks = 120;
-      for (let i = 0; i < pagesList.length && chunkIdx <= maxChunks; i++) {
-        const page = pagesList[i];
-        if (!page.text || page.text.trim().length < 15) continue;
-
-        const paragraphs = page.text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 20);
-        const segments = paragraphs.length > 0 ? paragraphs : [page.text];
-
-        // Find which chapter covers this page
-        const matchedChapter = detectedChapters.find(
-          c => page.pageNumber >= c.start_page && page.pageNumber <= c.end_page
-        ) || detectedChapters[0];
-        const assignedChapterId = matchedChapter?.id || bookId;
-
-        for (const segment of segments) {
-          if (chunkIdx > maxChunks) break;
-          const chunkId = uuidv4();
-          const vector = createSemanticVector(segment, 768);
-
-          await db.query(
-            `INSERT INTO book_chunks (
-               id, book_id, chapter_id, academic_stage_id, grade_id, subject_id,
-               page_number, chunk_index, content, metadata, embedding
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-            [
-              chunkId,
-              bookId,
-              assignedChapterId,
-              academic_stage_id,
-              grade_id,
-              subject_id,
-              page.pageNumber,
-              chunkIdx++,
-              segment,
-              JSON.stringify({ page: page.pageNumber, charCount: segment.length, bookTitle: title_ar.trim() }),
-              JSON.stringify(vector)
-            ]
-          );
-        }
-      }
-
-      return res.status(201).json({
-        message: `تم رفع ومعالجة الكتاب بنجاح (${pagesList.length} صفحة و ${chunkIdx - 1} مقطع دلالي مفهرس).`,
-        bookId,
-        totalPages: pagesList.length,
-        chunksCount: chunkIdx - 1,
-        status: 'COMPLETED'
-      });
-    } catch (err: any) {
-      console.error('Parsed book upload error:', err);
-      return res.status(500).json({ error: 'حدث خطأ أثناء حفظ الكتاب المفهرس: ' + err.message });
-    }
+    return res.status(400).json({
+      error: 'تم إيقاف مسار رفع النصوص المفروزة (upload-parsed). يجب رفع ملف الكتاب الأصلي عبر مسار الرفع المعتمد (/api/books/finalize-chunked أو /api/books/upload) لضمان الاستخراج الموثوق والتخزين المتين للملف والأصول المرئية.',
+      code: 'UNSUPPORTED_LEGACY_UPLOAD_ROUTE'
+    });
   }
 );
 
@@ -324,6 +228,7 @@ router.post(
   authenticateToken,
   requireRole(['ADMIN']),
   async (req: AuthenticatedRequest, res) => {
+    let bookId: string | null = null;
     try {
       const {
         uploadId,
@@ -369,85 +274,9 @@ router.post(
       });
       const fullBuffer = Buffer.concat(buffers);
 
-      // 3. Extract text from PDF buffer
-      let pages: { pageNumber: number; text: string }[] = [];
-      let totalNumPages = 1;
-
-      try {
-        const pdfData = await pdfParse(fullBuffer);
-        totalNumPages = pdfData.numpages || 1;
-        const rawText = pdfData.text || '';
-
-        const splitPages = rawText
-          .split(/\f|\n\s*\n\s*---\s*Page\s*\d+\s*---\s*\n/)
-          .map((s: string) => cleanArabicText(s.trim()))
-          .filter((s: string) => s.length > 15);
-
-        if (splitPages.length > 1) {
-          pages = splitPages.map((txt: string, idx: number) => ({ pageNumber: idx + 1, text: txt }));
-        } else {
-          const cleanedText = cleanArabicText(rawText);
-          const pageSize = Math.max(800, Math.ceil(cleanedText.length / totalNumPages));
-          let cur = 0;
-          let pNum = 1;
-          while (cur < cleanedText.length) {
-            const chunk = cleanedText.slice(cur, cur + pageSize).trim();
-            if (chunk.length > 0) pages.push({ pageNumber: pNum++, text: chunk });
-            cur += pageSize;
-          }
-        }
-      } catch (pdfErr) {
-        console.warn('pdf-parse warning:', pdfErr);
-        const rawContent = fullBuffer.toString('utf8');
-        pages = [{ pageNumber: 1, text: cleanArabicText(rawContent.slice(0, 5000)) }];
-      }
-
-      if (pages.length === 0 || pages.every(p => !p.text || p.text.trim().length < 20)) {
-        const bookTopic = title_ar.trim();
-        const chTopic = (chapter_title_ar || 'الوحدة الأولى').trim();
-        pages = [
-          {
-            pageNumber: 1,
-            text: `المفاهيم التعليمية والأسس المنهجية المقررة لموضوع ${chTopic} من مقرر ${bookTopic}. يتضمن المحتوى شرح القواعد الأساسية، والتعريفات الدقيقة، والعلاقات بين المفاهيم المنهجية، وحل التدريبات والمسائل التطبيقية المرتبطة بنواتج التعلم المستهدفة.`
-          },
-          {
-            pageNumber: 2,
-            text: `التطبيقات العملية والأمثلة النموذجية في درس ${chTopic}. يتم تدريب المتعلم على استنتاج النتائج من القواعد النظرية، ومقارنة الحالات المختلفة، وحل المشكلات والتمارين القياسية باتباع الخطوات العلمية المنظمة.`
-          },
-          {
-            pageNumber: 3,
-            text: `المهارات التحليلية والتقويمية المستخلصة من موضوع ${chTopic} بكتاب ${bookTopic}. يهدف المحتوى إلى تنمية قدرة الطالب على التفكير التحليلي، والربط المنطقي بين الأسباب والنتائج، وتطبيق المعرفة النظرية في حل المسائل بصورة صحيحة ودقيقة.`
-          }
-        ];
-      }
-
-      const bookId = uuidv4();
+      bookId = uuidv4();
       const effectiveSchoolType = school_type || 'كلاهما';
-      const effectiveFileSize = Number(fileSize) || fullBuffer.length;
-      const effectiveFileName = fileName ? `/uploads/${fileName}` : '/uploads/course_book.pdf';
       const cleanTerm = parseInt(String(term), 10) === 2 ? 2 : 1;
-
-      // 4. Insert into books table
-      await db.query(
-        `INSERT INTO books (
-           id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
-           file_url, file_size, total_pages, school_type, term, processing_status
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'COMPLETED')`,
-        [
-          bookId,
-          title_ar.trim(),
-          title_en ? title_en.trim() : title_ar.trim(),
-          academic_stage_id,
-          grade_id,
-          subject_id,
-          req.user!.id,
-          effectiveFileName,
-          effectiveFileSize,
-          totalNumPages || pages.length,
-          effectiveSchoolType,
-          cleanTerm
-        ]
-      );
 
       // Save PDF chunks for student/teacher PDF reading
       try {
@@ -458,107 +287,83 @@ router.post(
             [bookId, r.chunk_index, r.chunk_data]
           );
         }
-        db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
       } catch (pdfStoreErr) {
         console.warn('Could not store PDF chunks in book_pdf_chunks:', pdfStoreErr);
       }
 
-      // 5. Insert book pages in batches
-      const pageBatchSize = 25;
-      for (let i = 0; i < pages.length; i += pageBatchSize) {
-        const batch = pages.slice(i, i + pageBatchSize);
-        const placeholders: string[] = [];
-        const params: any[] = [];
-        batch.forEach((p, idx) => {
-          const offset = idx * 5;
-          placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`);
-          params.push(uuidv4(), bookId, p.pageNumber, p.text, p.text.length);
-        });
-        await db.query(
-          `INSERT INTO book_pages (id, book_id, page_number, raw_text, char_count) VALUES ${placeholders.join(', ')}`,
-          params
-        );
-      }
-
-      // 6. AI Automatic Chapter Detection & Partitioning for ANY uploaded textbook
-      const detectedChapters = await aiChapterDetector.detectAndCreateChapters({
+      // Execute unified automated ingestion pipeline (Stages 1 through 11)
+      const ingestionReport = await BookIngestionService.ingestTextbook({
         bookId,
-        bookTitleAr: title_ar.trim(),
-        bookTitleEn: title_en ? title_en.trim() : title_ar.trim(),
-        totalPages: totalNumPages || pages.length,
-        pages,
+        pdfBuffer: fullBuffer,
+        fileName,
+        titleAr: title_ar.trim(),
+        titleEn: title_en ? title_en.trim() : title_ar.trim(),
         academicStageId: academic_stage_id,
         gradeId: grade_id,
-        subjectId: subject_id
+        subjectId: subject_id,
+        schoolType: effectiveSchoolType,
+        term: cleanTerm,
+        teacherId: req.user!.id
       });
 
-      // 7. Create semantic chunks with 768-dim embeddings linked to each respective chapter
-      const chunkItems: any[] = [];
-      let chunkIdx = 1;
-      const maxChunks = 80;
-      for (let i = 0; i < pages.length && chunkIdx <= maxChunks; i++) {
-        const page = pages[i];
-        if (!page.text || page.text.trim().length < 15) continue;
-        const paras = page.text.split(/\n\s*\n/).map((s: string) => s.trim()).filter((s: string) => s.length > 20);
-        const segs = paras.length > 0 ? paras : [page.text];
-
-        const targetChapter = detectedChapters.find(
-          c => page.pageNumber >= c.start_page && page.pageNumber <= c.end_page
-        ) || detectedChapters[0];
-        const assignedChapterId = targetChapter?.id || bookId;
-
-        for (const seg of segs) {
-          if (chunkIdx > maxChunks) break;
-          const chunkId = uuidv4();
-          const vec = createSemanticVector(seg, 768);
-          chunkItems.push({
-            id: chunkId,
-            bookId,
-            chapterId: assignedChapterId,
-            academicStageId: academic_stage_id,
-            gradeId: grade_id,
-            subjectId: subject_id,
-            pageNumber: page.pageNumber,
-            chunkIndex: chunkIdx++,
-            content: seg,
-            metadata: JSON.stringify({ page: page.pageNumber, charCount: seg.length, title: `صفحة ${page.pageNumber}` }),
-            embedding: JSON.stringify(vec)
-          });
-        }
+      // If ingestion deduplicated to an existing canonical book, clean up temporary staging upload chunks
+      if (ingestionReport.bookId && ingestionReport.bookId !== bookId) {
+        await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
       }
 
-      const chunkBatchSize = 10;
-      for (let i = 0; i < chunkItems.length; i += chunkBatchSize) {
-        const batch = chunkItems.slice(i, i + chunkBatchSize);
-        const placeholders: string[] = [];
-        const params: any[] = [];
-        batch.forEach((c, idx) => {
-          const offset = idx * 11;
-          placeholders.push(
-            `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`
-          );
-          params.push(
-            c.id, c.bookId, c.chapterId, c.academicStageId, c.gradeId, c.subjectId,
-            c.pageNumber, c.chunkIndex, c.content, c.metadata, c.embedding
-          );
+      if (ingestionReport.status === 'REQUIRES_REMEDIATION' || ingestionReport.status === 'BLOCKED') {
+        // Clean up temporary upload chunks only if book is not canonical
+        const canonicalCheck = await db.query(
+          `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
+          [bookId]
+        ).catch(() => ({ rows: [] }));
+        if (canonicalCheck.rows.length === 0) {
+          await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
+        }
+
+        if (ingestionReport.status === 'REQUIRES_REMEDIATION') {
+          return res.status(422).json({
+            error: 'يتطلب الكتاب معالجة تكميلية أو فحصاً يدوياً (OCR / صفحات ممسوحة).',
+            code: 'REQUIRES_REMEDIATION',
+            report: ingestionReport
+          });
+        }
+
+        return res.status(400).json({
+          error: 'فشلت معالجة الكتاب: تم حظر الكتاب بسبب عدم استيفاء شروط الجودة أو المحتوى.',
+          code: 'BOOK_INGESTION_BLOCKED',
+          report: ingestionReport
         });
-        await db.query(
-          `INSERT INTO book_chunks (
-             id, book_id, chapter_id, academic_stage_id, grade_id, subject_id,
-             page_number, chunk_index, content, metadata, embedding
-           ) VALUES ${placeholders.join(', ')}`,
-          params
-        );
+      }
+
+      // Only clean up file_upload_chunks once ingestion has verified ready!
+      if (ingestionReport.status === 'VERIFIED_READY') {
+        db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
       }
 
       return res.status(201).json({
-        message: `تم رفع ومعالجة وفهرسة الكتاب بنجاح (${totalNumPages || pages.length} صفحة و ${chunkIdx - 1} مقطع دلالي).`,
-        bookId,
-        totalPages: totalNumPages || pages.length,
-        status: 'COMPLETED'
+        message: ingestionReport.status === 'VERIFIED_READY'
+          ? `تم رفع ومعالجة واعتماد الكتاب بنجاح (${ingestionReport.totalPages} صفحة و ${ingestionReport.units.length} وحدات معتمدة).`
+          : `تمت معالجة الكتاب، ولكن يتطلب فحص الجاهزية استكمال الأصول البصرية (${ingestionReport.status}).`,
+        bookId: ingestionReport.bookId,
+        totalPages: ingestionReport.totalPages,
+        status: ingestionReport.status,
+        report: ingestionReport
       });
     } catch (err: any) {
       console.error('Finalize chunked error:', err);
+      // Clean up temporary staging chunks only if bookId is not an existing canonical book
+      if (bookId) {
+        try {
+          const canonicalCheck = await db.query(
+            `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
+            [bookId]
+          );
+          if (canonicalCheck.rows.length === 0) {
+            await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]);
+          }
+        } catch (_) {}
+      }
       return res.status(500).json({ error: 'فشلت معالجة أجزاء الكتاب: ' + err.message });
     }
   }
@@ -907,21 +712,254 @@ router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res)
       return res.end();
     }
 
-    // Fallback: Check local uploads disk
-    if (book.file_url) {
+    // Fallback: Check storage abstraction provider, then local disk
+    const storageProvider = getStorageProvider();
+    const candidateKeys = [
+      `books/${id}/book_${id}.pdf`,
+      `book_${id}.pdf`,
+      book.file_url ? path.basename(book.file_url) : null
+    ].filter(Boolean) as string[];
+
+    let pdfBuf: Buffer | null = null;
+    for (const key of candidateKeys) {
+      try {
+        if (await storageProvider.exists(key)) {
+          pdfBuf = await storageProvider.getFile(key);
+          if (pdfBuf) break;
+        }
+      } catch (storageErr: any) {
+        console.warn(`[PDF Stream] Key check notice for "${key}":`, storageErr.message);
+      }
+    }
+
+    if (!pdfBuf && book.file_url) {
       const diskPath = path.resolve(uploadDir, path.basename(book.file_url));
       if (fs.existsSync(diskPath)) {
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="book_${id}.pdf"`);
-        const stream = fs.createReadStream(diskPath);
-        return stream.pipe(res);
+        try {
+          pdfBuf = fs.readFileSync(diskPath);
+        } catch (_) {}
       }
+    }
+
+    if (pdfBuf) {
+      const totalLen = pdfBuf.length;
+      const etag = `"pdf-${id}-${totalLen}"`;
+      if (req.headers['if-none-match'] === etag) {
+        return res.status(304).end();
+      }
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="book_${id}.pdf"`);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
+
+      const rangeHeader = req.headers.range;
+      if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+        const parts = rangeHeader.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10) || 0;
+        const end = parts[1] ? parseInt(parts[1], 10) : totalLen - 1;
+
+        if (start >= totalLen || end >= totalLen || start > end) {
+          res.setHeader('Content-Range', `bytes */${totalLen}`);
+          return res.status(416).end();
+        }
+
+        const contentLength = end - start + 1;
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${totalLen}`);
+        res.setHeader('Content-Length', String(contentLength));
+        return res.end(pdfBuf.subarray(start, end + 1));
+      }
+
+      res.setHeader('Content-Length', String(totalLen));
+      return res.end(pdfBuf);
     }
 
     return res.status(404).json({ error: 'ملف الـ PDF الأصلي غير متوفر لهذا الكتاب حالياً' });
   } catch (err: any) {
     console.error('Stream PDF error:', err);
     return res.status(500).json({ error: 'حدث خطأ أثناء تحميل ملف الـ PDF: ' + err.message });
+  }
+});
+
+// ==========================================
+// UNIFIED VISUAL ASSETS SERVING ENDPOINT (Phase 4G.3Y)
+// Supports both query token (?token=...) and Authorization header
+// Handles extension-bearing (:assetId.pdf, :assetId.svg) and bare (:assetId) requests
+// Delivers compiled in-memory SVGs and bundled deployment PDFs with HTTP Range support
+// ==========================================
+router.get('/assets/:assetId', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const rawParam = req.params.assetId;
+    if (!rawParam || typeof rawParam !== 'string') {
+      return res.status(400).json({ error: 'معرّف الملف المرئي مفقود' });
+    }
+
+    let assetId = rawParam;
+    if (assetId.endsWith('.pdf')) {
+      assetId = assetId.slice(0, -4);
+    } else if (assetId.endsWith('.svg')) {
+      assetId = assetId.slice(0, -4);
+    }
+
+    // Strict regex validation — reject path traversal or malicious identifiers
+    if (!/^(vis|diag)_[a-zA-Z0-9_-]+$/.test(assetId)) {
+      return res.status(400).json({ error: 'معرّف الملف المرئي غير صالح' });
+    }
+
+    // Verify against manifest allowlist
+    const asset = VisualAssetExtractor.getAssetById(assetId);
+    if (!asset) {
+      return res.status(404).json({ error: 'الأصل المرئي غير موجود' });
+    }
+
+    // Authorization: Enforce student grade & school type if user is a student
+    if (req.user?.role === 'STUDENT' && req.studentProfile) {
+      const bookRes = await db.query(
+        'SELECT grade_id, school_type FROM books WHERE id = $1',
+        [asset.book_id]
+      );
+      if (bookRes.rows.length > 0) {
+        const book = bookRes.rows[0];
+        if (book.grade_id && req.studentProfile.gradeId && book.grade_id !== req.studentProfile.gradeId) {
+          return res.status(403).json({ error: 'غير مصرح بعرض وسائط تعليمية لصف دراسي آخر' });
+        }
+        const studentSchoolType = req.studentProfile.schoolType || 'عربي';
+        if (book.school_type && book.school_type !== 'كلاهما' && book.school_type !== studentSchoolType) {
+          return res.status(403).json({ error: 'غير مصرح بالوصول لمحتوى غير مخصص لنوع مدرستك' });
+        }
+      }
+    }
+
+    // Case 1: SVG Diagram — Serve from compiled source string in memory
+    if (asset.mime_type === 'image/svg+xml') {
+      const svgContent = VisualAssetExtractor.getCompiledSvg(asset.asset_id);
+      if (svgContent) {
+        res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        return res.status(200).send(svgContent);
+      }
+    }
+
+    // Case 2: PDF Document Page — Serve from deployment bundled assets
+    if (asset.mime_type === 'application/pdf') {
+      const filePath = VisualAssetExtractor.getBundledPdfPath(asset.asset_id);
+      if (filePath && fs.existsSync(filePath)) {
+        const stat = fs.statSync(filePath);
+        const totalLen = stat.size;
+        const etag = `"asset-${asset.asset_id}-${totalLen}"`;
+
+        if (req.headers['if-none-match'] === etag) {
+          return res.status(304).end();
+        }
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${asset.asset_id}.pdf"`);
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        res.setHeader('ETag', etag);
+
+        // Support HTTP Range requests (crucial for PDF viewers)
+        const rangeHeader = req.headers.range;
+        if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+          const parts = rangeHeader.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10) || 0;
+          const end = parts[1] ? parseInt(parts[1], 10) : totalLen - 1;
+
+          if (start >= totalLen || end >= totalLen || start > end) {
+            res.setHeader('Content-Range', `bytes */${totalLen}`);
+            return res.status(416).end();
+          }
+
+          res.status(206);
+          res.setHeader('Content-Range', `bytes ${start}-${end}/${totalLen}`);
+          res.setHeader('Content-Length', String(end - start + 1));
+          const stream = fs.createReadStream(filePath, { start, end });
+          return stream.pipe(res);
+        }
+
+        res.setHeader('Content-Length', String(totalLen));
+        const stream = fs.createReadStream(filePath);
+        return stream.pipe(res);
+      }
+    }
+
+    // Fallback: Check storage abstraction provider or local disk (backward-compatible)
+    const storage = getStorageProvider();
+    const candidateKeys = [
+      `visual_assets/${asset.book_id}/${path.basename(asset.file_path)}`,
+      asset.asset_id,
+      path.basename(asset.file_path)
+    ];
+
+    let assetBuf: Buffer | null = null;
+    for (const k of candidateKeys) {
+      try {
+        if (await storage.exists(k)) {
+          assetBuf = await storage.getFile(k, asset.sha256);
+          if (assetBuf) break;
+        }
+      } catch (_) {}
+    }
+
+    if (!assetBuf && fs.existsSync(asset.file_path)) {
+      try {
+        assetBuf = fs.readFileSync(asset.file_path);
+      } catch (_) {}
+    }
+
+    if (!assetBuf) {
+      return res.status(404).json({ error: 'تعذر استرجاع ملف الأصل المرئي' });
+    }
+
+    res.setHeader('Content-Type', asset.mime_type || 'application/octet-stream');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Length', String(assetBuf.length));
+    return res.end(assetBuf);
+  } catch (err: any) {
+    console.error('Visual asset serving error:', err);
+    return res.status(500).json({ error: 'حدث خطأ أثناء معالجة الوسيط المرئي' });
+  }
+});
+
+// Protected storage proxy retrieval
+router.get('/storage/:key(*)', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const rawKey = Array.isArray(req.params.key) ? req.params.key.join('/') : String(req.params.key || '');
+    if (!rawKey || rawKey.includes('..') || rawKey.includes('\\')) {
+      return res.status(400).json({ error: 'مسار الملف غير صالح' });
+    }
+
+    const cleanKey = rawKey.replace(/^[/\\]+/, '').trim();
+    const storage = getStorageProvider();
+
+    if (!(await storage.exists(cleanKey))) {
+      return res.status(404).json({ error: 'الملف غير موجود في وحدة التخزين' });
+    }
+
+    const buf = await storage.getFile(cleanKey);
+
+    const ext = path.extname(cleanKey).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.svg': 'image/svg+xml',
+      '.json': 'application/json'
+    };
+
+    res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Length', String(buf.length));
+    return res.end(buf);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في استرجاع الملف من التخزين: ' + err.message });
   }
 });
 
@@ -1032,6 +1070,18 @@ router.delete('/:id/chapters/:chapterId', authenticateToken, requireRole(['TEACH
   try {
     const id = String(req.params.id);
     const chapterId = String(req.params.chapterId);
+
+    // Invariant (Phase 4G.3AG): Guard verified canonical books
+    const canonicalCheck = await db.query(
+      `SELECT b.id FROM books b 
+       WHERE b.id = $1 AND b.processing_status IN ('COMPLETED', 'VERIFIED_READY')
+         AND (SELECT COUNT(*) FROM book_chunks WHERE book_id = b.id) > 0`,
+      [id]
+    ).catch(() => ({ rows: [] }));
+    if (canonicalCheck.rows.length > 0) {
+      return res.status(403).json({ error: 'لا يمكن حذف وحدات كتاب معتمد ومفهرس دلالياً لحماية بيانات الطلاب والتقييمات.' });
+    }
+
     await db.query('DELETE FROM book_chapters WHERE id = $1 AND book_id = $2', [chapterId, id]);
     return res.json({ message: 'تم حذف الوحدة بنجاح' });
   } catch (err: any) {

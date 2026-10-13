@@ -1,0 +1,227 @@
+{
+  "bookId": "37bfa0c0-c4ce-419f-930a-000043d8d3f9",
+  "pageIntegrity": {
+    "sourcePageCount": 114,
+    "storedPageCount": 114,
+    "isContiguous": true,
+    "lowTextCount": 2,
+    "lowTextPages": [
+      {
+        "page": 3,
+        "chars": 0
+      },
+      {
+        "page": 90,
+        "chars": 39
+      }
+    ],
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 6,
+    "totalChunks": 86,
+    "totalAssignedChunks": 86,
+    "unitAudits": [
+      {
+        "unit": 1,
+        "title_en": "Unit 1: Gen Alpha",
+        "title_ar": "الوحدة الأولى: جين ألفا",
+        "id": "af732e7e-1a38-4b17-b23e-d09ac0ac92f1",
+        "start_page": 14,
+        "end_page": 27,
+        "chunk_count": 17,
+        "min_page": 1,
+        "max_page": 27
+      },
+      {
+        "unit": 2,
+        "title_en": "Unit 2: My Digital Footprint",
+        "title_ar": "الوحدة الثانية: بصمتي الرقمية",
+        "id": "28366e22-1307-4063-a959-f13963009d84",
+        "start_page": 28,
+        "end_page": 41,
+        "chunk_count": 14,
+        "min_page": 28,
+        "max_page": 41
+      },
+      {
+        "unit": 3,
+        "title_en": "Unit 3: Facing Challenges",
+        "title_ar": "الوحدة الثالثة: مواجهة التحديات",
+        "id": "56d94016-da00-49cf-bb1f-828ecbdaa3b4",
+        "start_page": 42,
+        "end_page": 55,
+        "chunk_count": 14,
+        "min_page": 42,
+        "max_page": 55
+      },
+      {
+        "unit": 4,
+        "title_en": "Unit 4: Art and Expression",
+        "title_ar": "الوحدة الرابعة: الفن والتعبير",
+        "id": "8c2a41d9-761e-4589-9a10-2f1d93b1e004",
+        "start_page": 58,
+        "end_page": 71,
+        "chunk_count": 14,
+        "min_page": 58,
+        "max_page": 71
+      },
+      {
+        "unit": 5,
+        "title_en": "Unit 5: Around the World",
+        "title_ar": "الوحدة الخامسة: حول العالم",
+        "id": "e5d33bf1-897b-4177-bc45-873d2a01f005",
+        "start_page": 72,
+        "end_page": 85,
+        "chunk_count": 14,
+        "min_page": 72,
+        "max_page": 85
+      },
+      {
+        "unit": 6,
+        "title_en": "Unit 6: Young Innovators",
+        "title_ar": "الوحدة السادسة: المبتكرون الشباب",
+        "id": "64a71bc9-93b5-4b31-9257-2c9381ea7006",
+        "start_page": 86,
+        "end_page": 99,
+        "chunk_count": 13,
+        "min_page": 86,
+        "max_page": 99
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 14,
+        "char_count": 844,
+        "snippet": "UNIT 1 Gen Alpha\n\nLearning Outcomes\nReading:\n- Identify the main idea in a text about Gen Alpha's digital habits\n- Extract specific details from a text to answer comprehension questions about Gen Alph"
+      },
+      {
+        "page_number": 28,
+        "char_count": 1852,
+        "snippet": "LESSON 1: Protecting Your Privacy in the Digital Age. Before you start: Think and discuss in pairs. 1. Answer the following questions: 1. Do you use the internet? 2. What do you use it for? Reading: 2"
+      },
+      {
+        "page_number": 42,
+        "char_count": 813,
+        "snippet": "UNIT 3 Facing Challenges. Learning Outcomes. Reading: Identify the main idea and supporting details in a motivational article. Infer the meanings of new words using time expressions and context clues."
+      },
+      {
+        "page_number": 58,
+        "char_count": 773,
+        "snippet": "UNIT 4 Art and Expression Learning Outcomes Reading - Identify different types of artwork mentioned in a text - Use context clues to understand the meaning of new words - Use descriptive adjectives to"
+      },
+      {
+        "page_number": 72,
+        "char_count": 999,
+        "snippet": "My Self-Reflection\nReading\n- I can identify what an artwork is according to the text.\n- I can find the main idea of a reading about art.\n- I can name different kinds of artwork mentioned in a text.\n- "
+      },
+      {
+        "page_number": 86,
+        "char_count": 1318,
+        "snippet": "My Self-Reflection. Reading: I can find the main idea and key details in travel and culture texts. I can understand texts about countries, landmarks, and traditions. I can answer questions that show m"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "af732e7e-1a38-4b17-b23e-d09ac0ac92f1",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          20,
+          17,
+          21,
+          25,
+          15,
+          19
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "28366e22-1307-4063-a959-f13963009d84",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          31,
+          40,
+          33,
+          32,
+          39,
+          29
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "56d94016-da00-49cf-bb1f-828ecbdaa3b4",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          54,
+          50,
+          55,
+          51,
+          53,
+          52
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 4,
+        "chapterId": "8c2a41d9-761e-4589-9a10-2f1d93b1e004",
+        "retrievedCount": 3,
+        "pagesRetrieved": [
+          70,
+          71,
+          65
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 5,
+        "chapterId": "e5d33bf1-897b-4177-bc45-873d2a01f005",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          76,
+          84,
+          72,
+          80,
+          75,
+          85
+        ],
+        "foreignCount": 0,
+        "passed": true
+      },
+      {
+        "unit": 6,
+        "chapterId": "64a71bc9-93b5-4b31-9257-2c9381ea7006",
+        "retrievedCount": 5,
+        "pagesRetrieved": [
+          86,
+          99,
+          96,
+          89,
+          98
+        ],
+        "foreignCount": 0,
+        "passed": true
+      }
+    ],
+    "crossLeakage": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "books1to5Intact": true,
+    "tablesIntact": true,
+    "passed": true
+  },
+  "overallStatus": "PASS"
+}

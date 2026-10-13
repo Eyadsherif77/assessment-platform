@@ -1,0 +1,158 @@
+{
+  "bookId": "013411b8-edec-477b-bd42-3dbdda9fb6a9",
+  "pageIntegrity": {
+    "sourcePageCount": 162,
+    "storedPageCount": 162,
+    "isContiguous": true,
+    "lowTextCount": 3,
+    "passed": true
+  },
+  "curriculumIntegrity": {
+    "chaptersCount": 3,
+    "totalChunks": 134,
+    "totalAssignedChunks": 134,
+    "unitAudits": [
+      {
+        "chapter_number": 1,
+        "id": "c7043f86-6a40-4417-a1b8-60e3301e7cb7",
+        "title_ar": "الوحدة الأولى: قيم تحمي شبابنا",
+        "title_en": "Unit 1: Values That Protect Our Youth",
+        "start_page": 15,
+        "end_page": 59,
+        "chunk_count": 45,
+        "min_page": 15,
+        "max_page": 59
+      },
+      {
+        "chapter_number": 2,
+        "id": "e75bad6f-9189-4f0c-8bc1-d2152ce2bb6c",
+        "title_ar": "الوحدة الثانية: نحو تفكير سليم",
+        "title_en": "Unit 2: Towards Sound Thinking",
+        "start_page": 60,
+        "end_page": 105,
+        "chunk_count": 46,
+        "min_page": 60,
+        "max_page": 105
+      },
+      {
+        "chapter_number": 3,
+        "id": "e478df26-829f-4cbd-95cc-56b5428af702",
+        "title_ar": "الوحدة الثالثة: أنا والمستقبل",
+        "title_en": "Unit 3: Me and the Future",
+        "start_page": 106,
+        "end_page": 148,
+        "chunk_count": 43,
+        "min_page": 106,
+        "max_page": 148
+      }
+    ],
+    "passed": true
+  },
+  "contentFidelity": {
+    "samplePages": [
+      {
+        "page_number": 16,
+        "char_count": 937,
+        "snippet": "الدَّرْسُ الأَوَّلُ\nآدَابُ التَّعَامُلِ مَعَ الْوَالِدَيْنِ\nنَصُّ اسْتِمَاعٍ\nQR Code\nلِلاسْتِمَاعِ إِلَى النَّصِّ\nأَتَأَمَّلُ وَأَتَوَقَّعُ\n• هَلِ اخْتِلافُ الابْنِ مَعَ وَالِدَيْهِ فِي الرَّأْيِ يَتَ"
+      },
+      {
+        "page_number": 27,
+        "char_count": 1266,
+        "snippet": "ب أُحَدِّدُ الْأَثَرَ الْبَعِيدَ لِلْكَلِمَاتِ فِي دَعْمِ وِجْهَةِ نَظَرِ الْكَاتِبِ كَالْمِثَالِ:\n\nالْجُمْلَةُ | الْكَلِمَةُ | أَثَرُهَا الْبَعِيدُ فِي دَعْمِ وِجْهَةِ نَظَرِ الْكَاتِبِ\n--- | --- | -"
+      },
+      {
+        "page_number": 49,
+        "char_count": 1254,
+        "snippet": "ب أَسْتَخْرِجُ مِنَ الْفِقْرَةِ:\n١. اسْمَ فَاعِلٍ مِنْ فِعْلٍ ثُلَاثِيٍّ، وَأُبَيِّنُ فِعْلَهُ.\n٢. اسْمَ فَاعِلٍ مِنْ فِعْلٍ غَيْرِ ثُلَاثِيٍّ، وَأُبَيِّنُ فِعْلَهُ.\n٣. اسْمَ مَفْعُولٍ مِنْ فِعْلٍ ثُل"
+      },
+      {
+        "page_number": 61,
+        "char_count": 886,
+        "snippet": "الدَّرْسُ الأَوَّلُ\nثَمَرَةُ القِرَاءَةِ\nنَصُّ اسْتِمَاعٍ\nQR Code\nلِلاسْتِمَاعِ إِلَى النَّصِّ\nأَتَأَمَّلُ وَأَتَوَقَّعُ\n• كَيْفَ يُمْكِنُ أَنْ تُسْهِمَ القِرَاءَةُ فِي بِنَاءِ شَخْصِيَّةِ الْإِنْسَان"
+      },
+      {
+        "page_number": 70,
+        "char_count": 277,
+        "snippet": "أَطْرَحُ أَسْئِلَةً عَلَى النَّصِّ كَمَا فِي النَّمُوذَجِ الْآتِي\nرُكْنُ التَّسَاؤُلِ\nالسُّؤَالُ الْأَوَّلُ: مَا الْعَامِلُ الْحَاسِمُ فِي بِنَاءِ إِنْسَانٍ قَادِرٍ عَلَى الْمُشَارَكَةِ؟\nالسُّؤَالُ ال"
+      },
+      {
+        "page_number": 95,
+        "char_count": 1913,
+        "snippet": "ثانياً القَوَاعِدُ النَّحْوِيَّةُ: أَقْرَأُ، ثُمَّ أُجِيبُ:\n«القَارِئُ المُجْتَهِدُ طَالِبٌ مُحِبٌّ لِلْعِلْمِ، يَفْهَمُ الدُّرُوسَ فَهْمًا عَمِيقًا، وَيَحْرِصُ عَلَى أَنْ يَقْرَأَ الْكُتُبَ بِاهْتِمَ"
+      },
+      {
+        "page_number": 107,
+        "char_count": 1052,
+        "snippet": "الدَّرْسُ الأَوَّلُ\nبِنَاءُ الْمُسْتَقْبَلِ فِي عَصْرِ الآلَةِ\nنَصُّ اسْتِمَاعٍ\nQR Code\nلِلاسْتِمَاعِ إِلَى النَّصِّ\nأَتَأَمَّلُ وَأَتَوَقَّعُ\n• فِي رَأْيِكَ، مَا أَهَمُّ الْمَهَارَاتِ الَّتِي يَحْتَا"
+      },
+      {
+        "page_number": 116,
+        "char_count": 1992,
+        "snippet": "أَتَذَوَّقُ الْمَقْرُوءَ، وَأَنْقُدُهُ\nأُمَيِّزُ الْحَقِيقَةَ مِنَ الرَّأْيِ كَمَا هُوَ مُوَضَّحٌ:\nالْجُمْلَةُ | حَقِيقَةٌ | رَأْيٌ\n١. التَّعْلِيمُ الْفَنِّيُّ يَدْمُجُ بَيْنَ الدِّرَاسَةِ النَّظَرِيّ"
+      },
+      {
+        "page_number": 138,
+        "char_count": 2064,
+        "snippet": "أ أَعْرِبْ مَا تَحْتَهُ خَطٌّ.\nب اسْتَخْرِجْ مِنَ الْفِقْرَةِ:\n١. اسْمَ فَاعِلٍ، وَأَبَيِّنُ نَوْعَهُ وَفِعْلَهُ مَضْبُوطًا بِالشَّكْلِ.\n٢. اسْمَ مَفْعُولٍ، وَأَبَيِّنُ فِعْلَهُ مَضْبُوطًا بِالشَّكْلِ"
+      }
+    ],
+    "passed": true
+  },
+  "retrievalIntegrity": {
+    "unitIsolationTests": [
+      {
+        "unit": 1,
+        "chapterId": "c7043f86-6a40-4417-a1b8-60e3301e7cb7",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          41,
+          27,
+          35,
+          57,
+          40,
+          46
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      },
+      {
+        "unit": 2,
+        "chapterId": "e75bad6f-9189-4f0c-8bc1-d2152ce2bb6c",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          70,
+          83,
+          60,
+          68,
+          77,
+          103
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      },
+      {
+        "unit": 3,
+        "chapterId": "e478df26-829f-4cbd-95cc-56b5428af702",
+        "retrievedCount": 6,
+        "pagesRetrieved": [
+          129,
+          136,
+          135,
+          128,
+          148,
+          133
+        ],
+        "foreignChunksCount": 0,
+        "isolated": true
+      }
+    ],
+    "negativeRetrievalCount": 0,
+    "crossBookLeak": false,
+    "passed": true
+  },
+  "dataSafety": {
+    "baselinePass": true,
+    "platformPass": true,
+    "passed": true
+  }
+}

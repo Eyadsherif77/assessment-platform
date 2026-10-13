@@ -1,0 +1,212 @@
+[
+  {
+    "num": 1,
+    "id": "0758fc7a-c9b2-4e25-a32b-6cacb6bb418d",
+    "current_title_ar": "اللغة العربية",
+    "current_title_en": "Arabic Language",
+    "grade_ar": "الصف الأول الإعدادي",
+    "subject_ar": "اللغة العربية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "اللغة العربية",
+      "exact_title_en": "Arabic Language",
+      "printed_subject": "اللغة العربية",
+      "printed_grade": "للصف الأول الإعدادي",
+      "printed_term": "الفصل الدراسي الأول"
+    }
+  },
+  {
+    "num": 2,
+    "id": "808104ec-b861-434b-80c6-579f715d8bdf",
+    "current_title_ar": "الرياضيات (لغات)",
+    "current_title_en": "Mathematics",
+    "grade_ar": "الصف الأول الإعدادي",
+    "subject_ar": "الرياضيات",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": null,
+      "exact_title_en": "MATHEMATICS",
+      "printed_subject": "MATHEMATICS",
+      "printed_grade": "First Preparatory",
+      "printed_term": "First Term"
+    }
+  },
+  {
+    "num": 3,
+    "id": "d7bbfca2-6d8f-461b-8e39-2015981e86ec",
+    "current_title_ar": "Science book",
+    "current_title_en": "Science book",
+    "grade_ar": "الصف الأول الإعدادي",
+    "subject_ar": "العلوم",
+    "term": 1,
+    "pdfCoverDetails": [
+      {
+        "exact_title_ar": null,
+        "exact_title_en": "Discover and Learn SCIENCE First Preparatory - First Term",
+        "printed_subject": "Science",
+        "printed_grade": "First Preparatory",
+        "printed_term": "First Term"
+      }
+    ]
+  },
+  {
+    "num": 4,
+    "id": "fa2a1525-c46f-4b34-9f48-b762be88e5c5",
+    "current_title_ar": "الدراسات الاجتماعية",
+    "current_title_en": "Social Studies",
+    "grade_ar": "الصف الأول الإعدادي",
+    "subject_ar": "الدراسات الاجتماعية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "إفريقيا ومصر",
+      "exact_title_en": "Africa and Egypt",
+      "printed_subject": "الدراسات الاجتماعية",
+      "printed_grade": "الصف الأول الإعدادي",
+      "printed_term": "الفصل الدراسي الأول"
+    }
+  },
+  {
+    "num": 5,
+    "id": "21e1d639-9f59-4a58-a8f8-8373b8e7fc90",
+    "current_title_ar": "اللغة الإنجليزية",
+    "current_title_en": "English (Student Book)",
+    "grade_ar": "الصف الأول الإعدادي",
+    "subject_ar": "اللغة الإنجليزية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": null,
+      "exact_title_en": "ENGLISH Preparatory Schools - Year One - Term 1",
+      "printed_subject": "English",
+      "printed_grade": "Preparatory Schools - Year One",
+      "printed_term": "Term 1"
+    }
+  },
+  {
+    "num": 6,
+    "id": "bc6bb834-7192-474c-8507-c53265028b4e",
+    "current_title_ar": "اللغة العربية",
+    "current_title_en": "Arabic Language",
+    "grade_ar": "الصف الثاني الإعدادي",
+    "subject_ar": "اللغة العربية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "اللغة العربية",
+      "exact_title_en": "Arabic Language",
+      "printed_subject": "اللغة العربية",
+      "printed_grade": "للصف الثاني الإعدادي",
+      "printed_term": "الفصل الدراسي الأول"
+    }
+  },
+  {
+    "num": 7,
+    "id": "19886434-1839-427d-af31-4c64fcf79525",
+    "current_title_ar": "Math book",
+    "current_title_en": "Math book",
+    "grade_ar": "الصف الثاني الإعدادي",
+    "subject_ar": "الرياضيات",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": null,
+      "exact_title_en": "MATHEMATICS",
+      "printed_subject": "MATHEMATICS",
+      "printed_grade": "Second Preparatory",
+      "printed_term": "First Term"
+    }
+  },
+  {
+    "num": 8,
+    "id": "543f2746-460c-41c1-ba38-0933f479272f",
+    "current_title_ar": "العلوم (لغات)",
+    "current_title_en": "Science (English)",
+    "grade_ar": "الصف الثاني الإعدادي",
+    "subject_ar": "العلوم",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "Discover and Learn SCIENCE Second Preparatory First term",
+      "exact_title_en": "Discover and Learn SCIENCE Second Preparatory First term",
+      "printed_subject": "Science",
+      "printed_grade": "Second Preparatory",
+      "printed_term": "First term"
+    }
+  },
+  {
+    "num": 9,
+    "id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+    "current_title_ar": "كتاب الدرسات الاجتماعية",
+    "current_title_en": "كتاب الدرسات الاجتماعية",
+    "grade_ar": "الصف الثاني الإعدادي",
+    "subject_ar": "الدراسات الاجتماعية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "مصر وعلاقتها بآسيا وأوروبا (الأرض والحضارة والتنمية)",
+      "exact_title_en": null,
+      "printed_subject": "الدراسات الاجتماعية",
+      "printed_grade": "الصف الثاني الإعدادي",
+      "printed_term": "الفصل الدراسي الأول"
+    }
+  },
+  {
+    "num": 10,
+    "id": "37bfa0c0-c4ce-419f-930a-000043d8d3f9",
+    "current_title_ar": "اللغة الإنجليزية",
+    "current_title_en": "English Language",
+    "grade_ar": "الصف الثاني الإعدادي",
+    "subject_ar": "اللغة الإنجليزية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "وزارة التربية والتعليم والتعليم الفني",
+      "exact_title_en": "ENGLISH Preparatory Schools - Year Two - Term 1",
+      "printed_subject": "English",
+      "printed_grade": "Preparatory Schools - Year Two",
+      "printed_term": "Term 1"
+    }
+  },
+  {
+    "num": 11,
+    "id": "013411b8-edec-477b-bd42-3dbdda9fb6a9",
+    "current_title_ar": "كتاب اللغة العربية",
+    "current_title_en": "كتاب اللغة العربية",
+    "grade_ar": "الصف الثالث الإعدادي",
+    "subject_ar": "اللغة العربية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "اللغة العربية",
+      "exact_title_en": "Arabic Language",
+      "printed_subject": "اللغة العربية",
+      "printed_grade": "للفصل الثالث الإعدادي",
+      "printed_term": "الفصل الدراسي الأول"
+    }
+  },
+  {
+    "num": 12,
+    "id": "f19276d3-4adb-4297-bb77-5ed87ba638b9",
+    "current_title_ar": "كتاب الدرسات الاجتماعية",
+    "current_title_en": "كتاب الدرسات الاجتماعية",
+    "grade_ar": "الصف الثالث الإعدادي",
+    "subject_ar": "الدراسات الاجتماعية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "الدراسات الاجتماعية مصر وقارات العالم الجديد",
+      "exact_title_en": "Social Studies Egypt and the Continents of the New World",
+      "printed_subject": "الدراسات الاجتماعية",
+      "printed_grade": "الصف الثالث الإعدادي",
+      "printed_term": "الفصل الدراسي الأول"
+    }
+  },
+  {
+    "num": 13,
+    "id": "9e702109-7d92-445c-b814-567c1f6cba49",
+    "current_title_ar": "English book",
+    "current_title_en": "English book",
+    "grade_ar": "الصف الثالث الإعدادي",
+    "subject_ar": "اللغة الإنجليزية",
+    "term": 1,
+    "pdfCoverDetails": {
+      "exact_title_ar": "وزارة التربية والتعليم والتعليم الفني",
+      "exact_title_en": "ENGLISH Preparatory Schools - Year Three - Term 1",
+      "printed_subject": "English",
+      "printed_grade": "Year Three",
+      "printed_term": "Term 1"
+    }
+  }
+]

@@ -294,6 +294,39 @@ CREATE TABLE IF NOT EXISTS platform_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS shared_cached_exams (
+    id TEXT PRIMARY KEY,
+    config_key TEXT NOT NULL,
+    config_hash TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    version_number INTEGER NOT NULL DEFAULT 1,
+    book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    academic_stage_id TEXT NOT NULL REFERENCES academic_stages(id),
+    grade_id TEXT NOT NULL REFERENCES grades(id),
+    subject_id TEXT NOT NULL REFERENCES subjects(id),
+    term INTEGER NOT NULL DEFAULT 1,
+    school_type TEXT NOT NULL DEFAULT 'كلاهما',
+    unit_ids TEXT NOT NULL,
+    unit_set_key TEXT NOT NULL,
+    parameters_json TEXT NOT NULL,
+    param_hash TEXT NOT NULL,
+    questions_data TEXT NOT NULL,
+    total_questions INTEGER NOT NULL DEFAULT 0,
+    provenance_verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    CONSTRAINT uq_config_content UNIQUE (config_hash, content_hash)
+);
+
+CREATE TABLE IF NOT EXISTS student_exam_assignments (
+    id TEXT PRIMARY KEY,
+    cached_exam_id TEXT NOT NULL REFERENCES shared_cached_exams(id) ON DELETE CASCADE,
+    student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    config_hash TEXT NOT NULL,
+    assigned_at TEXT DEFAULT (datetime('now')),
+    status TEXT DEFAULT 'ASSIGNED',
+    CONSTRAINT uq_student_cached_exam UNIQUE (student_id, cached_exam_id)
+);
 
 -- High-performance Indexes
 CREATE INDEX IF NOT EXISTS idx_users_role_email ON users(role, email);
@@ -305,3 +338,7 @@ CREATE INDEX IF NOT EXISTS idx_attempts_student_exam ON exam_attempts(student_id
 CREATE INDEX IF NOT EXISTS idx_ai_evaluations_student ON ai_evaluations(student_id, subject_id, chapter_id);
 CREATE INDEX IF NOT EXISTS idx_topic_mastery_lookup ON student_topic_mastery(student_id, subject_id, chapter_id);
 CREATE INDEX IF NOT EXISTS idx_learning_history_student ON student_learning_history(student_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_cached_config_hash ON shared_cached_exams(config_hash);
+CREATE INDEX IF NOT EXISTS idx_cached_exam_book ON shared_cached_exams(book_id);
+CREATE INDEX IF NOT EXISTS idx_asgn_student_config ON student_exam_assignments(student_id, config_hash);
+CREATE INDEX IF NOT EXISTS idx_asgn_exam ON student_exam_assignments(cached_exam_id);

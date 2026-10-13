@@ -1,0 +1,128 @@
+{
+  "book_id": "0758fc7a-c9b2-4e25-a32b-6cacb6bb418d",
+  "book_number": 9,
+  "official_title": "اللغة العربية",
+  "subject": "ARABIC",
+  "grade": "الصف الأول الإعدادي",
+  "term": "Term 1",
+  "total_pdf_pages": 12,
+  "units": [
+    {
+      "unit_number": 1,
+      "title_ar": "أنا مصري",
+      "title_en": "I am Egyptian",
+      "printed_start_page": 11,
+      "printed_end_page": 49,
+      "pdf_start_page": 11,
+      "pdf_end_page": 5,
+      "description": "جاءت موضوعاتها لتعمق جذور الهوية، وتعزز الانتماء، وتغرس في نفوس الطلاب حب الوطن والاعتزاز بتاريخه، وتوضح أن حب مصر ليس مجرد شعور وكلمات تقال، بل أفعال وسلوك ومسؤولية.",
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title": "نص استماع (مصر مهد العلم للدكتور: أحمد زويل)",
+          "printed_page": 11,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": 2,
+          "title": "نص قراءة (أسطورة مصرية: البطل أحمد منسي)",
+          "printed_page": 15,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": 3,
+          "title": "نص قراءة (رسالة إلى المرأة المصرية لـ: نعمات أحمد فؤاد)",
+          "printed_page": 29,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": 4,
+          "title": "نص شعري (وجه الوطن لـ: فاروق جويدة)",
+          "printed_page": 40,
+          "pdf_page": 5
+        }
+      ]
+    },
+    {
+      "unit_number": 2,
+      "title_ar": "أصنع مستقبلي",
+      "title_en": "I build my future",
+      "printed_start_page": 51,
+      "printed_end_page": 91,
+      "pdf_start_page": 5,
+      "pdf_end_page": 6,
+      "description": "هدفت موضوعاتها إلى حث الطلاب على البحث عن أدوات الطموح، وتشجيعهم على الإبداع والاجتهاد، وفتح نوافذ التخطيط لبناء مستقبل مشرق.",
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title": "نص استماع (تاريخنا... أساس لمستقبلنا) (المتحف المصري الكبير)",
+          "printed_page": 51,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": 2,
+          "title": "نص قراءة (أشياء صنعت مني كاتبا) لـ: العقاد",
+          "printed_page": 55,
+          "pdf_page": 5
+        },
+        {
+          "lesson_number": 3,
+          "title": "نص قراءة (بطولات مصرية: محمد صلاح - علي فرج - أحمد الجندي)",
+          "printed_page": 69,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": 4,
+          "title": "نص شعري (شباب اليوم.. صناع الغد) لـ: إبراهيم ناجي",
+          "printed_page": 81,
+          "pdf_page": 6
+        }
+      ]
+    },
+    {
+      "unit_number": 3,
+      "title_ar": "مواقف إنسانية",
+      "title_en": "Human Situations",
+      "printed_start_page": 93,
+      "printed_end_page": 129,
+      "pdf_start_page": 6,
+      "pdf_end_page": 6,
+      "description": "ركزت موضوعاتها على إعلاء القيم النبيلة والمشاعر الإنسانية وتنمية حب الخير؛ ليكون كل منهم إنسانا سويا يوازن بين العقل والقلب.",
+      "lessons": [
+        {
+          "lesson_number": 1,
+          "title": "نص استماع (دروس من الحياة)",
+          "printed_page": 93,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": 2,
+          "title": "نص قراءة (رحمة تداوي وعلم يضيء: ابن النفيس)",
+          "printed_page": 97,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": 3,
+          "title": "نص قراءة (إنسان في عصر التكنولوجيا)",
+          "printed_page": 109,
+          "pdf_page": 6
+        },
+        {
+          "lesson_number": 4,
+          "title": "نص شعري (دعاء شاعرة) لـ: جليلة رضا",
+          "printed_page": 121,
+          "pdf_page": 6
+        }
+      ]
+    }
+  ],
+  "front_matter": {
+    "pdf_pages": "1..4",
+    "description": "Cover, Title page, Introduction, and Skills overview."
+  },
+  "back_matter": {
+    "pdf_pages": "7..10",
+    "description": "General review exercises."
+  },
+  "notes": "The PDF page numbers for the units are derived from the Table of Contents provided in the document (pages 5 and 6 of the PDF)."
+}

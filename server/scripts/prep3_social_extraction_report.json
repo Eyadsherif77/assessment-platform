@@ -1,0 +1,30 @@
+{
+  "book_id": "f19276d3-4adb-4297-bb77-5ed87ba638b9",
+  "title": "كتاب الدرسات الاجتماعية",
+  "total_pdf_pages": 113,
+  "pages_in_db": "111",
+  "total_chars": "143525",
+  "total_chunks": "102",
+  "short_pages": [
+    {
+      "page_number": 21,
+      "length": 0,
+      "reason": "BLANK_PAGE"
+    },
+    {
+      "page_number": 27,
+      "length": 0,
+      "reason": "BLANK_PAGE"
+    },
+    {
+      "page_number": 66,
+      "length": 0,
+      "reason": "BLANK_PAGE"
+    },
+    {
+      "page_number": 75,
+      "length": 0,
+      "reason": "BLANK_PAGE"
+    }
+  ]
+}

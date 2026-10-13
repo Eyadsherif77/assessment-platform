@@ -1,0 +1,222 @@
+{
+  "pageAccounting": {
+    "totalPdfPages": 106,
+    "totalPagesInDb": 106,
+    "distinctPages": 106,
+    "missingPages": [],
+    "duplicatePages": [],
+    "minChars": 113,
+    "maxChars": 2655,
+    "avgChars": "1413.4",
+    "shortPagesCount": 0
+  },
+  "chaptersAndChunks": {
+    "totalChapters": 4,
+    "chapters": [
+      {
+        "chapter_number": 1,
+        "id": "b123b656-03b1-4af5-be4e-971dd5ba74a6",
+        "title_ar": "الوحدة الأولى: الملامح الطبيعية لقارتي آسيا وأوروبا",
+        "title_en": "Unit 1: Natural Features of Asia and Europe Continents",
+        "pdf_start": 7,
+        "pdf_end": 26,
+        "total_chunks": 20,
+        "page_range_in_chunks": "7..26"
+      },
+      {
+        "chapter_number": 2,
+        "id": "ae5ca8ad-b23f-4875-ba5d-8b3f0091ffa2",
+        "title_ar": "الوحدة الثانية: الحضارات القديمة في قارة آسيا وعلاقتها بمصر",
+        "title_en": "Unit 2: Ancient Civilizations in Asia Continent and Their Relations with Egypt",
+        "pdf_start": 27,
+        "pdf_end": 56,
+        "total_chunks": 30,
+        "page_range_in_chunks": "27..56"
+      },
+      {
+        "chapter_number": 3,
+        "id": "5b304263-9134-470a-81c6-677db64ce02a",
+        "title_ar": "الوحدة الثالثة: النُّظم البيئية في قارتي آسيا وأوروبا",
+        "title_en": "Unit 3: Ecosystems in Asia and Europe Continents",
+        "pdf_start": 57,
+        "pdf_end": 80,
+        "total_chunks": 24,
+        "page_range_in_chunks": "57..80"
+      },
+      {
+        "chapter_number": 4,
+        "id": "c4000000-7fcf-4938-8c45-aa0056624f34",
+        "title_ar": "الوحدة الرابعة: الحضارات القديمة في قارة أوروبا وعلاقتها بمصر",
+        "title_en": "Unit 4: Ancient Civilizations in Europe Continent and Their Relations with Egypt",
+        "pdf_start": 81,
+        "pdf_end": 96,
+        "total_chunks": 16,
+        "page_range_in_chunks": "81..96"
+      }
+    ],
+    "totalChunks": 98,
+    "unassignedChunksCount": 8,
+    "unassignedChunkPages": [
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104
+    ]
+  },
+  "ocrSamples": [
+    {
+      "page_number": 8,
+      "char_count": 475,
+      "excerpt": "جبال أورال المفاهيم الرئيسية • أوراسيا. • الأرخبيل. • المواد الخام الحرجة. • المناجم الخضراء. القيم • تقدير عظمة الله (عز وجل) في خلق مظاهر السطح المتنوعة. • التعاون والمشاركة. • تحمل المسئولية. • تقدير قيمة العلم. • احترام حقوق الملكية الفكرية. • تقدير جمال الطبيعة. المهارات العابرة للتخصصات • ا"
+    },
+    {
+      "page_number": 16,
+      "char_count": 1511,
+      "excerpt": "الدرس الأول | موقع ومظاهر السطح في قارتي آسيا وأوروبا اقرأ وأجب جبال الألب (نص إثرائي) تتميز جبال الألب بالتواءاتها بتنوعها الطبيعي الغني، فهي منبع أساسي للمياه ومصدر للطاقة المائية، كما تتميز بإنتاجها الوفير من الأخشاب، وتمتد سلسلة جبال الألب في عدة دول أوروبية، ورغم وعورتها وارتفاعها فإنها لم تكن "
+    },
+    {
+      "page_number": 34,
+      "char_count": 1466,
+      "excerpt": "الدراسات الاجتماعية: الصف الثاني الإعدادي طبق وتعلَّم تحليل النصوص التاريخية أقرا النصوص التالية من تشريعات حمورابي، ثم أجب: • يُقتل كل من يشهد زورًا في قضية جنائية. • الإعدام عقوبة لخطف الأطفال. • إذا قام رجل بالسرقة وقُبض عليه فإنه يُعدم. • إذا أجرى طبيب عملية جراحية لمريض وأنقذ حياته يأخذ 10 شقلا"
+    },
+    {
+      "page_number": 64,
+      "char_count": 1190,
+      "excerpt": "الدرس الأول | نظم الغابات في قارتي آسيا وأوروبا مهارات التفكير فكر وأجب أ صوب ما تحته خط: ١ - يُعد الخيزران من أشهر أشجار الغابات المدارية. (....................) ٢ - تنمو أشجار الزان في نظام الغابات الموسمية. (....................) ٣ - ينتشر البعوض صيفًا بسبب المستنقعات في الغابات النفضية. (......."
+    },
+    {
+      "page_number": 88,
+      "char_count": 1578,
+      "excerpt": "الدرس الأول: الحضارة اليونانية. البحث عن المعرفة. ابحث وقارن: شهدت اليونان قيام حضارات قديمة عريقة، في ضوء ما درست وبالاستعانة بشبكة المعلومات الدولية (الإنترنت) اجمع معلومات عن هذه الحضارات ولخصها في الجدول التالي: الحضارة: حضارة كريت، حضارة إسبرطة، حضارة أثينا. أهم ملامحها: (جدول فارغ). فكر وأجب: "
+    },
+    {
+      "page_number": 98,
+      "char_count": 2353,
+      "excerpt": "المراجعة العامة على الفصل الدراسي الأول 3 - تقترب قارة آسيا من قارة إفريقيا عند مضيق ....................................... (جبل طارق ـ باب المندب ـ هرمز ـ البوسفور) 4 - أكبر القارات من حيث الامتداد الفلكي هي ....................................... (أوروبا ـ آسيا ـ إفريقيا ـ أستراليا) 5 - تقع هضبة "
+    }
+  ],
+  "provenanceTests": [
+    {
+      "test": "Unit 2 positive grounded chunk retrieval",
+      "passed": true,
+      "details": "Retrieved 3 chunks on pages: [56, 38, 49]"
+    },
+    {
+      "test": "Authentic Book 4 question provenance verification",
+      "passed": true,
+      "reason": "VERIFIED"
+    },
+    {
+      "test": "Fabricated fact rejection",
+      "passed": true,
+      "reason": "Answer \"عام 2050 ميلادية\" is NOT supported on page 88 (matched words: none)"
+    },
+    {
+      "test": "Cross-book question rejection",
+      "passed": true,
+      "reason": "Answer \"الذرة\" is NOT supported on page 20 (matched words: none)"
+    },
+    {
+      "test": "Incorrect historical statement rejection",
+      "passed": true,
+      "reason": "Answer \"صواب\" is NOT supported on page 82 (matched words: none)"
+    }
+  ],
+  "books123Isolation": [
+    {
+      "book_id": "d7bbfca2-6d8f-461b-8e39-2015981e86ec",
+      "title": "Book 1 (Science Prep 1)",
+      "matches": true,
+      "actual": {
+        "pages": 102,
+        "chunks": 101,
+        "chapters": 3
+      },
+      "expected": {
+        "pages": 102,
+        "chunks": 101,
+        "chapters": 3
+      }
+    },
+    {
+      "book_id": "f19276d3-4adb-4297-bb77-5ed87ba638b9",
+      "title": "Book 2 (Social Prep 3)",
+      "matches": true,
+      "actual": {
+        "pages": 113,
+        "chunks": 104,
+        "chapters": 4
+      },
+      "expected": {
+        "pages": 113,
+        "chunks": 104,
+        "chapters": 4
+      }
+    },
+    {
+      "book_id": "19886434-1839-427d-af31-4c64fcf79525",
+      "title": "Book 3 (Math Prep 2)",
+      "matches": true,
+      "actual": {
+        "pages": 130,
+        "chunks": 128,
+        "chapters": 4
+      },
+      "expected": {
+        "pages": 130,
+        "chunks": 128,
+        "chapters": 4
+      }
+    }
+  ],
+  "tablesIntegrity": {
+    "users": {
+      "actual": 229,
+      "baseline": 229,
+      "matches": true
+    },
+    "student_profiles": {
+      "actual": 226,
+      "baseline": 226,
+      "matches": true
+    },
+    "ai_evaluations": {
+      "actual": 345,
+      "baseline": 345,
+      "matches": true
+    },
+    "book4_pdf_chunks": {
+      "actual": 11,
+      "baseline": 11,
+      "matches": true
+    },
+    "total_pdf_chunks": {
+      "actual": 314,
+      "baseline": 128,
+      "matches": false
+    }
+  },
+  "snapshotComparison": {
+    "before": {
+      "books": 1,
+      "book_chapters": 3,
+      "book_pages": 3,
+      "book_chunks": 3,
+      "question_bank_items": 20,
+      "question_bank_options": 80,
+      "book_pdf_chunks": 11
+    },
+    "after": {
+      "book_pages": 106,
+      "book_chunks": 98,
+      "book_chapters": 4,
+      "question_bank_items": 20,
+      "question_bank_options": 80,
+      "book_pdf_chunks": 11
+    }
+  }
+}

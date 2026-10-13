@@ -1,7 +1,13 @@
+import fs from 'fs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db.js';
 import { generateEmbedding, cosineSimilarity } from './vectorEmbedding.js';
 import { cleanArabicText, stripDocumentMetadataAndStructure } from '../../utils/arabicTextNormalizer.js';
+import { GeminiClient } from './geminiClient.js';
+import { AnswerValidationService, normalizeArabicLevel1 } from '../answerValidationService.js';
+import { createBoundedSolverAdapter, RawSolverInvoker } from './boundedSolverAdapter.js';
+import { VisualAssetExtractor } from './visualAssetExtractor.js';
 
 export interface RetrievedChunk {
   id: string;
@@ -26,6 +32,10 @@ export interface GroundedQuestion {
   page_reference: number;
   source_excerpt: string;
   explanation: string;
+  // Visual evidence integration (Phase 4G.3J)
+  diagram_url?: string;
+  diagram_asset_id?: string;
+  has_visual_dependency?: boolean;
   // AI Assessment Debug Inspection Fields (Development Only)
   chunk_text?: string;
   similarity_score?: number;
@@ -209,7 +219,8 @@ export function evaluateQuestionQuality(
   }
 
   // Teacher Rule: Question text must test understanding (definitions, reasoning, cause/effect, problem-solving)
-  const isTeacherStem = /ما|علل|احسب|متى|أي|لماذا|كيف|وضح|اذكر|إذا|ماذا يحدث|what|why|which|how|calculate|if/i.test(q.question_text);
+  const normalizedQStem = (q.question_text || '').replace(/[\u064B-\u065F\u0670]/g, '');
+  const isTeacherStem = /ما|علل|احسب|متى|أي|لماذا|كيف|وضح|اذكر|إذا|ماذا يحدث|what|why|which|how|calculate|if/i.test(normalizedQStem);
   if (!isTeacherStem) {
     eduScore -= 12;
   }
@@ -241,6 +252,703 @@ export function validateEducationalQuestion(q: GroundedQuestion): { isValid: boo
   return { isValid: result.isValid, reason: result.reason };
 }
 
+/**
+ * Strict Provenance Validator:
+ * Confirms that the question's recorded page_reference exists in book_pages,
+ * and that the page's actual extracted text contains supporting evidence (key concepts or correct answer).
+ */
+export async function verifyQuestionProvenance(
+  q: GroundedQuestion,
+  bookId: string
+): Promise<{ isVerified: boolean; reason?: string }> {
+  if (!bookId) {
+    return { isVerified: false, reason: 'Missing bookId' };
+  }
+
+  // 1. Authoritative Book Matching: Question must belong to the requested book
+  if (q.book_id && q.book_id !== bookId) {
+    return { isVerified: false, reason: `BOOK_MISMATCH: Question book_id '${q.book_id}' does not match requested book '${bookId}'` };
+  }
+
+  // 2. Page reference must exist and be positive
+  if (!q.page_reference || q.page_reference <= 0) {
+    return { isVerified: false, reason: 'Missing page_reference' };
+  }
+
+  // 3. Chapter scope validation if chapter_id is specified
+  if (q.chapter_id) {
+    const chRes = await db.query(
+      'SELECT id, start_page, end_page FROM book_chapters WHERE id = $1 AND book_id = $2',
+      [q.chapter_id, bookId]
+    );
+    if (chRes.rows.length === 0) {
+      return { isVerified: false, reason: `CHAPTER_NOT_FOUND_IN_BOOK: Chapter ${q.chapter_id} does not belong to book ${bookId}` };
+    }
+  }
+
+  // 4. Source Chunk cross-validation if chunk_id is specified
+  let chunkContent = '';
+  if (q.chunk_id) {
+    const chunkRes = await db.query(
+      'SELECT id, book_id, chapter_id, page_number, content FROM book_chunks WHERE id = $1 AND book_id = $2',
+      [q.chunk_id, bookId]
+    );
+    if (chunkRes.rows.length === 0) {
+      return { isVerified: false, reason: `CHUNK_NOT_FOUND: Chunk ${q.chunk_id} does not belong to book ${bookId}` };
+    }
+    const chunkRow = chunkRes.rows[0];
+    if (Number(chunkRow.page_number) !== Number(q.page_reference)) {
+      return {
+        isVerified: false,
+        reason: `CONTRADICTORY_PROVENANCE: Question specifies page ${q.page_reference} but referenced chunk ${q.chunk_id} belongs to page ${chunkRow.page_number}`
+      };
+    }
+    if (q.chapter_id && chunkRow.chapter_id && chunkRow.chapter_id !== q.chapter_id) {
+      return {
+        isVerified: false,
+        reason: `CHUNK_CHAPTER_MISMATCH: Chunk ${q.chunk_id} chapter (${chunkRow.chapter_id}) does not match question chapter (${q.chapter_id})`
+      };
+    }
+    chunkContent = chunkRow.content || '';
+  }
+
+  // 5. Source Page existence verification
+  const pageRes = await db.query(
+    'SELECT raw_text FROM book_pages WHERE book_id = $1 AND page_number = $2',
+    [bookId, q.page_reference]
+  );
+
+  if (pageRes.rows.length === 0 || !pageRes.rows[0].raw_text) {
+    return { isVerified: false, reason: `Page ${q.page_reference} does not exist in book_pages for book ${bookId}` };
+  }
+
+  const pageText = pageRes.rows[0].raw_text.toLowerCase();
+
+  // Expanded Arabic educational stop-words list
+  const stopWords = new Set([
+    'what', 'which', 'where', 'when', 'from', 'with', 'that', 'this', 'have', 'does',
+    'ماذا', 'لماذا', 'كيف', 'أين', 'متى', 'الذي', 'التي', 'الذين', 'اللاتي', 'منها',
+    'إلى', 'على', 'عن', 'في', 'من', 'مع', 'هذا', 'هذه', 'تلك', 'ذلك', 'كذلك', 'أنه',
+    'أنها', 'كان', 'كانت', 'يكون', 'تكون', 'منهج', 'الدراسات', 'الاجتماعية', 'العلوم',
+    'الصف', 'الثالث', 'الإعدادي', 'الأول', 'الثاني', 'المصري', 'المصرية', 'الوطنية',
+    'التعليم', 'الكتاب', 'الوحدة', 'الدرس', 'العام', 'الدراسي', 'سؤال', 'أجب', 'بين',
+    'أحد', 'أهم', 'خلال', 'بعد', 'قبل', 'عام', 'عصر', 'أدى', 'ترتب', 'الدولة', 'الدول',
+    'الأوروبية', 'الأوروبي', 'البلاد', 'العالم', 'تاريخ', 'جغرافيا', 'الأخرى', 'قامت', 'وقامت'
+  ]);
+
+  // 1. Extract significant question keywords (> 3 chars)
+  const qWords = (q.question_text || '')
+    .toLowerCase()
+    .split(/[^\w\u0600-\u06FF]+/)
+    .filter(w => w.length > 3 && !stopWords.has(w));
+
+  const matchedQWords = qWords.filter(w => pageText.includes(w));
+
+  // Also check if any bigram (2 consecutive non-stop words) from question appears in page
+  let hasBigramMatch = false;
+  for (let i = 0; i < qWords.length - 1; i++) {
+    const bigram = `${qWords[i]} ${qWords[i + 1]}`;
+    if (pageText.includes(bigram)) {
+      hasBigramMatch = true;
+      break;
+    }
+  }
+
+  // 2. Extract correct answer and evaluate its presence on the page
+  const correctOpt = q.options?.find(o => o.is_correct)?.text?.toLowerCase()?.trim() || '';
+  if (!correctOpt) {
+    return { isVerified: false, reason: 'Question has no correct option defined' };
+  }
+
+  const ansWords = correctOpt
+    .split(/[^\w\u0600-\u06FF]+/)
+    .filter(w => w.length > 2 && !stopWords.has(w));
+
+  const matchedAnsWords = ansWords.filter(w => pageText.includes(w));
+  
+  // Exact phrase match or >= 70% of distinctive answer words must appear
+  const exactAnswerMatch = pageText.includes(correctOpt);
+  const partialAnswerMatch = ansWords.length > 0 && (matchedAnsWords.length / ansWords.length) >= 0.7;
+  const isAnswerSupported = exactAnswerMatch || partialAnswerMatch;
+
+  // Rule 1: The correct answer MUST be supported by the page text
+  if (!isAnswerSupported) {
+    return {
+      isVerified: false,
+      reason: `Answer "${correctOpt}" is NOT supported on page ${q.page_reference} (matched words: ${matchedAnsWords.join(', ') || 'none'})`
+    };
+  }
+
+  // Rule 2: The question's topic/premise MUST have sufficient distinct support:
+  // Must either have a verbatim bigram match OR at least 50% keyword match with minimum 2 keywords
+  const qCoverageRatio = qWords.length > 0 ? (matchedQWords.length / qWords.length) : 0;
+  if (!hasBigramMatch && (matchedQWords.length < 2 || qCoverageRatio < 0.5)) {
+    return {
+      isVerified: false,
+      reason: `Question premise is unsupported on page ${q.page_reference}: matched [${matchedQWords.join(', ') || 'none'}] out of [${qWords.join(', ')}] (coverage: ${Math.round(qCoverageRatio * 100)}%, bigram match: false)`
+    };
+  }
+
+  // Rule 3: Guard against isolated generic answer words (proximity check)
+  // If answer is 1 word/number, it must appear within reasonable proximity of at least one matched question keyword
+  if (ansWords.length <= 1) {
+    const targetTerm = ansWords[0] || correctOpt;
+    const targetIndices: number[] = [];
+    let startIdx = 0;
+    while (startIdx < pageText.length) {
+      const idx = pageText.indexOf(targetTerm, startIdx);
+      if (idx === -1) break;
+      targetIndices.push(idx);
+      startIdx = idx + Math.max(1, targetTerm.length);
+    }
+
+    let hasCloseQWord = false;
+    const maxProximity = 600; // Allows for multi-line math derivations and exercise columns
+    for (const qw of matchedQWords) {
+      let qStartIdx = 0;
+      while (qStartIdx < pageText.length) {
+        const qIdx = pageText.indexOf(qw, qStartIdx);
+        if (qIdx === -1) break;
+        for (const tIdx of targetIndices) {
+          if (Math.abs(qIdx - tIdx) <= maxProximity) {
+            hasCloseQWord = true;
+            break;
+          }
+        }
+        if (hasCloseQWord) break;
+        qStartIdx = qIdx + Math.max(1, qw.length);
+      }
+      if (hasCloseQWord) break;
+    }
+
+    if (!hasCloseQWord) {
+      return {
+        isVerified: false,
+        reason: `Answer "${correctOpt}" is disconnected from question subject on page ${q.page_reference} (distance > ${maxProximity} chars)`
+      };
+    }
+  }
+
+  return { isVerified: true };
+}
+
+// ============================================================================
+// PHASE 4G.3B — INDEPENDENT GENERATOR AND BLIND SOLVER AUDITOR PIPELINE
+// ============================================================================
+
+export interface CandidateQuestionPayload {
+  id?: string;
+  question_text: string;
+  options: Array<{ id: string; text: string }>;
+  proposed_correct_option_id: string;
+  evidence: {
+    book_id: string;
+    chapter_id: string;
+    page_number: number;
+    chunk_id: string;
+    passage_text: string;
+  };
+  rationale?: string;
+  // Visual evidence integration (Phase 4G.3J)
+  diagram_url?: string;
+  diagram_asset_id?: string;
+  has_visual_dependency?: boolean;
+}
+
+export interface BlindSolverInput {
+  passage_text: string;
+  question_text: string;
+  options: Array<{ id: string; text: string }>;
+  diagram_url?: string;
+  diagram_asset_id?: string;
+}
+
+export interface BlindSolverOutput {
+  status: 'SOLVED' | 'INSUFFICIENT_EVIDENCE' | 'AMBIGUOUS' | 'UNSUPPORTED_PREMISE' | 'REQUIRES_VISUAL';
+  selected_option_id?: string;
+  defensible_option_ids: string[];
+  reasoning: string;
+  entailed_evidence_quote: string;
+}
+
+export type BlindSolverFunction = (input: BlindSolverInput) => Promise<BlindSolverOutput>;
+
+export type VerificationRejectionCode =
+  | 'INVALID_STRUCTURED_OUTPUT'
+  | 'UNSUPPORTED_PREMISE'
+  | 'INSUFFICIENT_EVIDENCE'
+  | 'AMBIGUOUS_OPTIONS'
+  | 'SOLVER_DISAGREEMENT'
+  | 'OUT_OF_SCOPE'
+  | 'INVALID_SOURCE_BINDING'
+  | 'VISUAL_DIAGRAM_DEPENDENT'
+  | 'MISSING_VISUAL_ASSET'
+  | 'INVALID_VISUAL_ASSET'
+  | 'VERIFICATION_EXECUTION_FAILURE';
+
+export interface VerificationResult {
+  is_verified: boolean;
+  status: 'VERIFIED' | 'REJECTED';
+  rejection_code?: VerificationRejectionCode;
+  rejection_reason?: string;
+  sanitized_blind_input?: BlindSolverInput;
+  generator_option_id?: string;
+  solver_option_id?: string;
+  evidence_hash?: string;
+  verified_at?: string;
+}
+
+export const DISQUALIFIED_GEOMETRY_CHAPTER_IDS = new Set([
+  '1b9f4377-6ae0-4c24-b588-c221900597ec', // Book 2 Ch 4: Prep 1 Math Geometry & Measurement
+  'dba6933a-2b80-4d3b-ada4-3ac6acfb58c1'  // Book 7 Ch 3: Prep 2 Math Geometry Theorems & Triangles
+]);
+
+export const VISUAL_INDICATOR_REGEX = /(الشكل\s*المقابل|في\s*الرسم\s*الموضح|الخريطة\s*الموضحة|بالاستعانة\s*بالخريطة|الشكل\s*رقم|بالرسم\s*المبين|من\s*الرسم|انظر\s*الشكل|الرسم\s*البياني)/i;
+
+/**
+ * Air-gap sanitizer:
+ * Strips generator proposed correct answer, correct option IDs, is_correct flags,
+ * rationales, explanations, and any order-biasing metadata before passing to the blind solver.
+ * Applies a deterministic, unbiased permutation (AUD-04) derived strictly from
+ * question and evidence text to eliminate option-position leakage.
+ */
+export function sanitizeBlindSolverInput(candidate: CandidateQuestionPayload): BlindSolverInput {
+  if (!candidate || typeof candidate !== 'object') {
+    throw new Error('INVALID_CANDIDATE: Payload must be an object');
+  }
+
+  const rawOptions = Array.isArray(candidate.options) ? candidate.options : [];
+  const sanitizedOptions = rawOptions.map(opt => ({
+    id: String(opt.id || '').trim(),
+    text: String(opt.text || '').trim()
+  }));
+
+  // AUD-04: Deterministic, unbiased permutation derived strictly from question and chunk/passage seeds.
+  // Must NOT depend on proposed_correct_option_id, correct option index, rationale, or any answer-revealing field.
+  const qSeed = String(candidate.question_text || '').trim();
+  const chunkSeed = String(candidate.evidence?.chunk_id || candidate.evidence?.passage_text || '').trim();
+  const seedHash = crypto.createHash('sha256').update(`${qSeed}::${chunkSeed}`, 'utf8').digest('hex');
+
+  const permutedOptions = [...sanitizedOptions].sort((a, b) => {
+    const keyA = crypto.createHash('sha256').update(`${seedHash}::${a.id}::${a.text}`, 'utf8').digest('hex');
+    const keyB = crypto.createHash('sha256').update(`${seedHash}::${b.id}::${b.text}`, 'utf8').digest('hex');
+    return keyA.localeCompare(keyB);
+  });
+
+  const result: BlindSolverInput = {
+    passage_text: String(candidate.evidence?.passage_text || '').trim(),
+    question_text: qSeed,
+    options: permutedOptions
+  };
+
+  if (candidate.diagram_url) {
+    result.diagram_url = candidate.diagram_url;
+  }
+  if (candidate.diagram_asset_id) {
+    result.diagram_asset_id = candidate.diagram_asset_id;
+  }
+
+  return result;
+}
+
+/**
+ * Independent Blind Solver Auditor:
+ * Evaluates candidate questions through an air-gapped solver that receives zero answer-revealing metadata.
+ * Fails closed on any error, ambiguity, or contradiction.
+ */
+export async function verifyCandidateQuestionWithBlindSolver(
+  candidate: CandidateQuestionPayload,
+  solver: BlindSolverFunction
+): Promise<VerificationResult> {
+  // Gate 0: Candidate Structural Schema Validation
+  if (!candidate || typeof candidate !== 'object') {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: 'Candidate payload is null or not an object'
+    };
+  }
+
+  const qText = String(candidate.question_text || '').trim();
+  if (qText.length < 8) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: 'Question text is missing or too short (< 8 characters)'
+    };
+  }
+
+  if (!Array.isArray(candidate.options) || candidate.options.length < 2 || candidate.options.length > 6) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: 'Question must have between 2 and 6 options'
+    };
+  }
+
+  const seenOptionIds = new Set<string>();
+  const seenOptionTexts = new Set<string>();
+  for (const opt of candidate.options) {
+    const optId = String(opt.id || '').trim();
+    const optText = String(opt.text || '').trim();
+    if (!optId || !optText) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+        rejection_reason: 'Options must have non-empty id and text'
+      };
+    }
+    if (seenOptionIds.has(optId)) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+        rejection_reason: `Duplicate option ID detected: "${optId}"`
+      };
+    }
+    seenOptionIds.add(optId);
+
+    const normText = normalizeArabicLevel1(optText);
+    if (seenOptionTexts.has(normText)) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+        rejection_reason: `Duplicate option text detected after Arabic normalization: "${optText}"`
+      };
+    }
+    seenOptionTexts.add(normText);
+  }
+
+  const proposedId = String(candidate.proposed_correct_option_id || '').trim();
+  if (!proposedId || !seenOptionIds.has(proposedId)) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: `Proposed correct option ID "${proposedId}" does not match any valid option`
+    };
+  }
+
+  // Gate 1: Source Scope and Evidence Binding Validation
+  const evidence = candidate.evidence;
+  if (!evidence || typeof evidence !== 'object') {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_SOURCE_BINDING',
+      rejection_reason: 'Evidence object is missing'
+    };
+  }
+
+  const passageText = String(evidence.passage_text || '').trim();
+  if (passageText.length < 20) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_SOURCE_BINDING',
+      rejection_reason: 'Supporting passage text is missing or too short (< 20 characters)'
+    };
+  }
+
+  const bookId = String(evidence.book_id || '').trim();
+  const chapterId = String(evidence.chapter_id || '').trim();
+  const chunkId = String(evidence.chunk_id || '').trim();
+  const pageNum = Number(evidence.page_number);
+
+  if (!bookId || !chapterId || !chunkId || isNaN(pageNum) || pageNum <= 0) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_SOURCE_BINDING',
+      rejection_reason: 'Evidence is missing required book_id, chapter_id, chunk_id, or valid page_number'
+    };
+  }
+
+  // Gate 2: Visual Asset Validation & Grounding (Phase 4G.3J)
+  const hasVisualInQuestion = VISUAL_INDICATOR_REGEX.test(qText) || VISUAL_INDICATOR_REGEX.test(passageText);
+  const isGeometryChapter = DISQUALIFIED_GEOMETRY_CHAPTER_IDS.has(chapterId);
+  const requiresVisual = isGeometryChapter || hasVisualInQuestion || Boolean(candidate.has_visual_dependency);
+
+  if (candidate.diagram_url) {
+    if (!VisualAssetExtractor.isVisualAssetValid(candidate.diagram_url)) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'INVALID_VISUAL_ASSET',
+        rejection_reason: `Diagram URL "${candidate.diagram_url}" is invalid, traversal, or not registered in manifest`
+      };
+    }
+
+    const manifest = VisualAssetExtractor.loadManifest();
+    const cleanDiagramUrl = candidate.diagram_url.split('?')[0];
+    const asset = manifest.assets.find(a =>
+      a.url_path === cleanDiagramUrl ||
+      cleanDiagramUrl.includes(a.asset_id)
+    );
+    if (asset && asset.book_id !== bookId) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'INVALID_VISUAL_ASSET',
+        rejection_reason: `Diagram asset book_id "${asset.book_id}" does not match question book_id "${bookId}"`
+      };
+    }
+  } else if (requiresVisual) {
+    if (isGeometryChapter) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'OUT_OF_SCOPE',
+        rejection_reason: `Chapter ${chapterId} belongs to geometry units requiring visual diagrams, but no verified visual diagram was supplied`
+      };
+    }
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'VISUAL_DIAGRAM_DEPENDENT',
+      rejection_reason: 'Question or supporting text references unprovided visual diagrams, figures, or maps'
+    };
+  }
+
+  // Gate 4: Air-Gap Sanitization & Blind Solver Execution
+  let sanitizedInput: BlindSolverInput;
+  try {
+    sanitizedInput = sanitizeBlindSolverInput(candidate);
+  } catch (err: any) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: `Sanitization error: ${err.message}`
+    };
+  }
+
+  let solverOutput: BlindSolverOutput;
+  try {
+    if (typeof solver !== 'function') {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'VERIFICATION_EXECUTION_FAILURE',
+        rejection_reason: 'Blind solver function is not provided or not executable'
+      };
+    }
+    solverOutput = await solver(sanitizedInput);
+  } catch (err: any) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'VERIFICATION_EXECUTION_FAILURE',
+      rejection_reason: `Blind solver execution failed or timed out: ${err.message || err}`
+    };
+  }
+
+  // Gate 5: Solver Output Structure Validation
+  if (!solverOutput || typeof solverOutput !== 'object') {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: 'Blind solver returned non-object output'
+    };
+  }
+
+  const validStatuses = new Set(['SOLVED', 'INSUFFICIENT_EVIDENCE', 'AMBIGUOUS', 'UNSUPPORTED_PREMISE', 'REQUIRES_VISUAL']);
+  if (!validStatuses.has(solverOutput.status)) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: `Blind solver returned invalid status: "${solverOutput.status}"`
+    };
+  }
+
+  // Gate 6: Solver Status Evaluation (Fail Closed)
+  if (solverOutput.status === 'REQUIRES_VISUAL') {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'VISUAL_DIAGRAM_DEPENDENT',
+      rejection_reason: solverOutput.reasoning || 'Blind solver identified dependency on visual figures'
+    };
+  }
+
+  if (solverOutput.status === 'UNSUPPORTED_PREMISE') {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'UNSUPPORTED_PREMISE',
+      rejection_reason: solverOutput.reasoning || 'Question premise is unsupported by cited passage'
+    };
+  }
+
+  if (solverOutput.status === 'INSUFFICIENT_EVIDENCE') {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INSUFFICIENT_EVIDENCE',
+      rejection_reason: solverOutput.reasoning || 'Supporting passage contains insufficient evidence to answer'
+    };
+  }
+
+  // Gate 6: Defensible Options Validation (AUD-02)
+  if (!Array.isArray(solverOutput.defensible_option_ids)) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+      rejection_reason: 'Blind solver defensible_option_ids must be an array'
+    };
+  }
+
+  const defensibleSeen = new Set<string>();
+  const defensibleIds: string[] = [];
+  for (const rawId of solverOutput.defensible_option_ids) {
+    if (typeof rawId !== 'string' || !rawId.trim()) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+        rejection_reason: 'defensible_option_ids contains non-string or empty option ID'
+      };
+    }
+    const cleanId = rawId.trim();
+    if (defensibleSeen.has(cleanId)) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'AMBIGUOUS_OPTIONS',
+        rejection_reason: `Duplicate ID in defensible_option_ids: "${cleanId}"`
+      };
+    }
+    if (!seenOptionIds.has(cleanId)) {
+      return {
+        is_verified: false,
+        status: 'REJECTED',
+        rejection_code: 'INVALID_STRUCTURED_OUTPUT',
+        rejection_reason: `Defensible option ID "${cleanId}" is not among candidate options`
+      };
+    }
+    defensibleSeen.add(cleanId);
+    defensibleIds.push(cleanId);
+  }
+
+  if (defensibleIds.length === 0) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INSUFFICIENT_EVIDENCE',
+      rejection_reason: solverOutput.reasoning || 'No options could be defended based on the supplied passage'
+    };
+  }
+
+  if (solverOutput.status === 'AMBIGUOUS' || defensibleIds.length > 1) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'AMBIGUOUS_OPTIONS',
+      rejection_reason: `Multiple options are defensible from the passage: [${defensibleIds.join(', ')}]`
+    };
+  }
+
+  const soleDefensibleId = defensibleIds[0];
+
+  // Gate 7: Selected Answer and Agreement Gate (AUD-02)
+  const solverSelectedId = typeof solverOutput.selected_option_id === 'string'
+    ? solverOutput.selected_option_id.trim()
+    : '';
+
+  if (!solverSelectedId || !seenOptionIds.has(solverSelectedId)) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INSUFFICIENT_EVIDENCE',
+      rejection_reason: 'Blind solver failed to select a valid option from the supplied set'
+    };
+  }
+
+  // AUD-02: Selected option must match the sole defensible option
+  if (solverSelectedId !== soleDefensibleId) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'AMBIGUOUS_OPTIONS',
+      rejection_reason: `Solver selected_option_id "${solverSelectedId}" contradicts sole defensible_option_id "${soleDefensibleId}"`
+    };
+  }
+
+  // Selected option must match generator's proposed answer
+  if (solverSelectedId !== proposedId) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'SOLVER_DISAGREEMENT',
+      rejection_reason: `Solver disagreed with generator: generator proposed "${proposedId}", solver selected "${solverSelectedId}"`,
+      generator_option_id: proposedId,
+      solver_option_id: solverSelectedId
+    };
+  }
+
+  // Gate 8: Mandatory Evidence Entailment Quote Check (AUD-01)
+  const rawQuote = solverOutput.entailed_evidence_quote;
+  if (typeof rawQuote !== 'string') {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INSUFFICIENT_EVIDENCE',
+      rejection_reason: 'Solver output is missing required entailed_evidence_quote string'
+    };
+  }
+
+  const trimmedQuote = rawQuote.trim();
+  if (trimmedQuote.length === 0) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INSUFFICIENT_EVIDENCE',
+      rejection_reason: 'Solver entailed_evidence_quote cannot be empty or whitespace-only'
+    };
+  }
+
+  const normQuote = normalizeArabicLevel1(trimmedQuote);
+  if (normQuote.length < 15) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'INSUFFICIENT_EVIDENCE',
+      rejection_reason: `Solver entailed_evidence_quote is too short after normalization (${normQuote.length} < 15 characters)`
+    };
+  }
+
+  const normPassage = normalizeArabicLevel1(passageText);
+  if (!normPassage.includes(normQuote)) {
+    return {
+      is_verified: false,
+      status: 'REJECTED',
+      rejection_code: 'UNSUPPORTED_PREMISE',
+      rejection_reason: `Solver cited evidence quote "${trimmedQuote.slice(0, 50)}..." is absent from the supporting passage`
+    };
+  }
+
+  // All 8 verification gates passed!
+  const evidenceHash = crypto.createHash('sha256').update(passageText, 'utf8').digest('hex');
+
+  return {
+    is_verified: true,
+    status: 'VERIFIED',
+    sanitized_blind_input: sanitizedInput,
+    generator_option_id: proposedId,
+    solver_option_id: solverSelectedId,
+    evidence_hash: evidenceHash,
+    verified_at: new Date().toISOString()
+  };
+}
+
 export interface EvaluationItemResult {
   question_id: string;
   question_text: string;
@@ -249,6 +957,10 @@ export interface EvaluationItemResult {
   correct_answer_text: string;
   is_correct: boolean;
   points: number;
+  authoritative_points: number | null;
+  is_authoritatively_scored: boolean;
+  answer_key_status: string;
+  verification_method: string;
   explanation: string;
   page_reference: number;
   topic_area: string;
@@ -261,6 +973,22 @@ export interface FullDiagnosticReport {
   book_id: string;
   chapter_id: string;
   subject_id: string;
+  // Authoritative scores (only from deterministically verified questions)
+  authoritative_score: number;
+  authoritative_max_score: number;
+  authoritative_percentage: number | null;
+  authoritative_mastery_status: 'MASTERED' | 'PROFICIENT' | 'DEVELOPING' | 'NEEDS_WORK' | 'PENDING_REVIEW';
+  // Provisional / Formative scores (across all questions for learning guidance)
+  provisional_score: number;
+  provisional_max_score: number;
+  provisional_percentage: number;
+  provisional_mastery_status: 'MASTERED' | 'PROFICIENT' | 'DEVELOPING' | 'NEEDS_WORK';
+  // Review metadata
+  has_unverified_questions: boolean;
+  verified_questions_count: number;
+  pending_review_count: number;
+  overall_review_status: 'FULLY_VERIFIED' | 'PARTIALLY_VERIFIED' | 'PENDING_TEACHER_REVIEW';
+  // Legacy backward-compatibility fields
   score: number;
   max_score: number;
   percentage: number;
@@ -270,6 +998,9 @@ export interface FullDiagnosticReport {
   strong_topics: string[];
   overall_feedback_ar: string;
   overall_feedback_en: string;
+  analytics_synced?: boolean;
+  synced_at?: string;
+  recovered?: boolean;
 }
 
 function shuffleArray<T>(array: T[]): T[] {
@@ -286,6 +1017,89 @@ class AIRagEngine {
   private static chunksMemoryCache = new Map<string, { chunks: RetrievedChunk[]; timestamp: number }>();
   // In-memory cache for validated Question Bank items per chapter & grade (10 min TTL)
   private static bankMemoryCache = new Map<string, { questions: GroundedQuestion[]; timestamp: number }>();
+
+  // Plug-and-play blind solver override for isolated offline testing
+  private static blindSolverOverride: BlindSolverFunction | null = null;
+
+  public static setBlindSolverOverride(solver: BlindSolverFunction | null): void {
+    this.blindSolverOverride = solver;
+  }
+
+  public static clearMemoryCache(): void {
+    this.chunksMemoryCache.clear();
+    this.bankMemoryCache.clear();
+  }
+
+  /**
+   * Retrieves or constructs the bounded blind solver adapter.
+   * Wraps GeminiClient with strict per-attempt timeouts, budgets, schema checks, and fail-closed handling.
+   */
+  public getBlindSolver(): BlindSolverFunction {
+    if (AIRagEngine.blindSolverOverride) {
+      return AIRagEngine.blindSolverOverride;
+    }
+    const rawInvoker: RawSolverInvoker = async (input: BlindSolverInput, signal?: AbortSignal) => {
+      const optionsText = input.options.map(o => `(${o.id}) ${o.text}`).join('\n');
+      const prompt = `Solve this multiple-choice question using ONLY the provided passage and any attached visual figure.
+Do not assume any facts outside this passage and visual figure.
+
+Passage:
+${input.passage_text}
+
+Question:
+${input.question_text}
+
+Options:
+${optionsText}
+
+Return valid JSON with exact keys:
+{
+  "status": "SOLVED" | "INSUFFICIENT_EVIDENCE" | "AMBIGUOUS" | "UNSUPPORTED_PREMISE" | "REQUIRES_VISUAL",
+  "selected_option_id": "id of correct option if status is SOLVED",
+  "defensible_option_ids": ["ids of all options defensible from passage"],
+  "reasoning": "brief explanation",
+  "entailed_evidence_quote": "exact quote from the passage (min 15 chars)"
+}`;
+
+      const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [];
+      if (input.diagram_url && VisualAssetExtractor.isVisualAssetValid(input.diagram_url)) {
+        try {
+          const cleanDiagramUrl = input.diagram_url.split('?')[0];
+          const asset = VisualAssetExtractor.loadManifest().assets.find(a =>
+            a.url_path === cleanDiagramUrl ||
+            cleanDiagramUrl.includes(a.asset_id)
+          );
+          if (asset && fs.existsSync(asset.file_path)) {
+            const buf = fs.readFileSync(asset.file_path);
+            parts.push({
+              inline_data: {
+                mime_type: asset.mime_type,
+                data: buf.toString('base64')
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('[BlindSolver] Could not attach visual asset buffer:', e);
+        }
+      }
+      parts.push({ text: prompt });
+
+      const text = await GeminiClient.generateContent({
+        parts,
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        timeoutMs: 6000
+      });
+      const cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+      return JSON.parse(cleaned);
+    };
+
+    return createBoundedSolverAdapter(rawInvoker, {
+      maxAttempts: 2,
+      perAttemptTimeoutMs: 6000,
+      totalBudgetTimeoutMs: 14000
+    });
+  }
 
   /**
    * Strictly retrieve textbook chunks belonging ONLY to the student's stage, grade, subject, book, and chapter.
@@ -309,33 +1123,59 @@ class AIRagEngine {
       return shuffled.slice(0, limit);
     }
 
-    const res = await db.query(
-      `SELECT id, book_id, chapter_id, page_number, chunk_index, content, metadata, embedding
-       FROM book_chunks
-       WHERE academic_stage_id = $1 
-         AND grade_id = $2 
-         AND subject_id = $3 
-         AND book_id = $4 
-         AND chapter_id = $5
-       ORDER BY chunk_index ASC`,
-      [academicStageId, gradeId, subjectId, bookId, chapterId]
-    );
+    // Dedicated Revision Pathway vs Unit Retrieval Isolation (Phase 4G.3J)
+    // Book ID 81b8a308-7fcf-4938-8c45-aa0056624f32 (Prep 2 Social Studies)
+    const isPrep2Social = bookId === '81b8a308-7fcf-4938-8c45-aa0056624f32';
+    const isPrep2RevisionChapter = chapterId === 'PREP2_SOC_REVISION' || chapterId === '7f2409f5-19e4-4d89-9a2c-f684c31be991';
+
+    let res: any;
+    if (isPrep2Social && isPrep2RevisionChapter) {
+      // Dedicated general revision pathway: retrieves pages 97-106 without modifying live schema
+      res = await db.query(
+        `SELECT id, book_id, chapter_id, page_number, chunk_index, content, metadata, embedding
+         FROM book_chunks
+         WHERE book_id = $1 AND page_number BETWEEN 97 AND 106
+         ORDER BY chunk_index ASC`,
+        [bookId]
+      );
+    } else {
+      res = await db.query(
+        `SELECT id, book_id, chapter_id, page_number, chunk_index, content, metadata, embedding
+         FROM book_chunks
+         WHERE academic_stage_id = $1 
+           AND grade_id = $2 
+           AND subject_id = $3 
+           AND book_id = $4 
+           AND chapter_id = $5
+         ORDER BY chunk_index ASC`,
+        [academicStageId, gradeId, subjectId, bookId, chapterId]
+      );
+    }
 
     if (res.rows.length === 0) {
       return [];
     }
 
     // 1. Sanitize all chunks (stripping page numbers, headers, footers, labels, TOC, publisher boilerplate)
-    const sanitizedRows: RetrievedChunk[] = res.rows.map((row: any) => ({
-      id: row.id,
-      book_id: row.book_id,
-      chapter_id: row.chapter_id,
-      page_number: row.page_number,
-      chunk_index: row.chunk_index,
-      content: stripDocumentMetadataAndStructure(row.content),
-      metadata: row.metadata,
-      embedding: row.embedding
-    }));
+    // Prep 2 Social Studies Unit 4 (16d3a51f-5026-4445-9856-788c00aa1652) ends at page 96.
+    // Strictly filter out any chunks beyond page 96 to prevent revision leakage.
+    const sanitizedRows: RetrievedChunk[] = res.rows
+      .filter((row: any) => {
+        if (isPrep2Social && chapterId === '16d3a51f-5026-4445-9856-788c00aa1652' && row.page_number > 96) {
+          return false;
+        }
+        return true;
+      })
+      .map((row: any) => ({
+        id: row.id,
+        book_id: row.book_id,
+        chapter_id: row.chapter_id,
+        page_number: row.page_number,
+        chunk_index: row.chunk_index,
+        content: stripDocumentMetadataAndStructure(row.content),
+        metadata: row.metadata,
+        embedding: row.embedding
+      }));
 
     // Filter out boilerplate chunks (indexes, table of contents, copyright, committee info)
     const isBoilerplateChunk = (text: string): boolean => {
@@ -533,6 +1373,7 @@ class AIRagEngine {
          JOIN question_bank_options qo ON qi.id = qo.question_item_id
          JOIN book_chapters bc ON qi.chapter_id = bc.id
          WHERE qi.chapter_id = $1 AND bc.book_id = $2
+           AND (qi.is_quarantined = 0 OR qi.is_quarantined IS NULL)
          ORDER BY qi.id ASC`,
         [chapterId, bookId]
       );
@@ -589,7 +1430,66 @@ class AIRagEngine {
 
         const quality = evaluateQuestionQuality(groundedQ, candidateQuestions);
         if (quality.isValid) {
-          candidateQuestions.push(groundedQ);
+          const prov = await verifyQuestionProvenance(groundedQ, bookId);
+          if (prov.isVerified) {
+            const val = AnswerValidationService.validateQuestion(groundedQ);
+            if (val.answerKeyStatus !== 'REJECTED') {
+              // Objective 2: Enforce blind solver verification on bank questions
+              // Legacy items lacking blind solver verification against supporting chunks cannot enter approved exams
+              if (!groundedQ.chunk_id) {
+                console.warn(`[Bank Isolation] Skipping legacy bank question lacking supporting chunk_id: "${groundedQ.question_text}"`);
+                continue;
+              }
+
+              const chunkRes = await db.query(
+                `SELECT content FROM book_chunks WHERE id = $1`,
+                [groundedQ.chunk_id]
+              );
+
+              if (chunkRes.rows.length === 0 || !chunkRes.rows[0].content || chunkRes.rows[0].content.trim().length < 20) {
+                console.warn(`[Bank Isolation] Skipping legacy bank question with missing or empty supporting chunk: "${groundedQ.question_text}"`);
+                continue;
+              }
+
+              const correctOpt = groundedQ.options.find(o => o.is_correct);
+              if (!correctOpt) {
+                console.warn(`[Bank Isolation] Skipping legacy bank question without identified correct option: "${groundedQ.question_text}"`);
+                continue;
+              }
+
+              const candidatePayload: CandidateQuestionPayload = {
+                id: groundedQ.id,
+                question_text: groundedQ.question_text,
+                options: groundedQ.options.map(o => ({ id: o.id, text: o.text })),
+                proposed_correct_option_id: correctOpt.id,
+                evidence: {
+                  book_id: bookId,
+                  chapter_id: chapterId,
+                  page_number: groundedQ.page_reference || 1,
+                  chunk_id: groundedQ.chunk_id,
+                  passage_text: chunkRes.rows[0].content
+                },
+                diagram_url: groundedQ.diagram_url,
+                diagram_asset_id: groundedQ.diagram_asset_id,
+                has_visual_dependency: groundedQ.has_visual_dependency
+              };
+
+              const solver = this.getBlindSolver();
+              const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
+
+              if (!verification.is_verified) {
+                console.warn(`[Bank Isolation] Skipping legacy unverified bank question failing blind solver: "${groundedQ.question_text}" [${verification.rejection_code}] (${verification.rejection_reason})`);
+                continue;
+              }
+
+              groundedQ.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
+              candidateQuestions.push(groundedQ);
+            } else {
+              console.warn(`[Bank Cache Filter] Skipping bank question with rejected answer key: "${groundedQ.question_text}" (${val.reason})`);
+            }
+          } else {
+            console.warn(`[Bank Cache Filter] Skipping unverified bank question: "${groundedQ.question_text}" (${prov.reason})`);
+          }
         }
       }
 
@@ -650,7 +1550,8 @@ class AIRagEngine {
 
       for (const q of questions) {
         const quality = evaluateQuestionQuality(q);
-        if (!quality.isValid) {
+        if (!quality.isValid || q.validation_status?.reason !== 'VERIFIED_BY_BLIND_SOLVER') {
+          // Do not persist unverified questions into the question bank
           continue;
         }
 
@@ -761,84 +1662,8 @@ class AIRagEngine {
     });
 
     if (chunks.length === 0) {
-      try {
-        let chInfo = await db.query(
-          `SELECT c.title_ar as ch_title, c.title_en as ch_title_en, c.start_page, c.end_page, b.title_ar as b_title, b.title_en as b_title_en
-           FROM book_chapters c
-           JOIN books b ON c.book_id = b.id
-           WHERE c.id = $1`,
-          [params.chapterId]
-        );
-        if (chInfo.rows.length === 0) {
-          chInfo = await db.query(
-            `SELECT title_ar as ch_title, title_en as ch_title_en, start_page, end_page FROM book_chapters WHERE id = $1`,
-            [params.chapterId]
-          );
-        }
-        const row = chInfo.rows[0];
-        const chTitle = row?.ch_title || 'موضوع الدرس التعليمي';
-        const chTitleEn = row?.ch_title_en || chTitle;
-        const bTitle = row?.b_title || book?.title_ar || 'المقرر الدراسي';
-        const sPage = Number(row?.start_page) || 1;
-        const ePage = Number(row?.end_page) || (sPage + 15);
-        const isEnAnchor = this.detectLanguage([], book) === 'en';
-        const stageInfoEn = book?.grade_name_en || book?.stage_name_en || 'Preparatory Stage';
-
-        // Distribute chunks across the actual unit page range
-        chunks = [
-          {
-            id: `anchor-${params.chapterId}-1`,
-            book_id: params.bookId,
-            chapter_id: params.chapterId,
-            page_number: sPage,
-            chunk_index: 1,
-            content: isEnAnchor
-              ? `Educational curriculum topics, core definitions, standard concepts, and practical exercises for ${chTitleEn} in ${bTitle} (${stageInfoEn}).`
-              : `المفاهيم والأسس التعليمية، والتعريفات المقررة، والقوانين، والتدريبات والتطبيقات الأساسية في موضوع ${chTitle} من كتاب ${bTitle}.`,
-            metadata: '{}',
-            similarity: 1.0
-          },
-          {
-            id: `anchor-${params.chapterId}-2`,
-            book_id: params.bookId,
-            chapter_id: params.chapterId,
-            page_number: Math.floor(sPage + (ePage - sPage) * 0.5),
-            chunk_index: 2,
-            content: isEnAnchor
-              ? `Key terminology, operational definitions, exercises, and examples for ${chTitleEn} in ${bTitle} (${stageInfoEn}).`
-              : `المفاهيم التطبيقية والأمثلة ونواتج التعلم المستهدفة في موضوع ${chTitle} من كتاب ${bTitle}.`,
-            metadata: '{}',
-            similarity: 1.0
-          },
-          {
-            id: `anchor-${params.chapterId}-3`,
-            book_id: params.bookId,
-            chapter_id: params.chapterId,
-            page_number: ePage,
-            chunk_index: 3,
-            content: isEnAnchor
-              ? `Advanced questions, mastery checks, and problem solving for ${chTitleEn} in ${bTitle} (${stageInfoEn}).`
-              : `المراجعة التراكمية، والتطبيقات المتقدمة، وأسئلة التقييم على موضوع ${chTitle} من كتاب ${bTitle}.`,
-            metadata: '{}',
-            similarity: 1.0
-          }
-        ];
-      } catch (e) {
-        console.warn('Anchor chunk fallback failed:', e);
-      }
-    }
-
-    if (chunks.length === 0) {
-      chunks = [{
-        id: `anchor-${params.chapterId}`,
-        book_id: params.bookId,
-        chapter_id: params.chapterId,
-        page_number: Math.floor(1 + Math.random() * 20),
-        chunk_index: 1,
-        content: `المفاهيم التعليمية الأساسية، ونواتج التعلم، والتعريفات المقررة في المنهج الدراسي للصف الثالث الإعدادي.`,
-        metadata: '{}',
-        similarity: 1.0
-      }];
+      console.warn(`[AIRagEngine] No verified textbook chunks found for book ${params.bookId}, chapter ${params.chapterId}`);
+      throw new Error('لا توجد مقتطفات تعليمية معتمدة من كتاب الوزارة لهذه الوحدة بعد. يرجى التأكد من استخراج محتوى الكتاب أولاً.');
     }
 
     // Extract vocabulary for relevance verification
@@ -912,59 +1737,67 @@ class AIRagEngine {
           }
         );
         if (rawAiQuestions && rawAiQuestions.length > 0) {
+          const solver = this.getBlindSolver();
           for (const q of rawAiQuestions) {
             if (isSeenByStudent(q)) {
               console.log(`🔄 Skipping question already completed by student: "${q.question_text.slice(0, 40)}"`);
               continue;
             }
+            // Step 1: Quality filter (lexical / structural check)
             const score = evaluateQuestionQuality(q, validQuestions, contextWords);
-            if (score.isValid) {
-              validQuestions.push(q);
-            } else {
-              console.warn(`⚠️ Rejected question: ${score.reason} (Question: "${q.question_text.slice(0, 50)}")`);
+            if (!score.isValid) {
+              console.warn(`⚠️ Rejected question failing quality: ${score.reason} (Question: "${q.question_text.slice(0, 50)}")`);
+              continue;
             }
+
+            // Step 2: Provenance filter (check chunk and page exist in authoritative book)
+            const prov = await verifyQuestionProvenance(q, params.bookId);
+            if (!prov.isVerified) {
+              console.warn(`⚠️ Rejected question failing strict provenance: ${prov.reason} (Question: "${q.question_text.slice(0, 50)}")`);
+              continue;
+            }
+
+            // Step 3: Independent Blind Solver Verification (Grounding & Entailment)
+            const correctOpt = q.options.find(o => o.is_correct);
+            const candidatePayload: CandidateQuestionPayload = {
+              id: q.id,
+              question_text: q.question_text,
+              options: q.options.map(o => ({ id: o.id, text: o.text })),
+              proposed_correct_option_id: correctOpt?.id || '',
+              evidence: {
+                book_id: q.book_id || params.bookId,
+                chapter_id: q.chapter_id || params.chapterId,
+                page_number: q.page_reference || 1,
+                chunk_id: q.chunk_id || '',
+                passage_text: q.chunk_text || chunks.find((c: any) => c.id === q.chunk_id || c.id === (q as any).source_chunk_id)?.content || ''
+              },
+              diagram_url: q.diagram_url,
+              diagram_asset_id: q.diagram_asset_id,
+              has_visual_dependency: q.has_visual_dependency
+            };
+
+            const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
+            if (!verification.is_verified) {
+              console.warn(`⚠️ Rejected question failing blind solver verification: [${verification.rejection_code}] ${verification.rejection_reason} (Question: "${q.question_text.slice(0, 50)}")`);
+              continue;
+            }
+
+            q.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
+            validQuestions.push(q);
             if (validQuestions.length >= requiredCount) break;
           }
         }
       } catch (err: any) {
-        console.warn('⚠️ Gemini call note, proceeding to teacher fallback:', err.message || err);
+        console.warn('⚠️ Gemini generation error:', err.message || err);
       }
     }
 
-    // 4. If more questions needed, generate authentic middle-school teacher fallback questions strictly for this subject
+    // 4. Fail-closed: If verified questions cannot satisfy the required count, never fabricate or substitute generic questions
     if (validQuestions.length < requiredCount) {
-      const needed = requiredCount - validQuestions.length;
-      const fallbackList = this.generateGroundedFallbackQuestions(chunks, needed + 5, params.bookId, params.chapterId, detectedLanguage, subjectCode, subjectNameAr || subjectNameEn);
-      for (const fbQ of fallbackList) {
-        if (isSeenByStudent(fbQ)) {
-          console.log(`🔄 Skipping fallback question already completed by student: "${fbQ.question_text.slice(0, 40)}"`);
-          continue;
-        }
-        const score = evaluateQuestionQuality(fbQ, validQuestions, contextWords);
-        if (score.isValid) {
-          validQuestions.push(fbQ);
-        }
-        if (validQuestions.length >= requiredCount) break;
-      }
-    }
-
-    // Absolute Safety Net: Guarantee requiredCount is satisfied with grounded curriculum questions (Zero 422 errors)
-    if (validQuestions.length < requiredCount) {
-      const needed = requiredCount - validQuestions.length;
-      const safeFallbacks = this.generateGroundedFallbackQuestions(chunks, needed + 10, params.bookId, params.chapterId, detectedLanguage, subjectCode, subjectNameAr || subjectNameEn);
-      for (const sf of safeFallbacks) {
-        if (!validQuestions.some(v => v.question_text === sf.question_text)) {
-          validQuestions.push(sf);
-        }
-        if (validQuestions.length >= requiredCount) break;
-      }
+      throw new Error(`EXAM_GENERATION_FAILED: Insufficient verified educational questions could be generated from the selected textbook content (requested ${requiredCount}, obtained ${validQuestions.length})`);
     }
 
     const finalQuestions = validQuestions.slice(0, requiredCount);
-
-    if (finalQuestions.length === 0) {
-      throw new Error('Insufficient educational content for assessment generation.');
-    }
 
     // 5. Cache validated questions in TiDB and in-memory cache for instant 0$ reuse
     try {
@@ -1129,792 +1962,123 @@ ${contextText}
   }
 ]`;
 
-    const candidateModels = [
-      process.env.GEMINI_MODEL,
-      'gemini-3.8-flash',
-      'gemini-3.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-flash-latest'
-    ].filter(Boolean) as string[];
+    try {
+      let rawText = await GeminiClient.generateContent({
+        prompt,
+        responseMimeType: 'application/json',
+        temperature: 0.2
+      });
 
-    for (const model of candidateModels) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s reliable timeout for high-quality generation
+      if (rawText) {
+        if (rawText.includes('Insufficient educational content for assessment generation.')) {
+          throw new Error('Insufficient educational content for assessment generation.');
+        }
 
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            signal: controller.signal,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: {
-                temperature: 0.2,
-                topP: 0.8,
-                maxOutputTokens: 2048,
-                responseMimeType: 'application/json'
+        rawText = rawText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        const jsonStart = rawText.indexOf('[');
+        const jsonEnd = rawText.lastIndexOf(']');
+        if (jsonStart !== -1 && jsonEnd !== -1) {
+          rawText = rawText.substring(jsonStart, jsonEnd + 1);
+        }
+
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(rawText);
+        } catch (pErr) {
+          try {
+            const repaired = rawText.trim().replace(/,\s*$/, '') + ']';
+            parsed = JSON.parse(repaired);
+          } catch (pErr2) {
+            const objMatches = rawText.match(/\{[\s\S]*?"question_text"[\s\S]*?\}/g);
+            if (objMatches && objMatches.length > 0) {
+              parsed = [];
+              for (const objStr of objMatches) {
+                try { parsed.push(JSON.parse(objStr)); } catch (e) {}
               }
-            })
-          }
-        ).finally(() => clearTimeout(timeoutId));
-
-        if (res.ok) {
-          const data = await res.json();
-          let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (rawText) {
-            if (rawText.includes('Insufficient educational content for assessment generation.')) {
-              throw new Error('Insufficient educational content for assessment generation.');
-            }
-
-            rawText = rawText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-            const jsonStart = rawText.indexOf('[');
-            const jsonEnd = rawText.lastIndexOf(']');
-            if (jsonStart !== -1 && jsonEnd !== -1) {
-              rawText = rawText.substring(jsonStart, jsonEnd + 1);
-            }
-
-            let parsed: any = null;
-            try {
-              parsed = JSON.parse(rawText);
-            } catch (pErr) {
-              try {
-                const repaired = rawText.trim().replace(/,\s*$/, '') + ']';
-                parsed = JSON.parse(repaired);
-              } catch (pErr2) {
-                const objMatches = rawText.match(/\{[\s\S]*?"question_text"[\s\S]*?\}/g);
-                if (objMatches && objMatches.length > 0) {
-                  parsed = [];
-                  for (const objStr of objMatches) {
-                    try { parsed.push(JSON.parse(objStr)); } catch (e) {}
-                  }
-                }
-              }
-            }
-
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              return parsed.map((q: any, qIdx: number) => {
-                const assignedChunk = chunks[qIdx % chunks.length] || chunks[0];
-                const sanitizedQText = String(q.question_text || '').replace(/صفحة\s*\d+/g, '').replace(/\bpage\s*\d+/gi, '').trim();
-                const optionsList: { id: string; text: string; is_correct: boolean }[] = shuffleArray<{ id: string; text: string; is_correct: boolean }>(
-                  (Array.isArray(q.options) ? q.options : []).map((opt: any) => ({
-                    id: uuidv4(),
-                    text: String(opt?.text || '').trim(),
-                    is_correct: !!opt?.is_correct
-                  }))
-                );
-
-                const resultQ: GroundedQuestion = {
-                  id: uuidv4(),
-                  chunk_id: assignedChunk?.id || '',
-                  book_id: bookId,
-                  chapter_id: chapterId,
-                  question_text: sanitizedQText,
-                  options: optionsList,
-                  difficulty: q.difficulty || 'MEDIUM',
-                  bloom_level: (q.bloom_level || 'UNDERSTANDING').toUpperCase(),
-                  page_reference: (assignedChunk?.page_number && assignedChunk.page_number > 1)
-                    ? assignedChunk.page_number
-                    : Math.floor((Number(chunks[0]?.page_number) || 1) + Math.random() * Math.max(1, (Number(chunks[chunks.length - 1]?.page_number) || 20) - (Number(chunks[0]?.page_number) || 1) + 1)),
-                  source_excerpt: assignedChunk?.content?.slice(0, 150) || '',
-                  explanation: q.explanation || '',
-                  chunk_text: assignedChunk?.content || '',
-                  similarity_score: Number((assignedChunk?.similarity ?? 1.0).toFixed(4)),
-                };
-                resultQ.validation_status = validateEducationalQuestion(resultQ);
-                return resultQ;
-              });
             }
           }
         }
-      } catch (mErr: any) {
-        if (mErr.message === 'Insufficient educational content for assessment generation.') {
-          throw mErr;
+
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const generatedList = parsed.map((q: any) => {
+            const qWords = String(q.question_text || '').toLowerCase().split(/[^\w\u0600-\u06FF]+/).filter(w => w.length > 3);
+            const correctOpt = (Array.isArray(q.options) ? q.options : []).find((o: any) => o.is_correct)?.text?.toLowerCase() || '';
+
+            let bestChunk: RetrievedChunk | null = null;
+            let bestScore = 0;
+            for (const chunk of chunks) {
+              const cLower = (chunk.content || '').toLowerCase();
+              let score = 0;
+              for (const w of qWords) {
+                if (cLower.includes(w)) score += 2;
+              }
+              if (correctOpt && cLower.includes(correctOpt)) {
+                score += 5;
+              }
+              if (score > bestScore) {
+                bestScore = score;
+                bestChunk = chunk;
+              }
+            }
+
+            if (!bestChunk || bestScore <= 0) {
+              // Reject: Question has no grounding in any of the retrieved textbook chunks
+              return null;
+            }
+
+            const assignedChunk = bestChunk;
+            const sanitizedQText = String(q.question_text || '').replace(/صفحة\s*\d+/g, '').replace(/\bpage\s*\d+/gi, '').trim();
+            const optionsList: { id: string; text: string; is_correct: boolean }[] = shuffleArray<{ id: string; text: string; is_correct: boolean }>(
+              (Array.isArray(q.options) ? q.options : []).map((opt: any) => ({
+                id: uuidv4(),
+                text: String(opt?.text || '').trim(),
+                is_correct: !!opt?.is_correct
+              }))
+            );
+
+            // Multimodal Asset Binding: lookup verified visual assets for page or chapter
+            const isGeom = DISQUALIFIED_GEOMETRY_CHAPTER_IDS.has(chapterId);
+            const hasVisualMarker = VISUAL_INDICATOR_REGEX.test(sanitizedQText) || VISUAL_INDICATOR_REGEX.test(assignedChunk.content || '');
+            const pageAssets = VisualAssetExtractor.getAssetsForPage(bookId, assignedChunk.page_number || 1);
+            const chapterAssets = VisualAssetExtractor.getAssetsForChapter(bookId, chapterId);
+            const verifiedAsset = pageAssets.find(a => a.asset_type === 'diagram') ||
+                                  pageAssets[0] ||
+                                  (isGeom || hasVisualMarker ? chapterAssets[0] : undefined);
+
+            const resultQ: GroundedQuestion = {
+              id: uuidv4(),
+              chunk_id: assignedChunk.id,
+              book_id: bookId,
+              chapter_id: chapterId,
+              question_text: sanitizedQText,
+              options: optionsList,
+              difficulty: q.difficulty || 'MEDIUM',
+              bloom_level: (q.bloom_level || 'UNDERSTANDING').toUpperCase(),
+              page_reference: assignedChunk.page_number || 1,
+              source_excerpt: assignedChunk.content?.slice(0, 150) || '',
+              explanation: q.explanation || '',
+              chunk_text: assignedChunk.content || '',
+              similarity_score: Number((assignedChunk.similarity ?? 1.0).toFixed(4)),
+              diagram_url: verifiedAsset ? VisualAssetExtractor.getAssetApiUrl(verifiedAsset) : (q.diagram_url || undefined),
+              diagram_asset_id: verifiedAsset ? verifiedAsset.asset_id : (q.diagram_asset_id || undefined),
+              has_visual_dependency: Boolean(verifiedAsset || q.has_visual_dependency || hasVisualMarker || isGeom)
+            };
+            resultQ.validation_status = validateEducationalQuestion(resultQ);
+            return resultQ;
+          }).filter((q): q is GroundedQuestion => q !== null);
+
+          return generatedList.length > 0 ? generatedList : null;
         }
-        console.warn(`Attempt with model ${model} failed, trying next:`, mErr);
       }
+    } catch (mErr: any) {
+      if (mErr.message === 'Insufficient educational content for assessment generation.') {
+        throw mErr;
+      }
+      console.warn('GeminiClient generation warning:', mErr);
     }
     return null;
   }
 
-  /**
-   * Authentic, teacher-written Middle School (Prep 3) fallback questions.
-   * Strict adherence to Teacher Quality Rules:
-   * - Real ministerial exam phrasing
-   * - Concise options (< 8 words)
-   * - 1-2 sentence direct explanations
-   * - 0% metadata, 0% AI boilerplate
-   */
-  private generateGroundedFallbackQuestions(
-    chunks: RetrievedChunk[],
-    count: number = 3,
-    bookId: string = '',
-    chapterId: string = '',
-    language: 'ar' | 'en' = 'ar',
-    subjectCode: string = '',
-    subjectName: string = ''
-  ): GroundedQuestion[] {
-    const questions: GroundedQuestion[] = [];
-    const isEn = language === 'en';
-    const sCode = (subjectCode || '').toUpperCase();
-    const sName = (subjectName || '').toLowerCase();
-
-    const isScience = sCode === 'SCIENCE' || sName.includes('علوم') || sName.includes('science');
-    const isMath = sCode === 'MATH' || sName.includes('رياض') || sName.includes('math');
-    const isArabic = sCode === 'ARABIC' || sName.includes('عرب') || sName.includes('arabic');
-    const isSocial = sCode === 'SOCIAL_STUDIES' || sCode === 'SOCIAL' || sName.includes('دراسات') || sName.includes('social');
-    const isEnglish = sCode === 'ENGLISH' || sName.includes('إنجليز') || sName.includes('انجليز') || sName.includes('english');
-
-    let pool: Array<{
-      q: string;
-      options: Array<{ text: string; is_correct: boolean }>;
-      diff: 'EASY' | 'MEDIUM' | 'HARD';
-      bloom: string;
-      excerpt: string;
-      exp: string;
-    }> = [];
-
-    if (isScience) {
-      if (isEn) {
-        pool = [
-          {
-            q: "What is the standard measurement unit of density in the SI system?",
-            options: [
-              { text: "g/cm³ (or kg/m³)", is_correct: true },
-              { text: "m/s", is_correct: false },
-              { text: "Newton", is_correct: false },
-              { text: "Joule", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "Density is defined as mass per unit volume: D = M / V.",
-            exp: "Density equals mass divided by volume, measured in g/cm³."
-          },
-          {
-            q: "Calculate the density of an object with mass M = 40 g and volume V = 10 cm³ using D = M / V:",
-            options: [
-              { text: "4 g/cm³", is_correct: true },
-              { text: "0.25 g/cm³", is_correct: false },
-              { text: "400 g/cm³", is_correct: false },
-              { text: "30 g/cm³", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "APPLICATION",
-            excerpt: "Using formula D = M / V: 40 / 10 = 4 g/cm³.",
-            exp: "Density D = 40 / 10 = 4 g/cm³."
-          },
-          {
-            q: "Which subatomic particles carry a negative electric charge and orbit the nucleus?",
-            options: [
-              { text: "Electrons (e⁻)", is_correct: true },
-              { text: "Protons (p⁺)", is_correct: false },
-              { text: "Neutrons (n⁰)", is_correct: false },
-              { text: "Alpha particles", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "Electrons carry negative charge and revolve around the atomic nucleus.",
-            exp: "Electrons are negatively charged particles revolving around the nucleus."
-          },
-          {
-            q: "What is the chemical formula of a water molecule?",
-            options: [
-              { text: "H₂O", is_correct: true },
-              { text: "CO₂", is_correct: false },
-              { text: "NaCl", is_correct: false },
-              { text: "CaCO₃", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "Water is composed of two hydrogen atoms and one oxygen atom: H₂O.",
-            exp: "A water molecule consists of 2 Hydrogen atoms and 1 Oxygen atom (H₂O)."
-          },
-          {
-            q: "What is the correct physical formula for calculating velocity or speed (v)?",
-            options: [
-              { text: "v = d / t (Distance / Time)", is_correct: true },
-              { text: "v = d × t", is_correct: false },
-              { text: "v = t / d", is_correct: false },
-              { text: "v = m × a", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "Speed is the rate of distance covered per unit of time: v = d / t.",
-            exp: "Speed equals distance divided by time (v = d / t)."
-          },
-          {
-            q: "What is the mathematical equation for kinetic energy (KE)?",
-            options: [
-              { text: "KE = ½ m v²", is_correct: true },
-              { text: "KE = m × g × h", is_correct: false },
-              { text: "KE = F × d", is_correct: false },
-              { text: "KE = m / v", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "UNDERSTANDING",
-            excerpt: "Kinetic energy is directly proportional to mass and square of speed: KE = ½mv².",
-            exp: "Kinetic energy is given by KE = ½ m v²."
-          },
-          {
-            q: "Which property characterizes ferromagnetic materials like iron and nickel?",
-            options: [
-              { text: "They are strongly attracted to magnets", is_correct: true },
-              { text: "They float on water", is_correct: false },
-              { text: "They do not conduct electricity", is_correct: false },
-              { text: "They have zero density", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "Magnetic materials such as soft iron and nickel are attracted by magnets.",
-            exp: "Iron and nickel are magnetic materials attracted by magnetic fields."
-          },
-          {
-            q: "Why does a piece of cork float on water while an iron nail sinks?",
-            options: [
-              { text: "Cork density is lower than water density", is_correct: true },
-              { text: "Cork mass is greater than iron mass", is_correct: false },
-              { text: "Iron volume is greater than cork volume", is_correct: false },
-              { text: "Water repels cork chemically", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "UNDERSTANDING",
-            excerpt: "Substances with density less than water float, while denser substances sink.",
-            exp: "Cork floats because its density is less than the density of water (1 g/cm³)."
-          }
-        ];
-      } else {
-        pool = [
-          {
-            q: "ما وحدة قياس الكثافة في النظام الدولي للوحدات؟",
-            options: [
-              { text: "جم / سم³ (أو كجم / م³)", is_correct: true },
-              { text: "متر / ثانية", is_correct: false },
-              { text: "نيوتن", is_correct: false },
-              { text: "جول", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "الكثافة هي كتلة وحدة الحجوم من المادة: ث = ك / ح.",
-            exp: "وحدة قياس الكثافة هي جرام لكل سنتيمتر مكعب (جم/سم³)."
-          },
-          {
-            q: "احسب كثافة جسم كتلته ك = 60 جم وحجمه ح = 30 سم³ مستخدماً العلاقة (ث = ك / ح):",
-            options: [
-              { text: "2 جم / سم³", is_correct: true },
-              { text: "0.5 جم / سم³", is_correct: false },
-              { text: "1800 جم / سم³", is_correct: false },
-              { text: "30 جم / سم³", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "APPLICATION",
-            excerpt: "بالتعويض في قانون الكثافة: 60 / 30 = 2 جم/سم³.",
-            exp: "الكثافة = الكتلة ÷ الحجم = 60 ÷ 30 = 2 جم/سم³."
-          },
-          {
-            q: "ما الجسيمات سالبة الشحنة التي تدور حول نواة الذرة بسرعات فائقة؟",
-            options: [
-              { text: "الإلكترونات (e⁻)", is_correct: true },
-              { text: "البروتونات (p⁺)", is_correct: false },
-              { text: "النيوترونات (n⁰)", is_correct: false },
-              { text: "الفوتونات", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "تدور الإلكترونات سالبة الشحنة حول نواة الذرة في مستويات الطاقة.",
-            exp: "الإلكترونات جسيمات سالبة الشحنة تدور حول النواة."
-          },
-          {
-            q: "ما الصيغة الكيميائية لمركب كلوريد الصوديوم (ملح الطعام)؟",
-            options: [
-              { text: "NaCl", is_correct: true },
-              { text: "H₂O", is_correct: false },
-              { text: "CO₂", is_correct: false },
-              { text: "CaCO₃", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "يتكون ملح الطعام من ذرة صوديوم وذرة كلور بالصيغة NaCl.",
-            exp: "الصيغة الكيميائية لملح الطعام هي NaCl."
-          },
-          {
-            q: "ما العلاقة الرياضية الصحيحة لحساب طاقة الحركة (طح)؟",
-            options: [
-              { text: "طح = ½ × الكتلة × (السرعة)²", is_correct: true },
-              { text: "طح = الوزن × الارتفاع", is_correct: false },
-              { text: "طح = القوة × المسافة", is_correct: false },
-              { text: "طح = الكتلة × العجلة", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "UNDERSTANDING",
-            excerpt: "طاقة الحركة = نصف الكتلة مضروباً في مربع السرعة.",
-            exp: "قانون طاقة الحركة: طح = ½ ك ع²."
-          },
-          {
-            q: "علل: تطفو قطعة من الخشب على سطح الماء بينما يغوص مسمار الحديد؟",
-            options: [
-              { text: "لأن كثافة الخشب أقل من كثافة الماء", is_correct: true },
-              { text: "لأن كتلة الخشب أكبر من كتلة الحديد", is_correct: false },
-              { text: "لأن حجم المسمار أكبر من حجم الخشب", is_correct: false },
-              { text: "لأن الماء يتفاعل كيميائياً مع الحديد", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "UNDERSTANDING",
-            excerpt: "المواد ذات الكثافة الأقل من الماء تطفو، وذات الكثافة الأكبر تغوص.",
-            exp: "يطفو الخشب لأن كثافته أقل من كثافة الماء (1 جم/سم³)."
-          },
-          {
-            q: "في أي حالات المادة تكون المسافات البينية بين الجزيئات أكبر ما يمكن وقوى التماسك شبه منعدمة؟",
-            options: [
-              { text: "الحالة الغازية", is_correct: true },
-              { text: "الحالة الصلبة", is_correct: false },
-              { text: "الحالة السائلة", is_correct: false },
-              { text: "الحالة المتبلورة", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "المسافات البينية في الحالة الغازية تكون كبيرة جداً وقوى التماسك تكاد تنعدم.",
-            exp: "جزيئات الغاز حرة تماماً ومسافاتها البينية كبيرة جداً."
-          }
-        ];
-      }
-    } else if (isMath) {
-      if (isEn) {
-        pool = [
-          {
-            q: "What is the value of x in the linear algebraic equation: 2x + 6 = 18?",
-            options: [
-              { text: "x = 6", is_correct: true },
-              { text: "x = 12", is_correct: false },
-              { text: "x = 3", is_correct: false },
-              { text: "x = 8", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "APPLICATION",
-            excerpt: "Solving 2x + 6 = 18: 2x = 12, so x = 6.",
-            exp: "Subtract 6 from both sides: 2x = 12, divide by 2: x = 6."
-          },
-          {
-            q: "Under which mathematical condition does (a / b) express a rational number in Q?",
-            options: [
-              { text: "Denominator b ≠ 0", is_correct: true },
-              { text: "Numerator a = 0", is_correct: false },
-              { text: "Denominator b = 0", is_correct: false },
-              { text: "a must equal b", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "A rational number a/b requires a non-zero denominator b ≠ 0.",
-            exp: "Division by zero is undefined, so denominator b must not equal 0."
-          },
-          {
-            q: "What is the additive inverse of the rational number (-3/7)?",
-            options: [
-              { text: "3/7", is_correct: true },
-              { text: "-7/3", is_correct: false },
-              { text: "7/3", is_correct: false },
-              { text: "0", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "The additive inverse of a rational number -a/b is a/b.",
-            exp: "The additive inverse has opposite sign: -(-3/7) = 3/7."
-          },
-          {
-            q: "What is the multiplicative inverse (reciprocal) of (4/9)?",
-            options: [
-              { text: "9/4", is_correct: true },
-              { text: "-4/9", is_correct: false },
-              { text: "-9/4", is_correct: false },
-              { text: "1", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "The reciprocal of a fraction a/b is b/a.",
-            exp: "Multiplying (4/9) by (9/4) equals the multiplicative identity 1."
-          },
-          {
-            q: "Calculate the slope m of a line passing through (1, 2) and (3, 8) using m = (y₂ - y₁) / (x₂ - x₁):",
-            options: [
-              { text: "3", is_correct: true },
-              { text: "2", is_correct: false },
-              { text: "4", is_correct: false },
-              { text: "-3", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "APPLICATION",
-            excerpt: "Slope m = (8 - 2) / (3 - 1) = 6 / 2 = 3.",
-            exp: "m = (8 - 2) / (3 - 1) = 6 / 2 = 3."
-          },
-          {
-            q: "What is the sum of the interior angle measures of any triangle?",
-            options: [
-              { text: "180°", is_correct: true },
-              { text: "360°", is_correct: false },
-              { text: "90°", is_correct: false },
-              { text: "270°", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "The sum of interior angles of any triangle is 180°.",
-            exp: "In geometry, the sum of internal angles of a triangle is always 180°."
-          },
-          {
-            q: "Simplify the algebraic expression: 3x + 5y - x + 2y:",
-            options: [
-              { text: "2x + 7y", is_correct: true },
-              { text: "4x + 7y", is_correct: false },
-              { text: "2x + 3y", is_correct: false },
-              { text: "9xy", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "APPLICATION",
-            excerpt: "Combining like terms: (3x - x) + (5y + 2y) = 2x + 7y.",
-            exp: "Combine like terms: (3x - 1x) = 2x, and (5y + 2y) = 7y."
-          }
-        ];
-      } else {
-        pool = [
-          {
-            q: "أوجد قيمة س في المعادلة الجبرية الخطية: 2س + 6 = 18",
-            options: [
-              { text: "س = 6", is_correct: true },
-              { text: "س = 12", is_correct: false },
-              { text: "س = 3", is_correct: false },
-              { text: "س = 8", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "APPLICATION",
-            excerpt: "بحل المعادلة: 2س = 18 - 6 = 12، إذن س = 6.",
-            exp: "بطرح 6 من الطرفين: 2س = 12، ثم بالقسمة على 2: س = 6."
-          },
-          {
-            q: "الشرط اللازم لكي يعبر المقدار (أ / ب) عن عدد نسبي ن هو:",
-            options: [
-              { text: "المقام ب ≠ 0", is_correct: true },
-              { text: "البسط أ = 0", is_correct: false },
-              { text: "المقام ب = 0", is_correct: false },
-              { text: "أ يجب أن يساوي ب", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "العدد النسبي يتطلب ألا يكون مقامه مساوياً للصفر.",
-            exp: "القسمة على صفر غير معرفة، لذلك يشترط أن يكون المقام ب ≠ 0."
-          },
-          {
-            q: "ما المعكوس الجمعي للعدد النسبي (-3/7)؟",
-            options: [
-              { text: "3/7", is_correct: true },
-              { text: "-7/3", is_correct: false },
-              { text: "7/3", is_correct: false },
-              { text: "صفر", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "المعكوس الجمعي للعدد -أ هو أ.",
-            exp: "المعكوس الجمعي يغير إشارة العدد: -(-3/7) = 3/7."
-          },
-          {
-            q: "ما المعكوس الضربي للعدد النسبي (4/9)؟",
-            options: [
-              { text: "9/4", is_correct: true },
-              { text: "-4/9", is_correct: false },
-              { text: "-9/4", is_correct: false },
-              { text: "1", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "المعكوس الضربي للكسر أ/ب هو ب/أ.",
-            exp: "مقلوب الكسر 4/9 هو 9/4 وحاصل ضربهما يساوي المحايد الضربي 1."
-          },
-          {
-            q: "احسب ميل الخط المستقيم المار بالنقطتين (1 ، 2) و (3 ، 8) باستخدام القانون م = (ص₂ - ص₁) / (س₂ - س₁):",
-            options: [
-              { text: "3", is_correct: true },
-              { text: "2", is_correct: false },
-              { text: "4", is_correct: false },
-              { text: "-3", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "APPLICATION",
-            excerpt: "م = (8 - 2) / (3 - 1) = 6 / 2 = 3.",
-            exp: "فرق الصادات على فرق السينات = 6 ÷ 2 = 3."
-          },
-          {
-            q: "مجموع قياسات الزوايا الداخلية لأي مثلث في الهندسة المستوية يساوي دائماً:",
-            options: [
-              { text: "180°", is_correct: true },
-              { text: "360°", is_correct: false },
-              { text: "90°", is_correct: false },
-              { text: "270°", is_correct: false }
-            ],
-            diff: "EASY",
-            bloom: "KNOWLEDGE",
-            excerpt: "مجموع قياسات زوايا المثلث الداخلية 180°.",
-            exp: "القاعدة الهندسية الثابتة: مجموع زوايا المثلث الداخلية 180 درجة."
-          },
-          {
-            q: "اختصر المقدار الجبري الآتي لأبسط صورة: 3س + 5ص - س + 2ص:",
-            options: [
-              { text: "2س + 7ص", is_correct: true },
-              { text: "4س + 7ص", is_correct: false },
-              { text: "2س + 3ص", is_correct: false },
-              { text: "9س ص", is_correct: false }
-            ],
-            diff: "MEDIUM",
-            bloom: "APPLICATION",
-            excerpt: "تجميع الحدود المتشابهة: (3س - س) + (5ص + 2ص) = 2س + 7ص.",
-            exp: "جمع الحدود المتشابهة: 3س - س = 2س، و 5ص + 2ص = 7ص."
-          }
-        ];
-      }
-    } else if (isArabic) {
-      pool = [
-        {
-          q: "أعرب الكلمة المحددة إعراباً صحيحاً: «يَجْتَهِدُ الطَّالِبُ فِي دِرَاسَتِهِ»:",
-          options: [
-            { text: "فَاعِلٌ مَرْفُوعٌ بِالضَّمَّةِ", is_correct: true },
-            { text: "مَفْعُولٌ بِهِ مَنْصُوبٌ", is_correct: false },
-            { text: "مُبْتَدَأٌ مَرْفُوعٌ", is_correct: false },
-            { text: "خَبَرٌ مَرْفُوعٌ", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "APPLICATION",
-          excerpt: "الفاعل هو من قام بالفعل ويأتي مرفوعاً بالضمة الظاهرة.",
-          exp: "الطالب هو من قام بالاجتهاد، فهو فاعل مرفوع وعلامة رفعه الضمة."
-        },
-        {
-          q: "ما إعراب الكلمة المحددة: «قَرَأَ مُحَمَّدٌ الْكِتَابَ»:",
-          options: [
-            { text: "مَفْعُولٌ بِهِ مَنْصُوبٌ بِالْفَتْحَةِ", is_correct: true },
-            { text: "فَاعِلٌ مَرْفُوعٌ بِالضَّمَّةِ", is_correct: false },
-            { text: "حَالٌ مَنْصُوبٌ", is_correct: false },
-            { text: "مُضَافٌ إِلَيْهِ مَجْرُورٌ", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "APPLICATION",
-          excerpt: "المفعول به هو الاسم المنصوب الذي وقع عليه فعل الفاعل.",
-          exp: "الكتاب وقع عليه فعل القراءة، فهو مفعول به منصوب وعلامة نصبه الفتحة."
-        },
-        {
-          q: "ما نوع الفعل «اكْتُبْ» من حيث الدلالة الزمنية وحالته الإعرابية؟",
-          options: [
-            { text: "فِعْلُ أَمْرٍ مَبْنِيٌّ عَلَى السُّكُونِ", is_correct: true },
-            { text: "فِعْلٌ مَاضٍ مَبْنِيٌّ عَلَى الْفَتْحِ", is_correct: false },
-            { text: "فِعْلٌ مُضَارِعٌ مَرْفُوعٌ", is_correct: false },
-            { text: "فِعْلٌ مُضَارِعٌ مَجْزُومٌ", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "فعل الأمر صحيح الآخر يبنى على السكون.",
-          exp: "اكتب يدل على طلب حدوث الفعل، وهو فعل أمر مبني على السكون."
-        },
-        {
-          q: "أيُّ الْجُمَلِ الآتِيَةِ تَشْتَمِلُ عَلَى فِعْلٍ لاَزِمٍ (يَكْتَفِي بِفَاعِلِهِ وَلاَ يَحْتَاجُ لِمَفْعُولٍ بِهِ)؟",
-          options: [
-            { text: "نَامَ الطِّفْلُ هَادِئاً", is_correct: true },
-            { text: "كَتَبَ التِّلْمِيذُ الدَّرْسَ", is_correct: false },
-            { text: "قَرَأَ الْمُعَلِّمُ الْقِصَّةَ", is_correct: false },
-            { text: "شَرِبَ الْوَلَدُ الْحَلِيبَ", is_correct: false }
-          ],
-          diff: "MEDIUM",
-          bloom: "UNDERSTANDING",
-          excerpt: "الفعل اللازم يكتفي برفع فاعله ولا ينصب مفعولاً به.",
-          exp: "الفعل نام اكتفى بفاعله (الطفل)، و(هادئاً) حال، فهو فعل لازم."
-        },
-        {
-          q: "ما إعراب كلمة «الْعِلْمَ» في جملة: «إِنَّ الْعِلْمَ نُورٌ»؟",
-          options: [
-            { text: "اسْمُ إِنَّ مَنْصُوبٌ بِالْفَتْحَةِ", is_correct: true },
-            { text: "مُبْتَدَأٌ مَرْفُوعٌ بِالضَّمَّةِ", is_correct: false },
-            { text: "خَبَرُ إِنَّ مَرْفُوعٌ", is_correct: false },
-            { text: "مَفْعُولٌ بِهِ مَنْصُوبٌ", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "APPLICATION",
-          excerpt: "إن وأخواتها حروف ناسخة تنصب المبتدأ وترفع الخبر.",
-          exp: "إن حرف ناسخ ينصب اسمه ويرفع خبره، فالعلم اسم إن منصوب بالفتحة."
-        },
-        {
-          q: "ما مضاد كلمة «الْإِقْدَام» في المعجم ودلالات الألفاظ؟",
-          options: [
-            { text: "الإِحْجَامُ وَالتَّرَدُّدُ", is_correct: true },
-            { text: "الشَّجَاعَةُ وَالْجَرَاءَةُ", is_correct: false },
-            { text: "الْقُوَّةُ وَالثَّبَاتُ", is_correct: false },
-            { text: "الْعَزِيمَةُ وَالصَّبْرُ", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "الإقدام يعني الجرأة والشجاعة، وضده الإحجام والنكوص.",
-          exp: "مضاد الإقدام هو الإحجام والتراجع."
-        }
-      ];
-    } else if (isSocial) {
-      pool = [
-        {
-          q: "ما هو أطول أنهار العالم والذي يمر بالأراضي المصرية ويمثل شريان الحياة الرئيسي للمصريين؟",
-          options: [
-            { text: "نهر النيل", is_correct: true },
-            { text: "نهر الأمازون", is_correct: false },
-            { text: "نهر الكونغو", is_correct: false },
-            { text: "نهر الفرات", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "نهر النيل أطول أنهار الكرة الأرضية وأساس قيام الحضارة المصرية القديمة.",
-          exp: "نهر النيل هو أطول أنهار العالم وشريان الحياة لمصر عبر العصور."
-        },
-        {
-          q: "نجح الملك مينا (نعرمر) عام 3200 ق.م في تحقيق إنجاز تاريخي خالد لمصر وهو:",
-          options: [
-            { text: "توحيد قطري مصر (الشمال والجنوب)", is_correct: true },
-            { text: "بناء الهرم الأكبر بالجيزة", is_correct: false },
-            { text: "طرد الهكسوس من مصر", is_correct: false },
-            { text: "توقيع أول معاهدة سلام", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "قام الملك نعرمر (مينا) بتوحيد مملكتي الشمال والجنوب وتأسيس الأسرة الأولى.",
-          exp: "الملك مينا وحد القطرين عام 3200 ق.م وأسس أول دولة موحدة في التاريخ."
-        },
-        {
-          q: "أي الأقاليم المناخية في مصر يتميز بصيف حار جاف وشتاء معتدل ممطر على السواحل الشمالية؟",
-          options: [
-            { text: "إقليم البحر المتوسط", is_correct: true },
-            { text: "الإقليم الاستوائي", is_correct: false },
-            { text: "الإقليم الصحراوي الحار", is_correct: false },
-            { text: "الإقليم المداري", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "يسود إقليم البحر المتوسط على السواحل الشمالية لمصر ويتميز بالاعتدال شتاءً.",
-          exp: "شمال مصر ينتمي لإقليم البحر المتوسط المعتدل الممطر شتاءً."
-        },
-        {
-          q: "علل: تميز موقع مصر الجغرافي بأهمية استراتيجية واقتصادية بالغة عبر التاريخ؟",
-          options: [
-            { text: "لأنها ملتقى قارات العالم القديم وتربط البحرين المتوسط والأحمر", is_correct: true },
-            { text: "لوقوعها في أقصى جنوب القارة الإفريقية", is_correct: false },
-            { text: "لعدم وجود حدود بحرية تربطها بالعالم", is_correct: false },
-            { text: "لأن مناخها قطبي متجمد طوال العام", is_correct: false }
-          ],
-          diff: "MEDIUM",
-          bloom: "UNDERSTANDING",
-          excerpt: "موقع مصر يتوسط قارات العالم القديم (آسيا وإفريقيا وأوروبا) وتطل على بحرين هامين.",
-          exp: "موقع مصر الجغرافي المتميز جعلها حلقة وصل بين قارات وحضارات العالم."
-        },
-        {
-          q: "ما المدينة التاريخية التي بناها الملك مينا واتخذها عاصمة لمصر الموحدة وأحاطها بسور أبيض؟",
-          options: [
-            { text: "مدينة منف (الميناء الجميل)", is_correct: true },
-            { text: "مدينة طيبة", is_correct: false },
-            { text: "مدينة أون", is_correct: false },
-            { text: "مدينة الإسكندرية", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "بنى الملك مينا مدينة منف لتكون عاصمة للبلاد الموحدة وسماها قلعة الجدار الأبيض.",
-          exp: "منف هي العاصمة التي شيدها الملك مينا بعد توحيد القطرين."
-        }
-      ];
-    } else {
-      // English subject pool
-      pool = [
-        {
-          q: "Which sentence demonstrates the correct comparative form of an adjective?",
-          options: [
-            { text: "The car is faster than the bike", is_correct: true },
-            { text: "The car is more fast than it", is_correct: false },
-            { text: "The car is fastest than others", is_correct: false },
-            { text: "The car fast than it", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "APPLICATION",
-          excerpt: "Short adjectives add -er followed by than for comparative degree.",
-          exp: "Comparative form of short adjectives is formed with -er + than."
-        },
-        {
-          q: "Choose the correct past form: 'Yesterday, our school team ______ the final match.'",
-          options: [
-            { text: "won", is_correct: true },
-            { text: "win", is_correct: false },
-            { text: "will win", is_correct: false },
-            { text: "winning", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "APPLICATION",
-          excerpt: "Past simple expresses completed actions indicated by yesterday.",
-          exp: "The past tense of the irregular verb 'win' is 'won'."
-        },
-        {
-          q: "Complete with the correct preposition: 'Students travel to school ______ bus every morning.'",
-          options: [
-            { text: "by", is_correct: true },
-            { text: "in", is_correct: false },
-            { text: "on", is_correct: false },
-            { text: "with", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "The preposition 'by' is used before means of transport (by bus, by train).",
-          exp: "Means of transport without an article take 'by' (by bus)."
-        },
-        {
-          q: "What is the correct synonym of the adjective 'huge'?",
-          options: [
-            { text: "Enormous", is_correct: true },
-            { text: "Tiny", is_correct: false },
-            { text: "Narrow", is_correct: false },
-            { text: "Weak", is_correct: false }
-          ],
-          diff: "EASY",
-          bloom: "KNOWLEDGE",
-          excerpt: "Synonyms are words with identical or closely related meanings.",
-          exp: "'Huge' and 'enormous' both describe very large size."
-        },
-        {
-          q: "Which sentence correctly expresses future intention using 'going to'?",
-          options: [
-            { text: "I am going to visit Alexandria next week", is_correct: true },
-            { text: "I going to visit Alexandria", is_correct: false },
-            { text: "I am go to visit Alexandria", is_correct: false },
-            { text: "I am going visit Alexandria", is_correct: false }
-          ],
-          diff: "MEDIUM",
-          bloom: "APPLICATION",
-          excerpt: "Future plans use: am/is/are + going to + base verb.",
-          exp: "The correct structure is: am + going to + verb (visit)."
-        }
-      ];
-    }
-
-    // Pick questions from the curated subject pool
-    const poolShuffled = shuffleArray(pool);
-    for (let i = 0; i < poolShuffled.length && questions.length < count; i++) {
-      const item = poolShuffled[i];
-      const ch = chunks[i % chunks.length] || chunks[0];
-      questions.push({
-        id: uuidv4(),
-        chunk_id: ch?.id || '',
-        book_id: bookId,
-        chapter_id: chapterId,
-        question_text: item.q,
-        options: shuffleArray(item.options.map(o => ({ id: uuidv4(), text: o.text, is_correct: o.is_correct }))),
-        difficulty: item.diff,
-        bloom_level: item.bloom,
-        page_reference: (ch?.page_number && Number(ch.page_number) > 1)
-          ? Number(ch.page_number)
-          : Math.floor((Number(chunks[0]?.page_number) || 1) + Math.random() * Math.max(1, (Number(chunks[chunks.length - 1]?.page_number) || 25) - (Number(chunks[0]?.page_number) || 1) + 1)),
-        source_excerpt: item.excerpt,
-        explanation: item.exp,
-        chunk_text: ch?.content || item.excerpt,
-        similarity_score: 1.0,
-        validation_status: { isValid: true }
-      });
-    }
-
-    return questions.slice(0, count);
-  }
 
   /**
    * Evaluates student answers with grounded RAG, diagnoses mistakes,
@@ -1927,10 +2091,11 @@ ${contextText}
     subjectId: string;
     bookId: string;
     chapterId: string;
+    attemptId?: string;
     questions: GroundedQuestion[];
     studentAnswers: { question_id: string; selected_option_id: string }[];
   }): Promise<FullDiagnosticReport> {
-    const { studentId, academicStageId, gradeId, subjectId, bookId, chapterId, questions, studentAnswers } = params;
+    const { studentId, academicStageId, gradeId, subjectId, bookId, chapterId, attemptId, questions, studentAnswers } = params;
 
     // Fetch chapter title
     const chRes = await db.query(`SELECT title_ar, title_en, chapter_number FROM book_chapters WHERE id = $1`, [chapterId]);
@@ -1940,11 +2105,18 @@ ${contextText}
       ? (chRes.rows[0]?.title_en || chRes.rows[0]?.title_ar || 'Chapter') 
       : (chRes.rows[0]?.title_ar || 'الفصل الدراسي المقبول');
 
-    let totalScore = 0;
-    const maxScore = questions.length;
+    let authoritativeScore = 0;
+    let authoritativeMaxScore = 0;
+    let provisionalScore = 0;
+    const provisionalMaxScore = questions.length;
     const items: EvaluationItemResult[] = [];
     const weakTopics: string[] = [];
     const strongTopics: string[] = [];
+    const authoritativeWeakTopics: string[] = [];
+    const authoritativeStrongTopics: string[] = [];
+
+    let pendingReviewCount = 0;
+    let deterministicallyVerifiedCount = 0;
 
     for (const q of questions) {
       const submission = studentAnswers.find(a => a.question_id === q.id);
@@ -1952,26 +2124,53 @@ ${contextText}
       const selectedOpt = q.options.find(o => o.id === selectedOptId);
       const correctOpt = q.options.find(o => o.is_correct);
 
-      const isCorrect = selectedOpt ? selectedOpt.is_correct : false;
-      const points = isCorrect ? 1 : 0;
-      totalScore += points;
+      const isCorrect = selectedOpt ? !!selectedOpt.is_correct : false;
+      const provPoints = isCorrect ? 1 : 0;
+      provisionalScore += provPoints;
+
+      // Validate answer key status deterministically
+      const valResult = AnswerValidationService.validateQuestion(q);
+      const answerKeyStatus = valResult.answerKeyStatus;
+      const isAuthoritativeEligible = answerKeyStatus === 'DETERMINISTICALLY_VERIFIED';
+
+      let authPoints: number | null = null;
+      if (isAuthoritativeEligible) {
+        deterministicallyVerifiedCount++;
+        authoritativeMaxScore += 1;
+        authPoints = isCorrect ? 1 : 0;
+        authoritativeScore += authPoints;
+      } else {
+        pendingReviewCount++;
+      }
 
       let studyRec = '';
       if (isEnEvaluation) {
         if (!isCorrect) {
           studyRec = `🎯 Action Plan: Open ${chapterName} - [Page ${q.page_reference}] and review: "${(q.source_excerpt || '').slice(0, 80)}...". Bloom Level: ${q.bloom_level}.`;
           weakTopics.push(`Page ${q.page_reference} Concept: ${q.question_text.slice(0, 45)}`);
+          if (isAuthoritativeEligible) {
+            authoritativeWeakTopics.push(`Page ${q.page_reference} Concept: ${q.question_text.slice(0, 45)}`);
+          }
         } else {
           studyRec = `✅ Mastered: Successfully demonstrated comprehension of page ${q.page_reference} concept.`;
           strongTopics.push(`Mastered Page ${q.page_reference} Concept`);
+          if (isAuthoritativeEligible) {
+            authoritativeStrongTopics.push(`Mastered Page ${q.page_reference} Concept`);
+          }
         }
       } else {
         if (!isCorrect) {
-          studyRec = `🎯 خطة المراجعة: راجع ${chapterName} - [صفحة ${q.page_reference}] وراجع بعناية: "${q.source_excerpt.slice(0, 80)}...". مفهوم: ${q.bloom_level}.`;
+          studyRec = `🎯 خطة المراجعة: راجع ${chapterName} - [صفحة ${q.page_reference}] وراجع بعناية: "${(q.source_excerpt || '').slice(0, 80)}...". مفهوم: ${q.bloom_level}.`;
           weakTopics.push(`مفهوم صفحة ${q.page_reference}: ${q.question_text.slice(0, 45)}`);
+          if (isAuthoritativeEligible) {
+            authoritativeWeakTopics.push(`مفهوم صفحة ${q.page_reference}: ${q.question_text.slice(0, 45)}`);
+          }
         } else {
           studyRec = `✅ إتقان تام: تم استيعاب مفهوم صفحة ${q.page_reference} بنجاح.`;
           strongTopics.push(`إتقان مفهوم صفحة ${q.page_reference}`);
+          if (isAuthoritativeEligible) {
+            authoritativeStrongTopics.push(`إتقان مفهوم صفحة ${q.page_reference}`);
+          }
         }
       }
 
@@ -1982,7 +2181,11 @@ ${contextText}
         student_answer_text: selectedOpt?.text || (isEnEvaluation ? 'No answer selected' : 'لم يتم اختيار إجابة'),
         correct_answer_text: correctOpt?.text || '',
         is_correct: isCorrect,
-        points: points,
+        points: isAuthoritativeEligible ? provPoints : 0,
+        authoritative_points: authPoints,
+        is_authoritatively_scored: isAuthoritativeEligible,
+        answer_key_status: answerKeyStatus,
+        verification_method: valResult.verificationMethod,
         explanation: q.explanation,
         page_reference: q.page_reference,
         topic_area: isEnEvaluation ? `${chapterName} (p. ${q.page_reference})` : `${chapterName} (ص ${q.page_reference})`,
@@ -1990,14 +2193,25 @@ ${contextText}
       });
     }
 
-    const percentage = Number(((totalScore / (maxScore || 1)) * 100).toFixed(1));
+    const provisionalPercentage = Number(((provisionalScore / (provisionalMaxScore || 1)) * 100).toFixed(1));
+    const authoritativePercentage = authoritativeMaxScore > 0
+      ? Number(((authoritativeScore / authoritativeMaxScore) * 100).toFixed(1))
+      : null;
 
-    let masteryStatus: 'MASTERED' | 'PROFICIENT' | 'DEVELOPING' | 'NEEDS_WORK' = 'NEEDS_WORK';
-    if (percentage >= 85) masteryStatus = 'MASTERED';
-    else if (percentage >= 70) masteryStatus = 'PROFICIENT';
-    else if (percentage >= 50) masteryStatus = 'DEVELOPING';
+    let authoritativeMasteryStatus: 'MASTERED' | 'PROFICIENT' | 'DEVELOPING' | 'NEEDS_WORK' | 'PENDING_REVIEW' = 'PENDING_REVIEW';
+    if (authoritativePercentage !== null) {
+      if (authoritativePercentage >= 85) authoritativeMasteryStatus = 'MASTERED';
+      else if (authoritativePercentage >= 70) authoritativeMasteryStatus = 'PROFICIENT';
+      else if (authoritativePercentage >= 50) authoritativeMasteryStatus = 'DEVELOPING';
+      else authoritativeMasteryStatus = 'NEEDS_WORK';
+    }
 
-    const reportId = uuidv4();
+    let provisionalMasteryStatus: 'MASTERED' | 'PROFICIENT' | 'DEVELOPING' | 'NEEDS_WORK' = 'NEEDS_WORK';
+    if (provisionalPercentage >= 85) provisionalMasteryStatus = 'MASTERED';
+    else if (provisionalPercentage >= 70) provisionalMasteryStatus = 'PROFICIENT';
+    else if (provisionalPercentage >= 50) provisionalMasteryStatus = 'DEVELOPING';
+
+    const reportId = attemptId || uuidv4();
 
     const fullReport: FullDiagnosticReport = {
       evaluation_id: reportId,
@@ -2005,24 +2219,46 @@ ${contextText}
       book_id: bookId,
       chapter_id: chapterId,
       subject_id: subjectId,
-      score: totalScore,
-      max_score: maxScore,
-      percentage: percentage,
-      mastery_status: masteryStatus,
+      // Authoritative scores (only from deterministically verified questions)
+      authoritative_score: authoritativeScore,
+      authoritative_max_score: authoritativeMaxScore,
+      authoritative_percentage: authoritativePercentage,
+      authoritative_mastery_status: authoritativeMasteryStatus,
+      // Provisional formative scores (for complete learning guidance)
+      provisional_score: provisionalScore,
+      provisional_max_score: provisionalMaxScore,
+      provisional_percentage: provisionalPercentage,
+      provisional_mastery_status: provisionalMasteryStatus,
+      // Metadata
+      has_unverified_questions: pendingReviewCount > 0,
+      verified_questions_count: deterministicallyVerifiedCount,
+      pending_review_count: pendingReviewCount,
+      overall_review_status: pendingReviewCount === 0
+        ? 'FULLY_VERIFIED'
+        : deterministicallyVerifiedCount > 0
+          ? 'PARTIALLY_VERIFIED'
+          : 'PENDING_TEACHER_REVIEW',
+      // Legacy backward-compatible fields
+      score: authoritativeMaxScore > 0 ? authoritativeScore : provisionalScore,
+      max_score: authoritativeMaxScore > 0 ? authoritativeMaxScore : provisionalMaxScore,
+      percentage: authoritativePercentage !== null ? authoritativePercentage : provisionalPercentage,
+      mastery_status: authoritativeMaxScore > 0 ? (authoritativeMasteryStatus as any) : provisionalMasteryStatus,
       items: items,
       weak_topics: weakTopics,
       strong_topics: strongTopics,
-      overall_feedback_ar: percentage >= 85
+      overall_feedback_ar: provisionalPercentage >= 85
         ? 'أداء متميز واستيعاب عالي لنصوص وأفكار الكتاب المدرسي.'
-        : percentage >= 60
+        : provisionalPercentage >= 60
         ? 'مستوى جيد، ولكن توجد نقاط محددة تحتاج لإعادة مراجعة من صفحات الكتاب الموضحة بالتقرير.'
         : 'بحاجة إلى تركيز وإعادة قراءة الصفحات المحددة في خطة المراجعة قبل المحاولة التالية.',
-      overall_feedback_en: percentage >= 85
+      overall_feedback_en: provisionalPercentage >= 85
         ? 'Excellent performance with strong mastery of textbook concepts.'
-        : percentage >= 60
+        : provisionalPercentage >= 60
         ? 'Good progress, but specific concepts need review from the cited textbook pages.'
         : 'Requires focused review of the cited textbook sections before re-evaluating.'
     };
+
+    fullReport.analytics_synced = false;
 
     // Save to ai_evaluations
     await db.query(
@@ -2036,43 +2272,113 @@ ${contextText}
         bookId,
         chapterId,
         subjectId,
-        totalScore,
-        maxScore,
+        authoritativeMaxScore > 0 ? authoritativeScore : 0,
+        authoritativeMaxScore,
         JSON.stringify(questions),
         JSON.stringify(studentAnswers),
         JSON.stringify(fullReport)
       ]
     );
 
-    // Update student topic mastery analytics
-    await this.updateTopicMastery({
-      studentId,
-      subjectId,
-      chapterId,
-      totalAttempted: maxScore,
-      totalCorrect: totalScore,
-      weakTopics,
-      strongTopics
-    });
-
-    // Record into student learning history
-    await db.query(
-      `INSERT INTO student_learning_history (
-         id, student_id, event_type, reference_id, subject_id, chapter_id,
-         score_percentage, weak_areas
-       ) VALUES ($1, $2, 'AI_ASSESSMENT', $3, $4, $5, $6, $7)`,
-      [
-        uuidv4(),
+    // Update student topic mastery analytics ONLY IF there are authoritative verified questions!
+    if (authoritativeMaxScore > 0 && authoritativePercentage !== null) {
+      await this.updateTopicMastery({
         studentId,
-        reportId,
         subjectId,
         chapterId,
-        percentage,
-        JSON.stringify(weakTopics)
-      ]
-    );
+        totalAttempted: authoritativeMaxScore,
+        totalCorrect: authoritativeScore,
+        weakTopics: authoritativeWeakTopics,
+        strongTopics: authoritativeStrongTopics
+      });
+
+      // Record into student learning history ONLY for authoritative results
+      await db.query(
+        `INSERT INTO student_learning_history (
+           id, student_id, event_type, reference_id, subject_id, chapter_id,
+           score_percentage, weak_areas
+         ) VALUES ($1, $2, 'AI_ASSESSMENT', $3, $4, $5, $6, $7)`,
+        [
+          uuidv4(),
+          studentId,
+          reportId,
+          subjectId,
+          chapterId,
+          authoritativePercentage,
+          JSON.stringify(authoritativeWeakTopics)
+        ]
+      );
+
+      fullReport.analytics_synced = true;
+      fullReport.synced_at = new Date().toISOString();
+      await db.query(
+        `UPDATE ai_evaluations SET evaluation_report = $1 WHERE id = $2`,
+        [JSON.stringify(fullReport), reportId]
+      );
+    } else {
+      fullReport.analytics_synced = true;
+      console.log(`ℹ️ [AI Evaluation] Submission for chapter ${chapterId} contains 0 deterministically verified questions (${pendingReviewCount} pending review). Authoritative mastery and learning history left uncorrupted.`);
+    }
 
     return fullReport;
+  }
+
+  /**
+   * Safe, idempotent recovery of missing analytics for an existing evaluation.
+   * Ensures topic mastery and learning history are recorded without double-counting.
+   */
+  public async recoverEvaluationAnalytics(params: {
+    attemptId: string;
+    studentId: string;
+    subjectId: string;
+    chapterId: string;
+    report: FullDiagnosticReport;
+  }): Promise<void> {
+    const { attemptId, studentId, subjectId, chapterId, report } = params;
+
+    // 1. Check if learning history is already recorded
+    const historyCheck = await db.query(
+      `SELECT id FROM student_learning_history WHERE reference_id = $1`,
+      [attemptId]
+    );
+
+    if (historyCheck.rows.length === 0 && (report.authoritative_max_score || 0) > 0 && report.authoritative_percentage !== null) {
+      // 2. Safe topic mastery update
+      await this.updateTopicMastery({
+        studentId,
+        subjectId,
+        chapterId,
+        totalAttempted: report.authoritative_max_score,
+        totalCorrect: report.authoritative_score || 0,
+        weakTopics: (report.items || []).filter(i => i.is_authoritatively_scored && !i.is_correct).map(i => i.question_text.slice(0, 45)),
+        strongTopics: (report.items || []).filter(i => i.is_authoritatively_scored && i.is_correct).map(i => i.question_text.slice(0, 45))
+      });
+
+      // 3. Record into student learning history
+      await db.query(
+        `INSERT INTO student_learning_history (
+           id, student_id, event_type, reference_id, subject_id, chapter_id,
+           score_percentage, weak_areas
+         ) VALUES ($1, $2, 'AI_ASSESSMENT', $3, $4, $5, $6, $7)`,
+        [
+          uuidv4(),
+          studentId,
+          attemptId,
+          subjectId,
+          chapterId,
+          report.authoritative_percentage,
+          JSON.stringify(report.weak_topics || [])
+        ]
+      );
+    }
+
+    // 4. Update ai_evaluations report with synced state
+    report.analytics_synced = true;
+    report.synced_at = new Date().toISOString();
+    await db.query(
+      `UPDATE ai_evaluations SET evaluation_report = $1 WHERE id = $2`,
+      [JSON.stringify(report), attemptId]
+    );
   }
 
   private async updateTopicMastery(params: {
@@ -2110,7 +2416,7 @@ ${contextText}
            status = $7,
            weak_subtopics = $8,
            strong_subtopics = $9,
-           last_assessed_at = datetime('now')
+           last_assessed_at = NOW()
          WHERE student_id = $1 AND subject_id = $2 AND chapter_id = $3`,
         [
           studentId, subjectId, chapterId,
@@ -2147,4 +2453,5 @@ ${contextText}
   }
 }
 
+export { AIRagEngine };
 export const aiRagEngine = new AIRagEngine();
