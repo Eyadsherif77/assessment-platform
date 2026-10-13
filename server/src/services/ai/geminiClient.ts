@@ -22,12 +22,9 @@ export interface GeminiCallParams {
 export class GeminiClient {
   private static candidateModels: string[] = [
     process.env.GEMINI_MODEL || '',
-    'gemini-2.5-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash-lite',
     'gemini-flash-lite-latest',
-    'gemini-3.1-flash-lite',
-    'gemini-3.1-flash-lite-preview'
+    'gemini-flash-latest',
+    'gemini-pro-latest'
   ].filter(Boolean);
 
   private static lastCallTime = 0;

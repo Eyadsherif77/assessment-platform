@@ -168,17 +168,49 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
     });
   } catch (err: any) {
     console.error('AI Generate Quiz error:', err);
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({
+        error: 'خدمة الذكاء الاصطناعي غير مهيأة بشكل صحيح في النظام (مفتاح API مفقود).',
+        code: 'AI_CONFIG_ERROR'
+      });
+    }
+
     if (
-      err.message?.includes('Insufficient educational content for assessment generation') ||
-      err.message?.includes('EXAM_GENERATION_FAILED')
+      err.message?.includes('All Gemini candidate models failed') ||
+      err.message?.includes('GEMINI_API_KEY is not configured') ||
+      err.message?.includes('quota') ||
+      err.message?.includes('rate limit') ||
+      err.message?.includes('TIMEOUT') ||
+      err.message?.includes('fetch failed')
     ) {
       return res.status(503).json({
-        error: 'المحتوى التعليمي المستخرج من هذه الوحدة غير كافٍ لصياغة العدد المطلوب من الأسئلة المعتمدة.',
+        error: 'خدمة توليد الأسئلة بالذكاء الاصطناعي غير متاحة مؤقتاً بسبب ضغط الطلبات. يرجى المحاولة مرة أخرى بعد لحظات.',
+        code: 'AI_PROVIDER_UNAVAILABLE',
+        details: err.message
+      });
+    }
+
+    if (
+      err.message?.includes('لا توجد مقتطفات تعليمية معتمدة') ||
+      err.message?.includes('Insufficient educational content for assessment generation')
+    ) {
+      return res.status(422).json({
+        error: 'المحتوى التعليمي المعتمد لهذه الوحدة غير كافٍ حالياً لصياغة أسئلة امتحانية (يرجى مراجعة فهرسة كتاب الوزارة).',
+        code: 'INSUFFICIENT_UNIT_CONTENT',
+        details: err.message
+      });
+    }
+
+    if (err.message?.includes('EXAM_GENERATION_FAILED')) {
+      return res.status(503).json({
+        error: 'تعذر استخراج العدد الكافي من الأسئلة المطابقة لمعايير الجودة والتحقق لهذه الوحدة حالياً. يرجى المحاولة مرة أخرى.',
         code: 'EXAM_GENERATION_FAILED',
         details: err.message
       });
     }
-    return res.status(500).json({ error: 'خطأ في توليد التقييم الذكي: ' + err.message });
+
+    return res.status(500).json({ error: 'خطأ في توليد التقييم الذكي: ' + err.message, code: 'INTERNAL_ERROR' });
   }
 });
 
