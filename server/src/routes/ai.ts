@@ -159,12 +159,21 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       };
     });
 
+    const isPartial = sanitizedQuestions.length < parsedCount;
+
     return res.json({
       book_id,
       chapter_id,
       subject_id,
       attempt_token,
-      questions: sanitizedQuestions
+      questions: sanitizedQuestions,
+      requested_count: parsedCount,
+      generated_count: sanitizedQuestions.length,
+      is_partial: isPartial,
+      exam_status: isPartial ? 'PARTIAL' : 'COMPLETE',
+      partial_notice: isPartial
+        ? `تم إعداد ${sanitizedQuestions.length} أسئلة معتمدة من أصل ${parsedCount} مطلوبة للحفاظ على معايير الجودة والتوثيق من كتاب الوزارة دون تكرار.`
+        : null
     });
   } catch (err: any) {
     console.error('AI Generate Quiz error:', err);
@@ -173,6 +182,14 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       return res.status(500).json({
         error: 'خدمة الذكاء الاصطناعي غير مهيأة بشكل صحيح في النظام (مفتاح API مفقود).',
         code: 'AI_CONFIG_ERROR'
+      });
+    }
+
+    if (err.message?.includes('[GEMINI_AUTH_ERROR]')) {
+      return res.status(500).json({
+        error: 'خطأ في مصادقة خدمة الذكاء الاصطناعي (مفتاح API غير صالح أو غير مصرح). يرجى مراجعة إعدادات الخادم.',
+        code: 'AI_AUTH_ERROR',
+        details: err.message
       });
     }
 

@@ -20,12 +20,14 @@ export interface GeminiCallParams {
 }
 
 export class GeminiClient {
-  private static candidateModels: string[] = [
+  public static candidateModels: string[] = Array.from(new Set([
     process.env.GEMINI_MODEL || '',
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.1-flash-lite',
     'gemini-flash-lite-latest',
-    'gemini-flash-latest',
-    'gemini-pro-latest'
-  ].filter(Boolean);
+    'gemini-flash-latest'
+  ].filter(Boolean)));
 
   private static lastCallTime = 0;
   private static minIntervalMs = 1000;
@@ -67,7 +69,7 @@ export class GeminiClient {
       };
     }
 
-    const timeout = params.timeoutMs ?? 60000;
+    const timeout = params.timeoutMs ?? 25000;
     let lastError: any = null;
 
     for (const model of this.candidateModels) {
@@ -76,10 +78,13 @@ export class GeminiClient {
         const timer = setTimeout(() => controller.abort(), timeout);
 
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
             body: JSON.stringify(payload),
             signal: controller.signal
           }
@@ -96,9 +101,19 @@ export class GeminiClient {
 
         const errorData = await res.json().catch(() => ({}));
         const errMsg = errorData.error?.message || `HTTP ${res.status}`;
+
+        // Fast-fail on authentication or permission errors: do not retry other models with invalid credentials
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(`[GEMINI_AUTH_ERROR] Authentication or permission failure (${res.status}): ${errMsg}`);
+        }
+
         lastError = new Error(`Model ${model} failed: ${errMsg}`);
-        console.warn(`[GeminiClient] ${model} returned ${res.status} (${errMsg.slice(0, 60)}). Trying next candidate...`);
+        const category = res.status === 404 ? 'MODEL_NOT_FOUND' : res.status === 429 ? 'RATE_LIMIT_OR_QUOTA' : `HTTP_${res.status}`;
+        console.warn(`[GeminiClient] ${model} failed with ${category} (${errMsg.slice(0, 60)}). Trying next candidate...`);
       } catch (err: any) {
+        if (err.message?.includes('[GEMINI_AUTH_ERROR]')) {
+          throw err;
+        }
         lastError = err;
         console.warn(`[GeminiClient] ${model} error: ${err.message}. Trying next candidate...`);
       }

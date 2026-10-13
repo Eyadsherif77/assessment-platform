@@ -1790,6 +1790,104 @@ Return valid JSON with exact keys:
             if (validQuestions.length >= requiredCount) break;
           }
         }
+
+        // Bounded Pass 2 (Top-up): If Pass 1 yielded fewer than requiredCount after strict rejections,
+        // attempt a single bounded top-up with remaining/alternative chunks from the same chapter.
+        if (validQuestions.length < requiredCount && geminiKey) {
+          const needed = requiredCount - validQuestions.length;
+          console.log(`🔄 [AIRagEngine] Pass 1 yielded ${validQuestions.length}/${requiredCount} verified questions. Running bounded top-up for ${needed} missing questions...`);
+
+          const currentSeenTexts = [
+            ...Array.from(seenTexts),
+            ...validQuestions.map(q => q.question_text.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' '))
+          ];
+
+          const topUpChunks = chunks.length > 2 ? chunks.slice(1) : chunks;
+          const topUpRequestCount = Math.min(6, needed + 2);
+
+          try {
+            const rawTopUpQuestions = await this.callGeminiForQuestions(
+              topUpChunks,
+              topUpRequestCount,
+              params.bookId,
+              params.chapterId,
+              detectedLanguage,
+              currentSeenTexts.slice(0, 20),
+              {
+                gradeNameAr: book.grade_name_ar,
+                gradeNameEn: book.grade_name_en,
+                stageNameAr: book.stage_name_ar,
+                stageNameEn: book.stage_name_en,
+                subjectCode,
+                subjectNameAr,
+                subjectNameEn
+              }
+            );
+
+            if (rawTopUpQuestions && rawTopUpQuestions.length > 0) {
+              const solver = this.getBlindSolver();
+              for (const q of rawTopUpQuestions) {
+                if (isSeenByStudent(q)) continue;
+
+                // Strict duplicate prevention against Pass 1 questions
+                const qNorm = q.question_text.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' ');
+                const isDupOfCurrent = validQuestions.some(vq => {
+                  const vNorm = vq.question_text.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' ');
+                  return vNorm === qNorm || vq.id === q.id;
+                });
+                if (isDupOfCurrent) {
+                  console.log(`🔄 Skipping duplicate question in Pass 2: "${q.question_text.slice(0, 40)}"`);
+                  continue;
+                }
+
+                // Step 1: Quality filter
+                const score = evaluateQuestionQuality(q, validQuestions, contextWords);
+                if (!score.isValid) {
+                  console.warn(`⚠️ [Pass 2] Rejected question failing quality: ${score.reason}`);
+                  continue;
+                }
+
+                // Step 2: Provenance filter
+                const prov = await verifyQuestionProvenance(q, params.bookId);
+                if (!prov.isVerified) {
+                  console.warn(`⚠️ [Pass 2] Rejected question failing strict provenance: ${prov.reason}`);
+                  continue;
+                }
+
+                // Step 3: Blind solver verification
+                const correctOpt = q.options.find(o => o.is_correct);
+                const candidatePayload: CandidateQuestionPayload = {
+                  id: q.id,
+                  question_text: q.question_text,
+                  options: q.options.map(o => ({ id: o.id, text: o.text })),
+                  proposed_correct_option_id: correctOpt?.id || '',
+                  evidence: {
+                    book_id: q.book_id || params.bookId,
+                    chapter_id: q.chapter_id || params.chapterId,
+                    page_number: q.page_reference || 1,
+                    chunk_id: q.chunk_id || '',
+                    passage_text: q.chunk_text || chunks.find((c: any) => c.id === q.chunk_id || c.id === (q as any).source_chunk_id)?.content || ''
+                  },
+                  diagram_url: q.diagram_url,
+                  diagram_asset_id: q.diagram_asset_id,
+                  has_visual_dependency: q.has_visual_dependency
+                };
+
+                const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
+                if (!verification.is_verified) {
+                  console.warn(`⚠️ [Pass 2] Rejected question failing blind solver: [${verification.rejection_code}] ${verification.rejection_reason}`);
+                  continue;
+                }
+
+                q.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
+                validQuestions.push(q);
+                if (validQuestions.length >= requiredCount) break;
+              }
+            }
+          } catch (topUpErr: any) {
+            console.warn('⚠️ [AIRagEngine] Pass 2 top-up error:', topUpErr.message || topUpErr);
+          }
+        }
       } catch (err: any) {
         console.warn('⚠️ Gemini generation error:', err.message || err);
       }

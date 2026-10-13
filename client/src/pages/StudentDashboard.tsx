@@ -205,6 +205,7 @@ export const StudentDashboard: React.FC = () => {
   const [isEvaluatingAi, setIsEvaluatingAi] = useState(false);
   const [aiReport, setAiReport] = useState<any | null>(null);
   const [aiGenError, setAiGenError] = useState<string | null>(null);
+  const [aiPartialNotice, setAiPartialNotice] = useState<string | null>(null);
 
   // AI Assessment Debug Mode (Development Only - Hidden in Production)
   const isDevMode = import.meta.env.DEV || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
@@ -585,6 +586,7 @@ export const StudentDashboard: React.FC = () => {
     }
     setIsGeneratingAi(true);
     setAiGenError(null);
+    setAiPartialNotice(null);
     setAiReport(null);
     setAiAnswers({});
     setCurrentQuestionIndex(0);
@@ -615,6 +617,11 @@ export const StudentDashboard: React.FC = () => {
 
       setAiQuestions(data.questions || []);
       setAiAttemptToken(data.attempt_token || '');
+      setAiPartialNotice(
+        data.is_partial
+          ? (data.partial_notice || (isAr ? `تنبيه: تم إعداد ${data.questions?.length} أسئلة معتمدة من أصل ${data.requested_count || 5} مطلوبة للحفاظ على معايير الجودة والتوثيق المنهجي.` : `Notice: Generated ${data.questions?.length} verified questions out of ${data.requested_count || 5} requested to preserve strict educational quality.`))
+          : null
+      );
       if (isDevMode) {
         setAiDebugData(data.debug_info || data.questions || null);
       }
@@ -1379,11 +1386,39 @@ export const StudentDashboard: React.FC = () => {
                   </div>
                 )}
 
+                {/* Partial Generation Notice Banner */}
+                {aiPartialNotice && (
+                  <div style={{
+                    background: '#FFFBEB',
+                    border: '1.5px solid #FDE68A',
+                    borderRadius: 'var(--radius-xl)',
+                    padding: '0.85rem 1.25rem',
+                    marginBottom: '1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    color: '#92400E',
+                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.08)'
+                  }}>
+                    <span style={{ fontSize: '1.3rem' }}>ℹ️</span>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 600, lineHeight: 1.5 }}>
+                      {aiPartialNotice}
+                    </div>
+                  </div>
+                )}
+
                 {/* Progress Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--primary-800)' }}>
-                    {isAr ? `السؤال ${currentQuestionIndex + 1} من ${aiQuestions.length}` : `Question ${currentQuestionIndex + 1} of ${aiQuestions.length}`}
-                  </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--primary-800)' }}>
+                      {isAr ? `السؤال ${currentQuestionIndex + 1} من ${aiQuestions.length}` : `Question ${currentQuestionIndex + 1} of ${aiQuestions.length}`}
+                    </span>
+                    {aiPartialNotice && (
+                      <span className="badge" style={{ background: '#FEF3C7', color: '#B45309', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {isAr ? 'تقييم جزئي معتمد' : 'Verified Partial Quiz'}
+                      </span>
+                    )}
+                  </div>
                   <span className="badge badge-primary">
                     {isAr ? `${Object.keys(aiAnswers).length} من ${aiQuestions.length} تم حلها` : `${Object.keys(aiAnswers).length} of ${aiQuestions.length} answered`}
                   </span>
