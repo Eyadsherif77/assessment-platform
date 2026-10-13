@@ -1,13 +1,6 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "bundled_assets/visual/**"
-    },
-    "dist/server.js": {
-      "includeFiles": "bundled_assets/visual/**"
-    }
-  },
+
   "services": {
     "web": {
       "root": ".",

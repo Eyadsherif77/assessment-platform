@@ -1,0 +1,8 @@
+uploads/*.pdf
+uploads/book_*.pdf
+uploads/tmp_*.pdf
+*.db
+*.sqlite
+.env*
+node_modules
+tests

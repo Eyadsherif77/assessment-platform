@@ -69,13 +69,31 @@ export class VisualAssetExtractor {
       return this.manifestCache;
     }
 
-    if (fs.existsSync(MANIFEST_FILE_PATH)) {
-      try {
-        const raw = fs.readFileSync(MANIFEST_FILE_PATH, 'utf8');
-        this.manifestCache = JSON.parse(raw);
-        return this.manifestCache!;
-      } catch (err) {
-        console.warn('⚠️ Error parsing visual manifest, creating fresh instance:', err);
+    const candidatePaths = [
+      MANIFEST_FILE_PATH,
+      path.resolve(__dirname, '../../../uploads/visual_assets/visual_manifest.json'),
+      path.resolve(__dirname, '../../uploads/visual_assets/visual_manifest.json'),
+      path.resolve(process.cwd(), 'uploads/visual_assets/visual_manifest.json'),
+      path.resolve(process.cwd(), 'server/uploads/visual_assets/visual_manifest.json'),
+      path.resolve(__dirname, '../../bundled_assets/visual/visual_manifest.json'),
+      path.resolve(__dirname, '../bundled_assets/visual/visual_manifest.json'),
+      path.resolve(process.cwd(), 'bundled_assets/visual/visual_manifest.json'),
+      path.resolve(process.cwd(), 'server/bundled_assets/visual/visual_manifest.json'),
+      path.resolve(__dirname, '../../../bundled_assets/visual/visual_manifest.json')
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = fs.readFileSync(p, 'utf8');
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.assets) && parsed.assets.length > 0) {
+            this.manifestCache = parsed;
+            return this.manifestCache!;
+          }
+        } catch (err) {
+          console.warn(`⚠️ Error parsing visual manifest at ${p}:`, err);
+        }
       }
     }
 

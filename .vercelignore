@@ -1,0 +1,6 @@
+uploads/*.pdf
+server/uploads/*.pdf
+*.db
+*.sqlite
+.env*
+scratch/
