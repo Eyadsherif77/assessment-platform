@@ -1749,55 +1749,20 @@ Return valid JSON with exact keys:
           }
         );
         if (rawAiQuestions && rawAiQuestions.length > 0) {
-          const solver = this.getBlindSolver();
-          for (const q of rawAiQuestions) {
-            if (isSeenByStudent(q)) {
-              console.log(`🔄 Skipping question already completed by student: "${q.question_text.slice(0, 40)}"`);
-              continue;
-            }
-            // Step 1: Quality filter (lexical / structural check)
-            const score = evaluateQuestionQuality(q, validQuestions, contextWords);
-            if (!score.isValid) {
-              console.warn(`⚠️ Rejected question failing quality: ${score.reason} (Question: "${q.question_text.slice(0, 50)}")`);
-              continue;
-            }
-
-            // Step 2: Provenance filter (check chunk and page exist in authoritative book)
-            const prov = await verifyQuestionProvenance(q, params.bookId);
-            if (!prov.isVerified) {
-              console.warn(`⚠️ Rejected question failing strict provenance: ${prov.reason} (Question: "${q.question_text.slice(0, 50)}")`);
-              continue;
-            }
-
-            // Step 3: Independent Blind Solver Verification (Grounding & Entailment)
-            const correctOpt = q.options.find(o => o.is_correct);
-            const candidatePayload: CandidateQuestionPayload = {
-              id: q.id,
-              question_text: q.question_text,
-              options: q.options.map(o => ({ id: o.id, text: o.text })),
-              proposed_correct_option_id: correctOpt?.id || '',
-              evidence: {
-                book_id: q.book_id || params.bookId,
-                chapter_id: q.chapter_id || params.chapterId,
-                page_number: q.page_reference || 1,
-                chunk_id: q.chunk_id || '',
-                passage_text: q.chunk_text || chunks.find((c: any) => c.id === q.chunk_id || c.id === (q as any).source_chunk_id)?.content || ''
-              },
-              diagram_url: q.diagram_url,
-              diagram_asset_id: q.diagram_asset_id,
-              has_visual_dependency: q.has_visual_dependency
-            };
-
-            const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
-            if (!verification.is_verified) {
-              console.warn(`⚠️ Rejected question failing blind solver verification: [${verification.rejection_code}] ${verification.rejection_reason} (Question: "${q.question_text.slice(0, 50)}")`);
-              continue;
-            }
-
-            q.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
-            validQuestions.push(q);
-            if (validQuestions.length >= requiredCount) break;
-          }
+          const t1 = Date.now();
+          const accepted = await this.verifyCandidateBatch({
+            rawQuestions: rawAiQuestions,
+            bookId: params.bookId,
+            chapterId: params.chapterId,
+            chunks,
+            existing: validQuestions,
+            contextWords,
+            needed: requiredCount - validQuestions.length,
+            isSeenByStudent,
+            label: 'Pass 1'
+          });
+          validQuestions.push(...accepted);
+          console.log(`⏱️ [ExamTiming] pass1_verify_ms=${Date.now() - t1} candidates=${rawAiQuestions.length} verified=${accepted.length}`);
         }
 
         // Bounded Pass 2 (Top-up): If Pass 1 yielded fewer than requiredCount after strict rejections,
@@ -1811,7 +1776,14 @@ Return valid JSON with exact keys:
             ...validQuestions.map(q => q.question_text.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' '))
           ];
 
-          const topUpChunks = chunks.length > 2 ? chunks.slice(1) : chunks;
+          // Phase 4G.3AO: top-up draws on DIFFERENT chunks of the SAME unit (never other units) to widen coverage
+          const usedChunkIds = new Set(chunks.map(c => c.id));
+          let topUpChunks: RetrievedChunk[] = chunks.length > 2 ? chunks.slice(1) : chunks;
+          try {
+            const allUnitChunks = await this.retrieveGroundedChunks({ ...params, limit: 200 });
+            const fresh = allUnitChunks.filter(c => !usedChunkIds.has(c.id) && c.book_id === params.bookId && c.chapter_id === params.chapterId);
+            if (fresh.length >= 2) topUpChunks = fresh.slice(0, 6);
+          } catch (e) { /* fall back to the pass-1 chunk subset */ }
           const topUpRequestCount = Math.min(6, needed + 2);
 
           try {
@@ -1834,64 +1806,21 @@ Return valid JSON with exact keys:
             );
 
             if (rawTopUpQuestions && rawTopUpQuestions.length > 0) {
-              const solver = this.getBlindSolver();
-              for (const q of rawTopUpQuestions) {
-                if (isSeenByStudent(q)) continue;
-
-                // Strict duplicate prevention against Pass 1 questions
-                const qNorm = q.question_text.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' ');
-                const isDupOfCurrent = validQuestions.some(vq => {
-                  const vNorm = vq.question_text.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' ');
-                  return vNorm === qNorm || vq.id === q.id;
-                });
-                if (isDupOfCurrent) {
-                  console.log(`🔄 Skipping duplicate question in Pass 2: "${q.question_text.slice(0, 40)}"`);
-                  continue;
-                }
-
-                // Step 1: Quality filter
-                const score = evaluateQuestionQuality(q, validQuestions, contextWords);
-                if (!score.isValid) {
-                  console.warn(`⚠️ [Pass 2] Rejected question failing quality: ${score.reason}`);
-                  continue;
-                }
-
-                // Step 2: Provenance filter
-                const prov = await verifyQuestionProvenance(q, params.bookId);
-                if (!prov.isVerified) {
-                  console.warn(`⚠️ [Pass 2] Rejected question failing strict provenance: ${prov.reason}`);
-                  continue;
-                }
-
-                // Step 3: Blind solver verification
-                const correctOpt = q.options.find(o => o.is_correct);
-                const candidatePayload: CandidateQuestionPayload = {
-                  id: q.id,
-                  question_text: q.question_text,
-                  options: q.options.map(o => ({ id: o.id, text: o.text })),
-                  proposed_correct_option_id: correctOpt?.id || '',
-                  evidence: {
-                    book_id: q.book_id || params.bookId,
-                    chapter_id: q.chapter_id || params.chapterId,
-                    page_number: q.page_reference || 1,
-                    chunk_id: q.chunk_id || '',
-                    passage_text: q.chunk_text || chunks.find((c: any) => c.id === q.chunk_id || c.id === (q as any).source_chunk_id)?.content || ''
-                  },
-                  diagram_url: q.diagram_url,
-                  diagram_asset_id: q.diagram_asset_id,
-                  has_visual_dependency: q.has_visual_dependency
-                };
-
-                const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
-                if (!verification.is_verified) {
-                  console.warn(`⚠️ [Pass 2] Rejected question failing blind solver: [${verification.rejection_code}] ${verification.rejection_reason}`);
-                  continue;
-                }
-
-                q.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
-                validQuestions.push(q);
-                if (validQuestions.length >= requiredCount) break;
-              }
+              const t2 = Date.now();
+              topUpChunks.forEach(c => c.content.toLowerCase().split(/[^\w\u0600-\u06FF]+/).forEach(w => { if (w.length > 2) contextWords.add(w); }));
+              const accepted2 = await this.verifyCandidateBatch({
+                rawQuestions: rawTopUpQuestions,
+                bookId: params.bookId,
+                chapterId: params.chapterId,
+                chunks: topUpChunks,
+                existing: validQuestions,
+                contextWords,
+                needed: requiredCount - validQuestions.length,
+                isSeenByStudent,
+                label: 'Pass 2'
+              });
+              validQuestions.push(...accepted2);
+              console.log(`⏱️ [ExamTiming] pass2_verify_ms=${Date.now() - t2} candidates=${rawTopUpQuestions.length} verified=${accepted2.length}`);
             }
           } catch (topUpErr: any) {
             console.warn('⚠️ [AIRagEngine] Pass 2 top-up error:', topUpErr.message || topUpErr);
@@ -1926,6 +1855,106 @@ Return valid JSON with exact keys:
     }
 
     return finalQuestions;
+  }
+
+
+  /**
+   * Phase 4G.3AO: Verifies candidate questions (quality -> provenance -> blind solver) with bounded concurrency.
+   * All guarantees are unchanged; only the execution is parallelised (and stops early once enough are verified).
+   * Candidates are accepted in their original order, never exceeding `needed`.
+   */
+  private async verifyCandidateBatch(params: {
+    rawQuestions: GroundedQuestion[];
+    bookId: string;
+    chapterId: string;
+    chunks: RetrievedChunk[];
+    existing: GroundedQuestion[];
+    contextWords: Set<string>;
+    needed: number;
+    isSeenByStudent: (q: GroundedQuestion) => boolean;
+    label: string;
+    concurrency?: number;
+  }): Promise<GroundedQuestion[]> {
+    const { rawQuestions, bookId, chapterId, chunks, existing, contextWords, needed, isSeenByStudent, label } = params;
+    const concurrency = Math.max(1, params.concurrency ?? 4);
+    const norm = (t: string) => t.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' ');
+    const taken = new Set<string>(existing.map(q => norm(q.question_text)));
+    const takenIds = new Set<string>(existing.map(q => q.id));
+
+    // Stage A (cheap, sequential): student-history, duplicate and lexical-quality filters
+    const prefiltered: GroundedQuestion[] = [];
+    for (const q of rawQuestions) {
+      if (isSeenByStudent(q)) continue;
+      const n = norm(q.question_text);
+      if (taken.has(n) || takenIds.has(q.id)) {
+        console.log(`🔄 [${label}] Skipping duplicate question: "${q.question_text.slice(0, 40)}"`);
+        continue;
+      }
+      const score = evaluateQuestionQuality(q, [...existing, ...prefiltered], contextWords);
+      if (!score.isValid) {
+        console.warn(`⚠️ [${label}] Rejected question failing quality: ${score.reason} (Question: "${q.question_text.slice(0, 50)}")`);
+        continue;
+      }
+      taken.add(n);
+      prefiltered.push(q);
+    }
+
+    // Stage B (expensive, bounded-parallel): strict provenance + independent blind solver
+    const solver = this.getBlindSolver();
+    const verdicts: boolean[] = new Array(prefiltered.length).fill(false);
+    let verifiedSoFar = 0;
+    let cursor = 0;
+    const worker = async () => {
+      while (true) {
+        if (verifiedSoFar >= needed) return;
+        const idx = cursor++;
+        if (idx >= prefiltered.length) return;
+        const q = prefiltered[idx];
+        try {
+          const prov = await verifyQuestionProvenance(q, bookId);
+          if (!prov.isVerified) {
+            console.warn(`⚠️ [${label}] Rejected question failing strict provenance: ${prov.reason} (Question: "${q.question_text.slice(0, 50)}")`);
+            continue;
+          }
+          const correctOpt = q.options.find(o => o.is_correct);
+          const candidatePayload: CandidateQuestionPayload = {
+            id: q.id,
+            question_text: q.question_text,
+            options: q.options.map(o => ({ id: o.id, text: o.text })),
+            proposed_correct_option_id: correctOpt?.id || '',
+            evidence: {
+              book_id: q.book_id || bookId,
+              chapter_id: q.chapter_id || chapterId,
+              page_number: q.page_reference || 1,
+              chunk_id: q.chunk_id || '',
+              passage_text: q.chunk_text || chunks.find((c: any) => c.id === q.chunk_id || c.id === (q as any).source_chunk_id)?.content || ''
+            },
+            diagram_url: q.diagram_url,
+            diagram_asset_id: q.diagram_asset_id,
+            has_visual_dependency: q.has_visual_dependency
+          };
+          const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
+          if (!verification.is_verified) {
+            console.warn(`⚠️ [${label}] Rejected question failing blind solver verification: [${verification.rejection_code}] ${verification.rejection_reason} (Question: "${q.question_text.slice(0, 50)}")`);
+            continue;
+          }
+          verdicts[idx] = true;
+          verifiedSoFar++;
+        } catch (e: any) {
+          console.warn(`⚠️ [${label}] Candidate verification error (fail-closed): ${e?.message || e}`);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, prefiltered.length) }, () => worker()));
+
+    const accepted: GroundedQuestion[] = [];
+    prefiltered.forEach((q, i) => {
+      if (verdicts[i] && accepted.length < needed) {
+        q.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
+        accepted.push(q);
+      }
+    });
+    return accepted;
   }
 
   private async callGeminiForQuestions(
