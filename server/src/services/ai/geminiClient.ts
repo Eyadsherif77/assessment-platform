@@ -65,10 +65,10 @@ const num = (v: string | undefined, d: number) => {
 export class GeminiClient {
   public static candidateModels: string[] = Array.from(new Set([
     process.env.GEMINI_MODEL || '',
-    'gemini-2.5-flash',        // primary — current official flash model
-    'gemini-flash-latest',     // alias for latest stable flash
-    'gemini-2.5-flash-lite',   // fallback — efficient lightweight
-    'gemini-flash-lite-latest' // alias for latest lite flash
+    'gemini-flash-latest',             // primary — latest stable Flash (verified 200 OK on Google API)
+    'gemini-3-flash-preview',          // fallback 1 — next-gen flash preview
+    'gemini-pro-latest',               // fallback 2 — latest stable Pro
+    'gemini-3.1-flash-lite-preview'    // fallback 3 — lightweight flash
   ].filter(Boolean)));
 
   // ---- Tunables (documented in docs/phase4g3ap_provider_reliability.md) ----
@@ -280,8 +280,13 @@ export class GeminiClient {
 
           if (res.ok) {
             const data = await res.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (text.trim().length > 0) {
+            const rawParts = data.candidates?.[0]?.content?.parts || [];
+            const textParts = rawParts.filter((p: any) => !p.thought && typeof p.text === 'string' && p.text.trim().length > 0);
+            const text = (textParts.length > 0 ? textParts : rawParts)
+              .map((p: any) => p.text || '')
+              .join('')
+              .trim();
+            if (text.length > 0) {
               this.onSuccess(model);
               return text;
             }

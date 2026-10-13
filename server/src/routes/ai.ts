@@ -757,15 +757,20 @@ router.get('/diagnostic', authenticateToken, requireRole(['ADMIN', 'CENTRAL_ADMI
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
-          body: JSON.stringify({ contents: [{ parts: [{ text: 'Say OK.' }] }], generationConfig: { maxOutputTokens: 4 } }),
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply with the single word OK.' }] }], generationConfig: { maxOutputTokens: 64 } }),
           signal: controller.signal
         }
       );
       clearTimeout(timer);
       if (res2.ok) {
         const data = await res2.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        probeResults.push({ model, status: text.trim().length > 0 ? 'PASS' : 'EMPTY_RESPONSE', httpStatus: res2.status });
+        const rawParts = data.candidates?.[0]?.content?.parts || [];
+        const textParts = rawParts.filter((p: any) => !p.thought && typeof p.text === 'string' && p.text.trim().length > 0);
+        const text = (textParts.length > 0 ? textParts : rawParts)
+          .map((p: any) => p.text || '')
+          .join('')
+          .trim();
+        probeResults.push({ model, status: text.length > 0 ? 'PASS' : 'EMPTY_RESPONSE', httpStatus: res2.status, message: text });
       } else {
         const errData = await res2.json().catch(() => ({}));
         let msg: string = errData.error?.message || '';
