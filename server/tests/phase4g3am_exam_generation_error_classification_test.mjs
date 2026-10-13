@@ -11,10 +11,10 @@ console.log('================================================================\n'
 console.log('--- Test 1: Active Model Priority in GeminiClient ---');
 const candidateModels = GeminiClient.candidateModels || [];
 console.log('Candidate models configured:', candidateModels);
-assert.ok(candidateModels.includes('gemini-flash-lite-latest'), 'Must include active gemini-flash-lite-latest');
+assert.ok(candidateModels.includes('gemini-3.1-flash-lite') || candidateModels.includes('gemini-3.5-flash'), 'Must include active gemini-3.1-flash-lite or gemini-3.5-flash');
 assert.ok(!candidateModels.includes('gemini-2.5-flash'), 'Must NOT include non-existent gemini-2.5-flash');
 assert.ok(!candidateModels.includes('gemini-2.5-flash-lite'), 'Must NOT include non-existent gemini-2.5-flash-lite');
-assert.ok(['gemini-3.5-flash', 'gemini-flash-lite-latest'].includes(candidateModels[0]), 'First candidate model must be an active verified model');
+assert.ok(['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-flash-lite-latest'].includes(candidateModels[0]), 'First candidate model must be an active verified model');
 console.log('  [PASS] 1. GeminiClient excludes dead 404 models and prioritizes active models\n');
 
 // Test 2: Quality filter rejects malformed, metadata-leaking, or slang questions

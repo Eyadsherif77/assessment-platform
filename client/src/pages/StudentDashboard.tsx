@@ -640,11 +640,19 @@ export const StudentDashboard: React.FC = () => {
 
       setAiQuestions(data.questions || []);
       setAiAttemptToken(data.attempt_token || '');
-      setAiPartialNotice(
-        data.is_partial
-          ? (data.partial_notice || (isAr ? `تنبيه: تم إعداد ${data.questions?.length} أسئلة معتمدة من أصل ${data.requested_count || 5} مطلوبة للحفاظ على معايير الجودة والتوثيق المنهجي.` : `Notice: Generated ${data.questions?.length} verified questions out of ${data.requested_count || 5} requested to preserve strict educational quality.`))
-          : null
-      );
+      const notices: string[] = [];
+      if (data.fallback_notice) {
+        notices.push(data.fallback_notice);
+      }
+      if (data.is_partial) {
+        notices.push(
+          data.partial_notice ||
+          (isAr
+            ? `تنبيه: تم إعداد ${data.questions?.length} أسئلة معتمدة من أصل ${data.requested_count || 5} مطلوبة للحفاظ على معايير الجودة والتوثيق المنهجي.`
+            : `Notice: Generated ${data.questions?.length} verified questions out of ${data.requested_count || 5} requested to preserve strict educational quality.`)
+        );
+      }
+      setAiPartialNotice(notices.length > 0 ? notices.join(' • ') : null);
       if (isDevMode) {
         setAiDebugData(data.debug_info || data.questions || null);
       }

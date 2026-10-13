@@ -869,4 +869,194 @@ export class ExamCacheService {
     const res = await db.query(`SELECT count(*) as cnt FROM shared_cached_exams`);
     return Number(res.rows[0].cnt);
   }
+
+  /**
+   * 12. Multi-Instance Concurrency Control.
+   * Prevents multiple serverless instances from triggering concurrent duplicate Gemini generations
+   * for the exact same configuration key/hash.
+   */
+  public static async acquireGenerationLock(
+    configHash: string,
+    ttlMs: number = 45000
+  ): Promise<{ acquired: boolean; lockId: string }> {
+    const lockId = uuidv4();
+    const lockKey = `lock:${configHash.slice(0, 58)}`;
+    const expiresAt = Date.now() + ttlMs;
+    const lockPayload = JSON.stringify({ lockId, expiresAt });
+
+    try {
+      await db.query(
+        `INSERT INTO platform_settings (setting_key, setting_value, updated_at, updated_by)
+         VALUES ($1, $2, CURRENT_TIMESTAMP, 'AI_GENERATION_LOCK')`,
+        [lockKey, lockPayload]
+      );
+      return { acquired: true, lockId };
+    } catch (err: any) {
+      // Lock row already exists; check if it has expired
+      try {
+        const existing = await db.query(
+          `SELECT setting_value FROM platform_settings WHERE setting_key = $1`,
+          [lockKey]
+        );
+        if (existing.rows.length > 0) {
+          const val = JSON.parse(existing.rows[0].setting_value || '{}');
+          if (val.expiresAt && Date.now() > val.expiresAt) {
+            // Expired lock: take over with an atomic update
+            const updateRes = await db.query(
+              `UPDATE platform_settings
+               SET setting_value = $1, updated_at = CURRENT_TIMESTAMP
+               WHERE setting_key = $2 AND setting_value = $3`,
+              [lockPayload, lockKey, existing.rows[0].setting_value]
+            );
+            if (updateRes.rowCount > 0) {
+              return { acquired: true, lockId };
+            }
+          }
+        }
+      } catch (_) {}
+
+      return { acquired: false, lockId: '' };
+    }
+  }
+
+  /**
+   * Release generation lock after generation completes or fails.
+   */
+  public static async releaseGenerationLock(configHash: string, lockId: string): Promise<void> {
+    if (!configHash || !lockId) return;
+    const lockKey = `lock:${configHash.slice(0, 58)}`;
+    try {
+      await db.query(
+        `DELETE FROM platform_settings WHERE setting_key = $1 AND setting_value LIKE $2`,
+        [lockKey, `%"lockId":"${lockId}"%`]
+      );
+    } catch (_) {}
+  }
+
+  /**
+   * Wait for a concurrent instance to finish generation and store the result in shared_cached_exams.
+   */
+  public static async waitForConcurrentGeneration(
+    configHash: string,
+    maxWaitMs: number = 25000,
+    pollIntervalMs: number = 2000
+  ): Promise<CachedExamRecord | null> {
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      const res = await db.query(
+        `SELECT sce.* FROM shared_cached_exams sce
+         WHERE sce.config_hash = $1 AND sce.provenance_verified = 1
+         ORDER BY sce.version_number DESC, sce.created_at DESC
+         LIMIT 1`,
+        [configHash]
+      );
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        let questions: any[] = [];
+        try {
+          questions = typeof row.questions_data === 'string' ? JSON.parse(row.questions_data) : row.questions_data;
+        } catch (_) {}
+        if (questions.length > 0) {
+          return {
+            examId: row.id,
+            configKey: row.config_key,
+            cacheKey: row.config_key,
+            configHash: row.config_hash,
+            contentHash: row.content_hash,
+            versionNumber: Number(row.version_number) || 1,
+            curriculumIdentity: await this.resolveCurriculumIdentity(row.book_id),
+            unitIds: typeof row.unit_ids === 'string' ? JSON.parse(row.unit_ids) : row.unit_ids,
+            unitSetKey: row.unit_set_key,
+            parameters: typeof row.parameters_json === 'string' ? JSON.parse(row.parameters_json) : row.parameters_json,
+            paramHash: row.param_hash,
+            questions,
+            assignedStudents: new Set(),
+            createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+            provenanceVerified: Boolean(row.provenance_verified)
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 13. Query Verified Cache Fallback.
+   * If Gemini is unavailable, quota-exhausted (429), or overloaded (503),
+   * retrieves the most recent verified exam for the exact canonical configuration
+   * (curriculum, book, exact unit selection, language, verified provenance).
+   * Fails closed (returns null) if no verified exam exists, so the caller can return
+   * the honest classified provider error.
+   */
+  public static async getVerifiedFallbackExam(params: {
+    bookId: string;
+    chapterIds: string | string[];
+    examParams: ExamGenerationParameters;
+    clientCandidate?: {
+      subjectId?: string;
+      gradeId?: string;
+      academicStageId?: string;
+      term?: number;
+      schoolType?: string;
+    };
+  }): Promise<CachedExamRecord | null> {
+    const identity = await this.resolveCurriculumIdentity(params.bookId);
+
+    if (params.clientCandidate) {
+      const consistency = this.validateSelectionConsistency(identity, params.clientCandidate);
+      if (!consistency.isValid) return null;
+    }
+
+    const { normalizedUnitIds, unitSetKey } = await this.normalizeAndValidateUnitSelection(params.bookId, params.chapterIds);
+    const { normalizedParams, paramHash } = this.normalizeExamParameters(params.examParams);
+
+    const configKey = this.buildCanonicalConfigKey(identity, unitSetKey, paramHash);
+    const configHash = this.computeConfigHash(configKey);
+
+    // Find the latest verified exam for this exact configuration
+    const res = await db.query(
+      `SELECT sce.*
+       FROM shared_cached_exams sce
+       WHERE sce.config_hash = $1
+         AND sce.provenance_verified = 1
+       ORDER BY sce.version_number DESC, sce.created_at DESC
+       LIMIT 1`,
+      [configHash]
+    );
+
+    if (res.rows.length === 0) {
+      return null;
+    }
+
+    const row = res.rows[0];
+    let questions: any[] = [];
+    try {
+      questions = typeof row.questions_data === 'string' ? JSON.parse(row.questions_data) : row.questions_data;
+    } catch (_) {
+      return null;
+    }
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return null;
+    }
+
+    return {
+      examId: row.id,
+      configKey: row.config_key,
+      cacheKey: row.config_key,
+      configHash: row.config_hash,
+      contentHash: row.content_hash,
+      versionNumber: Number(row.version_number) || 1,
+      curriculumIdentity: identity,
+      unitIds: normalizedUnitIds,
+      unitSetKey: row.unit_set_key,
+      parameters: normalizedParams,
+      paramHash: row.param_hash,
+      questions,
+      assignedStudents: new Set(),
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+      provenanceVerified: Boolean(row.provenance_verified)
+    };
+  }
 }

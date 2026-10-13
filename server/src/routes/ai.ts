@@ -742,7 +742,7 @@ router.get('/diagnostic', authenticateToken, requireRole(['ADMIN', 'CENTRAL_ADMI
   const apiKeyConfigured = !!(process.env.GEMINI_API_KEY);
   const candidateModels = GeminiClient.candidateModels;
 
-  const probeResults: Array<{model: string; status: string; category?: string; httpStatus?: number}> = [];
+  const probeResults: Array<{model: string; status: string; category?: string; httpStatus?: number; message?: string}> = [];
 
   for (const model of candidateModels) {
     if (!apiKeyConfigured) {
@@ -768,13 +768,16 @@ router.get('/diagnostic', authenticateToken, requireRole(['ADMIN', 'CENTRAL_ADMI
         probeResults.push({ model, status: text.trim().length > 0 ? 'PASS' : 'EMPTY_RESPONSE', httpStatus: res2.status });
       } else {
         const errData = await res2.json().catch(() => ({}));
-        const msg: string = errData.error?.message || '';
+        let msg: string = errData.error?.message || '';
+        if (process.env.GEMINI_API_KEY) {
+          msg = msg.split(process.env.GEMINI_API_KEY).join('[REDACTED]');
+        }
         let category = 'UNKNOWN';
         if (res2.status === 401 || res2.status === 403) category = 'AUTHENTICATION';
         else if (res2.status === 429) category = 'QUOTA_EXHAUSTED';
         else if (res2.status === 404 || res2.status === 400) category = 'INVALID_CONFIGURATION';
         else if (res2.status >= 500) category = 'TEMPORARY_OVERLOAD';
-        probeResults.push({ model, status: 'FAIL', category, httpStatus: res2.status });
+        probeResults.push({ model, status: 'FAIL', category, httpStatus: res2.status, message: msg });
       }
     } catch (e: any) {
       const isTimeout = e?.name === 'AbortError' || /aborted/i.test(e?.message || '');
@@ -782,10 +785,34 @@ router.get('/diagnostic', authenticateToken, requireRole(['ADMIN', 'CENTRAL_ADMI
     }
   }
 
+  // Probe ListModels to identify available models or project-level API issues
+  let availableModels: string[] = [];
+  let listModelsError: string | null = null;
+  if (apiKeyConfigured) {
+    try {
+      const listRes = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+        headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY! }
+      });
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        availableModels = (listData.models || []).map((m: any) => m.name.replace('models/', ''));
+      } else {
+        const listErr = await listRes.json().catch(() => ({}));
+        let errMsg = listErr.error?.message || `HTTP ${listRes.status}`;
+        if (process.env.GEMINI_API_KEY) errMsg = errMsg.split(process.env.GEMINI_API_KEY).join('[REDACTED]');
+        listModelsError = errMsg;
+      }
+    } catch (e: any) {
+      listModelsError = e.message;
+    }
+  }
+
   const overallPass = probeResults.some(r => r.status === 'PASS');
   return res.json({
     api_key_configured: apiKeyConfigured,
     candidate_models: candidateModels,
+    available_models: availableModels.slice(0, 15),
+    list_models_error: listModelsError,
     probe_results: probeResults,
     overall: overallPass ? 'PASS' : 'FAIL',
     timestamp: new Date().toISOString()
