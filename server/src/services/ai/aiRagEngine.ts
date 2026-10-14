@@ -51,6 +51,204 @@ export interface QualityScoreResult {
   reason?: string;
 }
 
+// ─── Bloom Taxonomy Localisation Maps ───────────────────────────────────────
+/**
+ * Converts an internal Bloom level code to an Arabic pedagogical label
+ * suitable for student-facing interfaces.
+ */
+const BLOOM_TO_ARABIC: Record<string, string> = {
+  KNOWLEDGE: 'تذكر ومعرفة',
+  REMEMBERING: 'تذكر ومعرفة',
+  UNDERSTANDING: 'الفهم والاستيعاب',
+  COMPREHENSION: 'الفهم والاستيعاب',
+  APPLICATION: 'التطبيق والاستخدام',
+  APPLYING: 'التطبيق والاستخدام',
+  ANALYSIS: 'التحليل والنقد',
+  ANALYZING: 'التحليل والنقد',
+  EVALUATION: 'التقويم والحكم',
+  EVALUATING: 'التقويم والحكم',
+  SYNTHESIS: 'الإبداع والتركيب',
+  CREATING: 'الإبداع والتركيب',
+};
+
+/**
+ * Converts an internal Bloom level code to a plain English pedagogical label
+ * for English-language student-facing interfaces.
+ */
+const BLOOM_TO_ENGLISH: Record<string, string> = {
+  KNOWLEDGE: 'Recall & Knowledge',
+  REMEMBERING: 'Recall & Knowledge',
+  UNDERSTANDING: 'Understanding & Comprehension',
+  COMPREHENSION: 'Understanding & Comprehension',
+  APPLICATION: 'Application & Practice',
+  APPLYING: 'Application & Practice',
+  ANALYSIS: 'Analysis & Critical Thinking',
+  ANALYZING: 'Analysis & Critical Thinking',
+  EVALUATION: 'Evaluation & Judgment',
+  EVALUATING: 'Evaluation & Judgment',
+  SYNTHESIS: 'Synthesis & Creation',
+  CREATING: 'Synthesis & Creation',
+};
+
+// ─── Safe Word-Boundary Truncator ────────────────────────────────────────────
+/**
+ * Safely truncates a string to at most `maxChars` at a word boundary.
+ * NEVER cuts a word in the middle.
+ *
+ * Invariant Rules:
+ * 1. If text is empty or maxChars <= 0, returns ''.
+ * 2. If trimmed text length <= maxChars, returns trimmed text intact (no ellipses).
+ * 3. If truncation is required:
+ *    - Looks for the last complete word finishing at or before maxChars.
+ *    - If the character immediately after maxChars is a delimiter (space/punct),
+ *      the word ending at maxChars is whole.
+ *    - Otherwise, scans backward from maxChars - 1 to find the previous word boundary,
+ *      discarding the crossing word entirely.
+ *    - If at least one complete word fits, returns that word sequence + '...'.
+ *    - If NO safe word boundary exists before maxChars (first word is longer than limit),
+ *      returns '' (safe empty fallback; never a partial word).
+ */
+function truncateAtWordBoundary(text: string, maxChars: number): string {
+  if (!text || maxChars <= 0) return '';
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+
+  const isDelimiter = (ch: string): boolean =>
+    /[\s،؛!؟.,;:—_–\-«»"'\(\)\[\]\/\\]/.test(ch);
+
+  const cleanTrailingDelimiters = (str: string): string =>
+    str.replace(/[\s،؛!؟.,;:—_–\-«»"'\(\)\[\]\/\\]+$/, '');
+
+  // Case 1: The character immediately after maxChars is already a delimiter,
+  // meaning the word ending at maxChars is complete.
+  if (isDelimiter(trimmed[maxChars])) {
+    const candidate = cleanTrailingDelimiters(trimmed.slice(0, maxChars));
+    return candidate.length > 0 ? candidate + '...' : '';
+  }
+
+  // Case 2: trimmed[maxChars] is inside a word crossing the character limit.
+  // Scan backwards from maxChars - 1 to find the preceding word boundary.
+  let boundaryIdx = -1;
+  for (let i = maxChars - 1; i >= 0; i--) {
+    if (isDelimiter(trimmed[i])) {
+      boundaryIdx = i;
+      break;
+    }
+  }
+
+  // If a preceding boundary exists, take the complete word(s) before it
+  if (boundaryIdx > 0) {
+    const candidate = cleanTrailingDelimiters(trimmed.slice(0, boundaryIdx));
+    return candidate.length > 0 ? candidate + '...' : '';
+  }
+
+  // Case 3: No safe word boundary exists before maxChars (first word exceeds limit).
+  // Return safe empty fallback — NEVER return a partial word!
+  return '';
+}
+
+// ─── Keyword-Matched Passage Extractor ───────────────────────────────────────
+/**
+ * Selects the best candidate supporting sentence from `chunkContent` for a given
+ * question using substantive lexical keyword overlap.
+ *
+ * Design and Accuracy Caveat:
+ * - This function is an offline lexical keyword filter, NOT a semantic NLU or embedding model.
+ *   It does NOT claim semantic accuracy or deep comprehension based on keyword overlap.
+ * - To prevent misleading citations, it enforces a strict meaningful-match threshold:
+ *   questions with >= 3 keywords require at least 2 distinct substantive keyword hits,
+ *   and all matches must satisfy the minimum keyword overlap ratio.
+ * - If no candidate sentence meets this threshold, the function safely returns an empty
+ *   string `''`, ensuring student feedback falls back to generalized section guidance
+ *   without quoting an irrelevant passage.
+ */
+function findBestSupportingPassage(questionText: string, chunkContent: string): string {
+  if (!chunkContent || !questionText) return '';
+
+  const cleanChunk = chunkContent.trim();
+  const cleanQ = questionText.trim();
+  if (cleanChunk.length < 15 || cleanQ.length < 5) return '';
+
+  // Arabic + English stop-words to exclude from keyword scoring
+  // (Prepositions, demonstratives, pronouns, auxiliary verbs, and generic structural words)
+  const STOP_WORDS = new Set([
+    // Arabic prepositions & particles
+    'من', 'في', 'على', 'إلى', 'عن', 'مع', 'بين', 'خلال', 'حول', 'تحت', 'فوق',
+    'أمام', 'خلف', 'بعد', 'قبل', 'عند', 'لدى', 'منذ', 'حيث', 'حتى', 'نحو',
+    // Arabic pronouns & relatives
+    'هو', 'هي', 'هم', 'هن', 'أنت', 'أنا', 'نحن', 'هذا', 'هذه', 'هؤلاء', 'ذلك', 'تلك', 'أولئك',
+    'التي', 'الذي', 'الذين', 'اللتين', 'اللذين', 'اللائي', 'اللاتي',
+    'وهو', 'وهي', 'وهذا', 'وهذه', 'بما', 'مما', 'كما', 'عما', 'لما',
+    // Arabic auxiliary verbs & conditions
+    'كان', 'كانت', 'يكون', 'تكون', 'أصبح', 'أصبحت', 'صار', 'صارت', 'ليس', 'ليست',
+    'أن', 'إن', 'بأن', 'كأن', 'لكن', 'لا', 'لم', 'لن', 'ما', 'ماذا', 'أي', 'أين',
+    'متى', 'كيف', 'لماذا', 'ولماذا', 'إذا', 'لو', 'قد', 'لقد', 'وقد', 'فقد', 'بل', 'نعم',
+    // Arabic generic / structural nouns
+    'كل', 'جميع', 'بعض', 'غير', 'تم', 'تمت', 'قام', 'قامت', 'أهم', 'أحد', 'إحدى',
+    'مثل', 'فقط', 'أيضا', 'كذلك', 'أو', 'ثم', 'درس', 'فصل', 'وحدة', 'كتاب', 'صفحة',
+    'سؤال', 'إجابة', 'اختر', 'عام', 'خاص', 'أول', 'آخر',
+    // English prepositions, pronouns & particles
+    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'but', 'with', 'by',
+    'it', 'its', 'that', 'this', 'these', 'those', 'there', 'here',
+    'what', 'which', 'where', 'when', 'who', 'whom', 'whose', 'why', 'how',
+    // English quantifiers & modals
+    'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+    'than', 'too', 'very', 'can', 'will', 'just', 'should', 'would', 'could',
+    'now', 'then', 'also', 'into', 'through', 'during', 'before', 'after',
+    'above', 'below', 'between', 'under', 'again', 'further', 'once', 'about',
+    'out', 'up', 'down', 'same', 'so', 'only',
+    // English educational structural terms
+    'chapter', 'lesson', 'unit', 'page', 'question', 'answer', 'text'
+  ]);
+
+  const tokenise = (text: string): string[] =>
+    (text.match(/[\u0600-\u06FFa-zA-Z]{2,}/g) || []).map(w => w.toLowerCase());
+
+  const questionTokens = tokenise(cleanQ);
+  const keywords = new Set(questionTokens.filter(w => !STOP_WORDS.has(w)));
+
+  if (keywords.size === 0) return '';
+
+  // Split chunk into sentences
+  const sentences = cleanChunk
+    .split(/(?<=[.!?؟])|(?<=\n)/)  // split after sentence-ending punctuation or newlines
+    .map(s => s.trim())
+    .filter(s => s.length >= 10);
+
+  if (sentences.length === 0) return '';
+
+  let bestSentence = '';
+  let bestScore = 0;
+
+  for (const sentence of sentences) {
+    const sentenceTokens = new Set(tokenise(sentence));
+    let score = 0;
+    for (const kw of keywords) {
+      if (sentenceTokens.has(kw)) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestSentence = sentence;
+    }
+  }
+
+  // Meaningful Match Gate:
+  // - Questions with >= 3 keywords require at least 2 distinct substantive keyword hits.
+  // - Overlap ratio must meet minimum threshold (>= 50% for 1-2 keywords, >= 25% for 3+ keywords).
+  // - If the match is not sufficiently meaningful, return '' to prevent misleading excerpts.
+  const minRequiredHits = keywords.size >= 3 ? 2 : 1;
+  const minRequiredRatio = keywords.size <= 2 ? 0.5 : 0.25;
+  const overlapRatio = bestScore / keywords.size;
+
+  if (bestScore < minRequiredHits || overlapRatio < minRequiredRatio || !bestSentence) {
+    return '';
+  }
+
+  // Trim to a safe display length at a word boundary
+  return truncateAtWordBoundary(bestSentence, 150);
+}
+
 /**
  * Teacher Quality Score Evaluator:
  * - Relevance Score >= 90%
@@ -374,7 +572,7 @@ export async function verifyQuestionProvenance(
     .filter(w => w.length > 1 && !stopWords.has(w));
 
   const matchedAnsWords = ansWords.filter(w => pageText.includes(w));
-  
+
   // Exact phrase match or >= 60% of distinctive answer words must appear
   const exactAnswerMatch = pageText.includes(normalizedCorrectOpt);
   const partialAnswerMatch = ansWords.length > 0 && (matchedAnsWords.length / ansWords.length) >= 0.6;
@@ -1347,9 +1545,9 @@ Return valid JSON with exact keys:
                   }
                 });
               }
-            } catch (_) {}
+            } catch (_) { }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       const isUnseenForStudent = (q: GroundedQuestion) => {
@@ -1705,7 +1903,7 @@ Return valid JSON with exact keys:
                 }
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       } catch (err) {
         console.warn('Could not query past student evaluations:', err);
@@ -1734,10 +1932,10 @@ Return valid JSON with exact keys:
         const candidateBuffer = Math.max(3, Math.ceil(requiredCount * 0.6));
         const requestCount = Math.min(10, requiredCount + candidateBuffer);
         const rawAiQuestions = await this.callGeminiForQuestions(
-          chunks, 
-          requestCount, 
-          params.bookId, 
-          params.chapterId, 
+          chunks,
+          requestCount,
+          params.bookId,
+          params.chapterId,
           detectedLanguage,
           Array.from(seenTexts).slice(0, 15), // Pass sample of previously seen questions to guide Gemini
           {
@@ -2013,8 +2211,8 @@ Return valid JSON with exact keys:
 
     const avoidanceNotice = previouslySeenQuestions.length > 0
       ? (isEn
-          ? `\nIMPORTANT: The student has already answered these questions in past exams. You MUST generate totally different questions testing other concepts and definitions in this lesson without repeating:\n${previouslySeenQuestions.slice(0, 10).map(t => `- ${t}`).join('\n')}\n`
-          : `\nتنبيه هام جداً: خاض هذا الطالب سابقاً امتحانات تضمنت الأسئلة التالية. يجب عليك صياغة أسئلة جديدة ومختلفة تماماً تغطي مفاهيم وجوانب أخرى في الدرس دون أي تكرار:\n${previouslySeenQuestions.slice(0, 10).map(t => `- ${t}`).join('\n')}\n`)
+        ? `\nIMPORTANT: The student has already answered these questions in past exams. You MUST generate totally different questions testing other concepts and definitions in this lesson without repeating:\n${previouslySeenQuestions.slice(0, 10).map(t => `- ${t}`).join('\n')}\n`
+        : `\nتنبيه هام جداً: خاض هذا الطالب سابقاً امتحانات تضمنت الأسئلة التالية. يجب عليك صياغة أسئلة جديدة ومختلفة تماماً تغطي مفاهيم وجوانب أخرى في الدرس دون أي تكرار:\n${previouslySeenQuestions.slice(0, 10).map(t => `- ${t}`).join('\n')}\n`)
       : '';
 
     const prompt = isEn ? `You are an experienced senior school teacher creating an official school examination in ${subjTitleEn} for students (${stageInfoEn}).
@@ -2151,7 +2349,7 @@ ${contextText}
             if (objMatches && objMatches.length > 0) {
               parsed = [];
               for (const objStr of objMatches) {
-                try { parsed.push(JSON.parse(objStr)); } catch (e) {}
+                try { parsed.push(JSON.parse(objStr)); } catch (e) { }
               }
             }
           }
@@ -2200,8 +2398,8 @@ ${contextText}
             const pageAssets = VisualAssetExtractor.getAssetsForPage(bookId, assignedChunk.page_number || 1);
             const chapterAssets = VisualAssetExtractor.getAssetsForChapter(bookId, chapterId);
             const verifiedAsset = pageAssets.find(a => a.asset_type === 'diagram') ||
-                                  pageAssets[0] ||
-                                  (isGeom || hasVisualMarker ? chapterAssets[0] : undefined);
+              pageAssets[0] ||
+              (isGeom || hasVisualMarker ? chapterAssets[0] : undefined);
 
             const resultQ: GroundedQuestion = {
               id: uuidv4(),
@@ -2213,7 +2411,7 @@ ${contextText}
               difficulty: q.difficulty || 'MEDIUM',
               bloom_level: (q.bloom_level || 'UNDERSTANDING').toUpperCase(),
               page_reference: assignedChunk.page_number || 1,
-              source_excerpt: assignedChunk.content?.slice(0, 150) || '',
+              source_excerpt: findBestSupportingPassage(sanitizedQText, assignedChunk.content || ''),
               explanation: q.explanation || '',
               chunk_text: assignedChunk.content || '',
               similarity_score: Number((assignedChunk.similarity ?? 1.0).toFixed(4)),
@@ -2262,8 +2460,8 @@ ${contextText}
     const chRes = await db.query(`SELECT title_ar, title_en, chapter_number FROM book_chapters WHERE id = $1`, [chapterId]);
     const firstQText = (questions[0]?.question_text || '') + ' ' + (questions[0]?.explanation || '');
     const isEnEvaluation = (firstQText.match(/[a-zA-Z]/g) || []).length > (firstQText.match(/[\u0600-\u06FF]/g) || []).length;
-    const chapterName = isEnEvaluation 
-      ? (chRes.rows[0]?.title_en || chRes.rows[0]?.title_ar || 'Chapter') 
+    const chapterName = isEnEvaluation
+      ? (chRes.rows[0]?.title_en || chRes.rows[0]?.title_ar || 'Chapter')
       : (chRes.rows[0]?.title_ar || 'الفصل الدراسي المقبول');
 
     let authoritativeScore = 0;
@@ -2305,32 +2503,48 @@ ${contextText}
       }
 
       let studyRec = '';
+      // Localise Bloom level to a student-facing label (never expose raw enum codes)
+      const bloomLabelEn = BLOOM_TO_ENGLISH[q.bloom_level?.toUpperCase()] || 'Conceptual Understanding';
+      const bloomLabelAr = BLOOM_TO_ARABIC[q.bloom_level?.toUpperCase()] || 'الفهم المفاهيمي';
+
+      // Safe word-boundary truncation for question topic labels (no mid-word cuts)
+      const topicQuestionLabel = truncateAtWordBoundary(q.question_text, 50) || (isEnEvaluation ? 'Exam Question' : 'سؤال الاختبار');
+
+      // Check whether an authentic supporting excerpt exists (never quote empty or fabricated text)
+      const rawExcerpt = (q.source_excerpt || '').trim();
+      const cleanExcerpt = truncateAtWordBoundary(rawExcerpt, 120);
+      const hasReliableExcerpt = cleanExcerpt.length > 0;
+
       if (isEnEvaluation) {
         if (!isCorrect) {
-          studyRec = `🎯 Action Plan: Open ${chapterName} - [Page ${q.page_reference}] and review: "${(q.source_excerpt || '').slice(0, 80)}...". Bloom Level: ${q.bloom_level}.`;
-          weakTopics.push(`Page ${q.page_reference} Concept: ${q.question_text.slice(0, 45)}`);
+          studyRec = hasReliableExcerpt
+            ? `🎯 Review Plan: Open "${chapterName}" → Page ${q.page_reference} and revisit the following passage: "${cleanExcerpt}". Skill focus: ${bloomLabelEn}.`
+            : `🎯 Review Plan: Open "${chapterName}" → Page ${q.page_reference} and review the section carefully to reinforce the concept. Skill focus: ${bloomLabelEn}.`;
+          weakTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
           if (isAuthoritativeEligible) {
-            authoritativeWeakTopics.push(`Page ${q.page_reference} Concept: ${q.question_text.slice(0, 45)}`);
+            authoritativeWeakTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
           }
         } else {
-          studyRec = `✅ Mastered: Successfully demonstrated comprehension of page ${q.page_reference} concept.`;
-          strongTopics.push(`Mastered Page ${q.page_reference} Concept`);
+          studyRec = `✅ Correct answer for this question (Page ${q.page_reference}). Keep reviewing the full section to reinforce your understanding of ${bloomLabelEn}.`;
+          strongTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
           if (isAuthoritativeEligible) {
-            authoritativeStrongTopics.push(`Mastered Page ${q.page_reference} Concept`);
+            authoritativeStrongTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
           }
         }
       } else {
         if (!isCorrect) {
-          studyRec = `🎯 خطة المراجعة: راجع ${chapterName} - [صفحة ${q.page_reference}] وراجع بعناية: "${(q.source_excerpt || '').slice(0, 80)}...". مفهوم: ${q.bloom_level}.`;
-          weakTopics.push(`مفهوم صفحة ${q.page_reference}: ${q.question_text.slice(0, 45)}`);
+          studyRec = hasReliableExcerpt
+            ? `🎯 خطة المراجعة: ارجع إلى "${chapterName}" ← صفحة ${q.page_reference} وراجع النص التالي بعناية: "${cleanExcerpt}". مهارة التعلم: ${bloomLabelAr}.`
+            : `🎯 خطة المراجعة: ارجع إلى "${chapterName}" ← صفحة ${q.page_reference} وراجع محتوى الدرس بعناية لتثبيت المفاهيم. مهارة التعلم: ${bloomLabelAr}.`;
+          weakTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
           if (isAuthoritativeEligible) {
-            authoritativeWeakTopics.push(`مفهوم صفحة ${q.page_reference}: ${q.question_text.slice(0, 45)}`);
+            authoritativeWeakTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
           }
         } else {
-          studyRec = `✅ إتقان تام: تم استيعاب مفهوم صفحة ${q.page_reference} بنجاح.`;
-          strongTopics.push(`إتقان مفهوم صفحة ${q.page_reference}`);
+          studyRec = `✅ إجابة صحيحة لهذا السؤال (صفحة ${q.page_reference}). تابع مراجعة الفصل كاملاً لتعزيز فهمك في مهارة: ${bloomLabelAr}.`;
+          strongTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
           if (isAuthoritativeEligible) {
-            authoritativeStrongTopics.push(`إتقان مفهوم صفحة ${q.page_reference}`);
+            authoritativeStrongTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
           }
         }
       }
@@ -2410,13 +2624,13 @@ ${contextText}
       overall_feedback_ar: provisionalPercentage >= 85
         ? 'أداء متميز واستيعاب عالي لنصوص وأفكار الكتاب المدرسي.'
         : provisionalPercentage >= 60
-        ? 'مستوى جيد، ولكن توجد نقاط محددة تحتاج لإعادة مراجعة من صفحات الكتاب الموضحة بالتقرير.'
-        : 'بحاجة إلى تركيز وإعادة قراءة الصفحات المحددة في خطة المراجعة قبل المحاولة التالية.',
+          ? 'مستوى جيد، ولكن توجد نقاط محددة تحتاج لإعادة مراجعة من صفحات الكتاب الموضحة بالتقرير.'
+          : 'بحاجة إلى تركيز وإعادة قراءة الصفحات المحددة في خطة المراجعة قبل المحاولة التالية.',
       overall_feedback_en: provisionalPercentage >= 85
         ? 'Excellent performance with strong mastery of textbook concepts.'
         : provisionalPercentage >= 60
-        ? 'Good progress, but specific concepts need review from the cited textbook pages.'
-        : 'Requires focused review of the cited textbook sections before re-evaluating.'
+          ? 'Good progress, but specific concepts need review from the cited textbook pages.'
+          : 'Requires focused review of the cited textbook sections before re-evaluating.'
     };
 
     fullReport.analytics_synced = false;
@@ -2511,8 +2725,8 @@ ${contextText}
         chapterId,
         totalAttempted: report.authoritative_max_score,
         totalCorrect: report.authoritative_score || 0,
-        weakTopics: (report.items || []).filter(i => i.is_authoritatively_scored && !i.is_correct).map(i => i.question_text.slice(0, 45)),
-        strongTopics: (report.items || []).filter(i => i.is_authoritatively_scored && i.is_correct).map(i => i.question_text.slice(0, 45))
+        weakTopics: (report.items || []).filter(i => i.is_authoritatively_scored && !i.is_correct).map(i => truncateAtWordBoundary(i.question_text, 50) || 'سؤال الاختبار'),
+        strongTopics: (report.items || []).filter(i => i.is_authoritatively_scored && i.is_correct).map(i => truncateAtWordBoundary(i.question_text, 50) || 'سؤال الاختبار')
       });
 
       // 3. Record into student learning history
@@ -2614,5 +2828,11 @@ ${contextText}
   }
 }
 
-export { AIRagEngine };
+export {
+  AIRagEngine,
+  findBestSupportingPassage,
+  truncateAtWordBoundary,
+  BLOOM_TO_ARABIC,
+  BLOOM_TO_ENGLISH
+};
 export const aiRagEngine = new AIRagEngine();
