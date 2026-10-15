@@ -391,3 +391,33 @@ CREATE TABLE IF NOT EXISTS student_exam_assignments (
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ai_usage_metrics (
+    id VARCHAR(64) PRIMARY KEY,
+    event_type VARCHAR(32) NOT NULL,
+    student_id VARCHAR(64),
+    book_id VARCHAR(64),
+    chapter_id VARCHAR(64),
+    config_hash VARCHAR(64),
+    cached_exam_id VARCHAR(64),
+    model_name VARCHAR(64),
+    prompt_tokens INT DEFAULT 0,
+    candidates_tokens INT DEFAULT 0,
+    total_tokens INT DEFAULT 0,
+    estimated_cost_usd DOUBLE DEFAULT 0,
+    duration_ms INT DEFAULT 0,
+    error_code VARCHAR(64),
+    is_estimated TINYINT NOT NULL DEFAULT 0,
+    call_purpose VARCHAR(64) NOT NULL DEFAULT 'EXAM_GENERATION',
+    correlation_id VARCHAR(64) NULL,
+    attempt_number INT NOT NULL DEFAULT 1,
+    cached_tokens INT NOT NULL DEFAULT 0,
+    cost_status VARCHAR(32) NOT NULL DEFAULT 'ESTIMATED',
+    grade_id VARCHAR(64) NULL,
+    subject_id VARCHAR(64) NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_metric_event (event_type),
+    INDEX idx_metric_created (created_at),
+    INDEX idx_metric_config (config_hash),
+    INDEX idx_metric_cached_exam (cached_exam_id)
+);
+

@@ -121,12 +121,13 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheMiss error:', e?.message || e));
 
       // Multi-instance concurrency coordination: only 1 Vercel instance generates for this configHash at a time
-      const lock = await ExamCacheService.acquireGenerationLock(configHash);
+      const lock = await ExamCacheService.acquireGenerationLock(configHash, 45000);
       let generationLockAcquired = lock.acquired;
+      let activeLockId = lock.lockId;
 
       if (!generationLockAcquired) {
         console.log(`⏳ [Multi-Instance Coordination] Another instance generating for config ${configHash.slice(0, 8)}. Awaiting concurrent result...`);
-        const awaitedExam = await ExamCacheService.waitForConcurrentGeneration(configHash, 25000);
+        const awaitedExam = await ExamCacheService.waitForConcurrentGeneration(configHash, parsedCount, 35000);
         if (awaitedExam) {
           console.log(`⚡ [Multi-Instance Coordination] Reused exam generated concurrently!`);
           questions = awaitedExam.questions;
@@ -142,6 +143,41 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             configHash: awaitedExam.configHash,
             cachedExamId: awaitedExam.examId
           }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheHit error:', e?.message || e));
+        } else {
+          // Awaited exam not available. Attempt to acquire the lock before launching generation
+          const retryLock = await ExamCacheService.acquireGenerationLock(configHash, 45000);
+          if (retryLock.acquired) {
+            generationLockAcquired = true;
+            activeLockId = retryLock.lockId;
+          } else {
+            // Lock is STILL actively held by another instance.
+            // Check if a verified fallback exam satisfying the count exists
+            const fallback = await ExamCacheService.getVerifiedFallbackExam({
+              bookId: book_id,
+              chapterIds: chapter_id,
+              examParams: { count: parsedCount }
+            });
+            if (fallback && fallback.questions && fallback.questions.length >= parsedCount) {
+              console.log(`🛡️ [Verified Cache Fallback] Coordination timeout; serving verified exam version ${fallback.versionNumber} for student ${req.user!.id}`);
+              questions = fallback.questions;
+              cachedExamId = fallback.examId;
+              configHash = fallback.configHash;
+              contentHash = fallback.contentHash;
+              versionNumber = fallback.versionNumber || 1;
+              isFallbackExam = true;
+              await ExamCacheService.recordStudentAssignment(fallback.configKey, req.user!.id, fallback.examId);
+              AiUsageMetricsService.recordCacheHit({
+                studentId: req.user!.id,
+                bookId: book_id,
+                chapterId: chapter_id,
+                configHash: fallback.configHash,
+                cachedExamId: fallback.examId
+              }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheHit error:', e?.message || e));
+            } else {
+              // Bounded wait exhausted and lock is still held; fail closed with retryable 503 rather than duplicate Gemini calls
+              throw new GeminiProviderError('TEMPORARY_OVERLOAD', 15000, 'concurrent generation in progress');
+            }
+          }
         }
       }
 
@@ -156,6 +192,10 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             chapterId: chapter_id,
             count: parsedCount
           });
+
+          if (!questions || questions.length < parsedCount) {
+            throw new Error(`INCOMPLETE_EXAM_GENERATED: Only ${questions?.length || 0}/${parsedCount} questions verified`);
+          }
 
           // Cache the generated exam with authoritative identity and assign to current student
           const stored = await ExamCacheService.storeExamInCache({
@@ -172,6 +212,11 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
           versionNumber = stored.versionNumber || 1;
         } catch (genErr: any) {
           console.warn('⚠️ AI generation failed, checking verified cache fallback:', genErr?.name || genErr?.message || genErr);
+          // If questions were already successfully generated, the failure occurred during persistence or student assignment.
+          // Do NOT mask database or assignment failures as a provider outage; fail closed immediately.
+          if (questions && questions.length >= parsedCount) {
+            throw genErr;
+          }
           // Verified Cache Fallback: If Gemini hits 429 quota exhaustion or 503 overload, check if a verified cached exam exists
           const fallback = await ExamCacheService.getVerifiedFallbackExam({
             bookId: book_id,
@@ -179,7 +224,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             examParams: { count: parsedCount }
           });
 
-          if (fallback && fallback.questions && fallback.questions.length > 0) {
+          if (fallback && fallback.questions && fallback.questions.length >= parsedCount) {
             console.log(`🛡️ [Verified Cache Fallback] Provider unavailable; serving verified exam version ${fallback.versionNumber} for student ${req.user!.id}`);
             questions = fallback.questions;
             cachedExamId = fallback.examId;
@@ -200,8 +245,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             throw genErr;
           }
         } finally {
-          if (generationLockAcquired) {
-            await ExamCacheService.releaseGenerationLock(configHash, lock.lockId);
+          if (generationLockAcquired && activeLockId) {
+            await ExamCacheService.releaseGenerationLock(configHash, activeLockId);
           }
         }
       }
@@ -242,7 +287,15 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       };
     });
 
-    const isPartial = sanitizedQuestions.length < parsedCount;
+    if (sanitizedQuestions.length < parsedCount) {
+      return res.status(503).json({
+        error: `لم نتمكن من استيفاء عدد الأسئلة المطلوب بالكامل (${sanitizedQuestions.length} من أصل ${parsedCount} أسئلة معتمدة) مع الالتزام بمعايير الجودة والتوثيق من كتاب الوزارة. يرجى المحاولة مرة أخرى بعد قليل.`,
+        code: 'INSUFFICIENT_VERIFIED_QUESTIONS',
+        requested_count: parsedCount,
+        generated_count: sanitizedQuestions.length,
+        retryable: true
+      });
+    }
 
     return res.json({
       book_id,
@@ -252,15 +305,13 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       questions: sanitizedQuestions,
       requested_count: parsedCount,
       generated_count: sanitizedQuestions.length,
-      is_partial: isPartial,
+      is_partial: false,
       is_fallback: isFallbackExam,
-      exam_status: isPartial ? 'PARTIAL' : 'COMPLETE',
+      exam_status: 'COMPLETE',
       fallback_notice: isFallbackExam
         ? 'تم إعداد هذا الاختبار المعتمد من بنك أسئلة كتاب الوزارة نظراً لضغط مؤقت على خدمة الذكاء الاصطناعي.'
         : null,
-      partial_notice: isPartial
-        ? `تم إعداد ${sanitizedQuestions.length} أسئلة معتمدة من أصل ${parsedCount} مطلوبة للحفاظ على معايير الجودة والتوثيق من كتاب الوزارة دون تكرار.`
-        : null
+      partial_notice: null
     });
   } catch (err: any) {
     console.error('AI Generate Quiz error:', err?.name === 'GeminiProviderError' ? err.message : err);

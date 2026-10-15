@@ -634,6 +634,8 @@ export const StudentDashboard: React.FC = () => {
           setAiGenRetryUntil(Date.now() + Math.max(10, Number(data.retry_after_seconds) || 30) * 1000);
         } else if (data.code === 'AI_QUOTA_EXHAUSTED') {
           setAiGenRetryUntil(Date.now() + 5 * 60 * 1000); // do not hammer an exhausted quota
+        } else if (data.code === 'INSUFFICIENT_VERIFIED_QUESTIONS' || data.retryable) {
+          setAiGenRetryUntil(Date.now() + Math.max(10, Number(data.retry_after_seconds) || 15) * 1000);
         }
         throw new Error(data.error || 'فشل توليد التقييم');
       }

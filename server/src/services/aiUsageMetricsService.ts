@@ -297,18 +297,38 @@ export class AiUsageMetricsService {
           error_code VARCHAR(64),
           is_estimated TINYINT DEFAULT 0,
           call_purpose VARCHAR(64) DEFAULT 'EXAM_GENERATION',
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_metric_event (event_type),
-          INDEX idx_metric_created (created_at),
-          INDEX idx_metric_config (config_hash)
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `);
+      const isSqlite = Boolean(typeof (db as any).isSqlite === 'function' && (db as any).isSqlite());
+      if (isSqlite) {
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_metric_event ON ai_usage_metrics (event_type)`);
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_metric_created ON ai_usage_metrics (created_at)`);
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_metric_config ON ai_usage_metrics (config_hash)`);
+      } else {
+        // MySQL 8.0 / TiDB: Verify existing indexes via information_schema to safely create missing indexes without syntax errors
+        const existing = await db.query(
+          `SELECT INDEX_NAME FROM information_schema.statistics
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_usage_metrics'`
+        );
+        const existingNames = new Set((existing.rows || []).map((r: any) => String(r.INDEX_NAME || r.index_name || '').toLowerCase()));
+        if (!existingNames.has('idx_metric_event')) {
+          await db.query(`CREATE INDEX idx_metric_event ON ai_usage_metrics (event_type)`);
+        }
+        if (!existingNames.has('idx_metric_created')) {
+          await db.query(`CREATE INDEX idx_metric_created ON ai_usage_metrics (created_at)`);
+        }
+        if (!existingNames.has('idx_metric_config')) {
+          await db.query(`CREATE INDEX idx_metric_config ON ai_usage_metrics (config_hash)`);
+        }
+      }
 
       // Inspect schema safely without executing runtime DDL
       await this.probeColumnDefinitions();
       this.tableEnsured = true;
     } catch (err: any) {
       console.warn('⚠️ [AiUsageMetricsService] ensureTable notice:', err?.message || err);
+      throw err;
     }
   }
 
@@ -640,34 +660,59 @@ export class AiUsageMetricsService {
     try {
       if (this.hasCallPurposeColumn) {
         if (this.hasCorrelationIdColumn && this.hasAttemptNumberColumn) {
-          await db.query(
-            `INSERT INTO ai_usage_metrics (
-               id, event_type, student_id, book_id, chapter_id, config_hash,
-               model_name, error_code, duration_ms, call_purpose, correlation_id,
-               attempt_number, grade_id, subject_id, created_at
-             ) VALUES ($1, 'PROVIDER_FAILURE', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)`,
-            [
-              uuidv4(),
-              params.studentId || null,
-              params.bookId || null,
-              params.chapterId || null,
-              params.configHash || null,
-              params.modelName || 'gemini-3-flash-preview',
-              params.errorCode || 'UNKNOWN',
-              params.durationMs || 0,
-              params.callPurpose || 'EXAM_GENERATION',
-              params.correlationId || null,
-              params.attemptNumber || 1,
-              params.gradeId || null,
-              params.subjectId || null
-            ]
-          );
+          if (this.hasCostStatusColumn) {
+            await db.query(
+              `INSERT INTO ai_usage_metrics (
+                 id, event_type, student_id, book_id, chapter_id, config_hash,
+                 model_name, error_code, duration_ms, call_purpose, correlation_id,
+                 attempt_number, grade_id, subject_id, cost_status, is_estimated, created_at
+               ) VALUES ($1, 'PROVIDER_FAILURE', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'UNKNOWN', 1, CURRENT_TIMESTAMP)`,
+              [
+                uuidv4(),
+                params.studentId || null,
+                params.bookId || null,
+                params.chapterId || null,
+                params.configHash || null,
+                params.modelName || 'gemini-3-flash-preview',
+                params.errorCode || 'UNKNOWN',
+                params.durationMs || 0,
+                params.callPurpose || 'EXAM_GENERATION',
+                params.correlationId || null,
+                params.attemptNumber || 1,
+                params.gradeId || null,
+                params.subjectId || null
+              ]
+            );
+          } else {
+            await db.query(
+              `INSERT INTO ai_usage_metrics (
+                 id, event_type, student_id, book_id, chapter_id, config_hash,
+                 model_name, error_code, duration_ms, call_purpose, correlation_id,
+                 attempt_number, grade_id, subject_id, is_estimated, created_at
+               ) VALUES ($1, 'PROVIDER_FAILURE', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1, CURRENT_TIMESTAMP)`,
+              [
+                uuidv4(),
+                params.studentId || null,
+                params.bookId || null,
+                params.chapterId || null,
+                params.configHash || null,
+                params.modelName || 'gemini-3-flash-preview',
+                params.errorCode || 'UNKNOWN',
+                params.durationMs || 0,
+                params.callPurpose || 'EXAM_GENERATION',
+                params.correlationId || null,
+                params.attemptNumber || 1,
+                params.gradeId || null,
+                params.subjectId || null
+              ]
+            );
+          }
         } else {
           await db.query(
             `INSERT INTO ai_usage_metrics (
                id, event_type, student_id, book_id, chapter_id, config_hash,
-               model_name, error_code, duration_ms, call_purpose, created_at
-             ) VALUES ($1, 'PROVIDER_FAILURE', $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)`,
+               model_name, error_code, duration_ms, call_purpose, is_estimated, created_at
+             ) VALUES ($1, 'PROVIDER_FAILURE', $2, $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)`,
             [
               uuidv4(),
               params.studentId || null,
@@ -685,8 +730,8 @@ export class AiUsageMetricsService {
         await db.query(
           `INSERT INTO ai_usage_metrics (
              id, event_type, student_id, book_id, chapter_id, config_hash,
-             model_name, error_code, duration_ms, created_at
-           ) VALUES ($1, 'PROVIDER_FAILURE', $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
+             model_name, error_code, duration_ms, is_estimated, created_at
+           ) VALUES ($1, 'PROVIDER_FAILURE', $2, $3, $4, $5, $6, $7, $8, 1, CURRENT_TIMESTAMP)`,
           [
             uuidv4(),
             params.studentId || null,

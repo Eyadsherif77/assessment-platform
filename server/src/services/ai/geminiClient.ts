@@ -90,7 +90,7 @@ export class GeminiClient {
   // ---- Tunables (documented in docs/phase4g3ap_provider_reliability.md) ----
   public static maxConcurrentCalls = num(process.env.GEMINI_MAX_CONCURRENCY, 3);
   public static queueTimeoutMs = 15_000;
-  public static maxModelsPerCall = 2;
+  public static maxModelsPerCall = num(process.env.GEMINI_MAX_MODELS_PER_CALL, 3);
   public static quotaCooldownMs = 60_000;
   public static notFoundCooldownMs = 10 * 60_000;
   public static overloadCooldownMs = 20_000;

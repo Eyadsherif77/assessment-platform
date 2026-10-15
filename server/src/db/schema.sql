@@ -342,3 +342,34 @@ CREATE INDEX IF NOT EXISTS idx_cached_config_hash ON shared_cached_exams(config_
 CREATE INDEX IF NOT EXISTS idx_cached_exam_book ON shared_cached_exams(book_id);
 CREATE INDEX IF NOT EXISTS idx_asgn_student_config ON student_exam_assignments(student_id, config_hash);
 CREATE INDEX IF NOT EXISTS idx_asgn_exam ON student_exam_assignments(cached_exam_id);
+
+CREATE TABLE IF NOT EXISTS ai_usage_metrics (
+    id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    student_id TEXT,
+    book_id TEXT,
+    chapter_id TEXT,
+    config_hash TEXT,
+    cached_exam_id TEXT,
+    model_name TEXT,
+    prompt_tokens INTEGER DEFAULT 0,
+    candidates_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    estimated_cost_usd REAL DEFAULT 0,
+    duration_ms INTEGER DEFAULT 0,
+    error_code TEXT,
+    is_estimated INTEGER DEFAULT 0,
+    call_purpose TEXT DEFAULT 'EXAM_GENERATION',
+    correlation_id TEXT,
+    attempt_number INTEGER DEFAULT 1,
+    cached_tokens INTEGER DEFAULT 0,
+    cost_status TEXT DEFAULT 'ESTIMATED',
+    grade_id TEXT,
+    subject_id TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_metric_event ON ai_usage_metrics(event_type);
+CREATE INDEX IF NOT EXISTS idx_metric_created ON ai_usage_metrics(created_at);
+CREATE INDEX IF NOT EXISTS idx_metric_config ON ai_usage_metrics(config_hash);
+CREATE INDEX IF NOT EXISTS idx_metric_cached_exam ON ai_usage_metrics(cached_exam_id);

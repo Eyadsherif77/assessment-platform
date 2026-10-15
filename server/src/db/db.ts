@@ -126,6 +126,16 @@ class DatabaseManager {
     return process.env.SQLITE_DB_PATH || null;
   }
 
+  public getDialect(): 'sqlite' | 'mysql' | 'postgres' {
+    if (this.tidbConn || (!this.sqlite && !this.pgPool && (process.env.TIDB_HOST || process.env.MYSQL_HOST))) return 'mysql';
+    if (this.pgPool || (!this.sqlite && !this.tidbConn && process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('placeholder'))) return 'postgres';
+    return 'sqlite';
+  }
+
+  public isSqlite(): boolean {
+    return this.getDialect() === 'sqlite';
+  }
+
   public close(): void {
     if (this.sqlite) {
       try {

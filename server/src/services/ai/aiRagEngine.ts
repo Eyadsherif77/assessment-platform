@@ -418,7 +418,7 @@ export function evaluateQuestionQuality(
 
   // Teacher Rule: Question text must test understanding (definitions, reasoning, cause/effect, problem-solving)
   const normalizedQStem = (q.question_text || '').replace(/[\u064B-\u065F\u0670]/g, '');
-  const isTeacherStem = /ما|علل|احسب|متى|أي|لماذا|كيف|وضح|اذكر|إذا|ماذا يحدث|what|why|which|how|calculate|if/i.test(normalizedQStem);
+  const isTeacherStem = /من|ما|علل|احسب|متى|أي|أين|لماذا|كيف|وضح|اذكر|إذا|ماذا يحدث|what|why|which|how|calculate|if|who|where/i.test(normalizedQStem);
   if (!isTeacherStem) {
     eduScore -= 12;
   }
@@ -1939,7 +1939,7 @@ Return valid JSON with exact keys:
       try {
         // Over-generate candidate questions to guarantee requiredCount is comfortably achieved
         // after strict quality, provenance, and blind solver validation
-        const candidateBuffer = Math.max(3, Math.ceil(requiredCount * 0.6));
+        const candidateBuffer = Math.min(5, Math.max(4, Math.ceil(requiredCount * 0.8)));
         const requestCount = Math.min(10, requiredCount + candidateBuffer);
         const rawAiQuestions = await this.callGeminiForQuestions(
           chunks,
@@ -1998,7 +1998,7 @@ Return valid JSON with exact keys:
             const fresh = allUnitChunks.filter(c => !usedChunkIds.has(c.id) && c.book_id === params.bookId && c.chapter_id === params.chapterId);
             if (fresh.length >= 2) topUpChunks = fresh.slice(0, 6);
           } catch (e) { /* fall back to the pass-1 chunk subset */ }
-          const topUpRequestCount = Math.min(6, needed + 2);
+          const topUpRequestCount = Math.min(8, Math.max(3, needed * 2 + 1));
 
           try {
             const rawTopUpQuestions = await this.callGeminiForQuestions(
@@ -2052,17 +2052,13 @@ Return valid JSON with exact keys:
     }
 
     // 3b. Provider outage is reported as such (HTTP 503 temporary service), never as missing unit content.
-    if (validQuestions.length < 3 && (providerError || verifyStats.solverExecFailures > 0)) {
-      throw providerError || new GeminiProviderError('TEMPORARY_OVERLOAD', undefined, 'verification service unavailable');
+    if (validQuestions.length < requiredCount && (providerError || verifyStats.solverExecFailures > 0)) {
+      throw providerError || new GeminiProviderError('TEMPORARY_OVERLOAD', 15000, 'verification service unavailable');
     }
 
-    // 4. Fail-closed: If verified questions cannot satisfy the required count, never fabricate or substitute generic questions
+    // 4. Fail-closed: If verified questions cannot satisfy the required count, never fabricate, substitute generic questions, or silently truncate
     if (validQuestions.length < requiredCount) {
-      if (validQuestions.length >= 3) {
-        console.log(`ℹ️ [AIRagEngine] Serving ${validQuestions.length} rigorously verified questions for chapter ${params.chapterId} (requested ${requiredCount})`);
-      } else {
-        throw new Error(`EXAM_GENERATION_FAILED: Insufficient verified educational questions could be generated from the selected textbook content (requested ${requiredCount}, obtained ${validQuestions.length})`);
-      }
+      throw new Error(`EXAM_GENERATION_FAILED: Insufficient verified educational questions could be generated from the selected textbook content (requested ${requiredCount}, obtained ${validQuestions.length})`);
     }
 
     const finalQuestions = validQuestions.slice(0, Math.min(requiredCount, validQuestions.length));

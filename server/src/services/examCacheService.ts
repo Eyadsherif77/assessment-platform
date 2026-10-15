@@ -552,12 +552,15 @@ export class ExamCacheService {
     const configKey = this.buildCanonicalConfigKey(identity, unitSetKey, paramHash);
     const configHash = this.computeConfigHash(configKey);
 
-    // F. Lookup in persistent database: Find oldest verified cached exam version that is NOT yet assigned to this student
+    const requestedCount = Number(normalizedParams.count) || 1;
+
+    // F. Lookup in persistent database: Find oldest verified cached exam version that satisfies full requested count and is NOT yet assigned to this student
     const candidateRes = await db.query(
       `SELECT sce.*
        FROM shared_cached_exams sce
        WHERE sce.config_hash = $1
          AND sce.provenance_verified = 1
+         AND sce.total_questions >= $3
          AND sce.id NOT IN (
            SELECT sea.cached_exam_id
            FROM student_exam_assignments sea
@@ -565,14 +568,14 @@ export class ExamCacheService {
          )
        ORDER BY sce.version_number ASC, sce.created_at ASC
        LIMIT 1`,
-      [configHash, params.studentId]
+      [configHash, params.studentId, requestedCount]
     );
 
     if (candidateRes.rows.length === 0) {
-      // Check if any verified versions exist for this configuration
+      // Check if any verified versions exist for this configuration satisfying the requested question count
       const totalVersionsRes = await db.query(
-        `SELECT count(*) as cnt FROM shared_cached_exams WHERE config_hash = $1 AND provenance_verified = 1`,
-        [configHash]
+        `SELECT count(*) as cnt FROM shared_cached_exams WHERE config_hash = $1 AND provenance_verified = 1 AND total_questions >= $2`,
+        [configHash, requestedCount]
       );
       const totalVersions = Number(totalVersionsRes.rows[0].cnt);
 
@@ -602,6 +605,56 @@ export class ExamCacheService {
       parsedQuestions = typeof row.questions_data === 'string' ? JSON.parse(row.questions_data) : row.questions_data;
     } catch (_) {
       parsedQuestions = [];
+    }
+
+    if (!Array.isArray(parsedQuestions) || parsedQuestions.length < requestedCount) {
+      console.warn(`⚠️ [ExamCacheService] Cached exam ${row.id} has ${Array.isArray(parsedQuestions) ? parsedQuestions.length : 0} questions, expected ${requestedCount}. Skipping incomplete cache record.`);
+      return {
+        hit: false,
+        reason: 'CACHE_MISS',
+        configKey,
+        cacheKey: configKey,
+        configHash,
+        curriculumIdentity: identity
+      };
+    }
+
+    const allQuestionsValid = parsedQuestions.every(q => 
+      q && typeof q.question_text === 'string' && q.question_text.trim().length > 0 &&
+      Array.isArray(q.options) && q.options.length > 0
+    );
+
+    if (!allQuestionsValid) {
+      console.warn(`⚠️ [ExamCacheService] Cached exam ${row.id} contains structurally malformed questions or missing options. Skipping corrupted cache record.`);
+      return {
+        hit: false,
+        reason: 'CACHE_MISS',
+        configKey,
+        cacheKey: configKey,
+        configHash,
+        curriculumIdentity: identity
+      };
+    }
+
+    // Verify all curriculum identity dimensions on row match requested identity
+    const identityMatches =
+      row.book_id === identity.bookId &&
+      row.academic_stage_id === identity.academicStageId &&
+      row.grade_id === identity.gradeId &&
+      row.subject_id === identity.subjectId &&
+      Number(row.term) === Number(identity.term) &&
+      row.school_type === identity.schoolType;
+
+    if (!identityMatches) {
+      console.warn(`⚠️ [ExamCacheService] Cached exam ${row.id} identity dimensions do not match requested identity. Skipping record.`);
+      return {
+        hit: false,
+        reason: 'CACHE_MISS',
+        configKey,
+        cacheKey: configKey,
+        configHash,
+        curriculumIdentity: identity
+      };
     }
 
     let parsedParameters: ExamGenerationParameters = normalizedParams;
@@ -664,6 +717,13 @@ export class ExamCacheService {
     const { normalizedParams, paramHash } = this.normalizeExamParameters(params.examParams);
     const configKey = this.buildCanonicalConfigKey(params.identity, unitSetKey, paramHash);
     const configHash = this.computeConfigHash(configKey);
+
+    // Enforce that incomplete exams are never stored in the shared cache
+    const expectedCount = Number(params.examParams.count) || 0;
+    if (expectedCount > 0 && params.questions.length < expectedCount) {
+      throw new Error(`INCOMPLETE_EXAM_CANNOT_BE_CACHED: Cannot store exam with ${params.questions.length} questions when ${expectedCount} were requested`);
+    }
+
     // Validate Question Structure and Answer Key Correctness
     const validationSummary = AnswerValidationService.validateExamQuestions(params.questions);
     if (validationSummary.hasRejectedAnswers || !validationSummary.allStructurallyValid) {
@@ -814,7 +874,7 @@ export class ExamCacheService {
     cachedExamId: string
   ): Promise<{ success: boolean; duplicate: boolean }> {
     if (!studentId || !configKey || !cachedExamId) {
-      return { success: false, duplicate: false };
+      throw new Error(`INVALID_ASSIGNMENT_PARAMETERS: studentId, configKey, and cachedExamId are all required (received studentId='${studentId}', configKey='${configKey}', cachedExamId='${cachedExamId}')`);
     }
 
     const configHash = this.computeConfigHash(configKey);
@@ -887,8 +947,8 @@ export class ExamCacheService {
     try {
       await db.query(
         `INSERT INTO platform_settings (setting_key, setting_value, updated_at, updated_by)
-         VALUES ($1, $2, CURRENT_TIMESTAMP, 'AI_GENERATION_LOCK')`,
-        [lockKey, lockPayload]
+         VALUES ($1, $2, CURRENT_TIMESTAMP, $3)`,
+        [lockKey, lockPayload, lockId]
       );
       return { acquired: true, lockId };
     } catch (err: any) {
@@ -901,12 +961,12 @@ export class ExamCacheService {
         if (existing.rows.length > 0) {
           const val = JSON.parse(existing.rows[0].setting_value || '{}');
           if (val.expiresAt && Date.now() > val.expiresAt) {
-            // Expired lock: take over with an atomic update
+            // Expired lock: take over with an atomic update (CAS on setting_value and recording new lockId in updated_by)
             const updateRes = await db.query(
               `UPDATE platform_settings
-               SET setting_value = $1, updated_at = CURRENT_TIMESTAMP
+               SET setting_value = $1, updated_by = $4, updated_at = CURRENT_TIMESTAMP
                WHERE setting_key = $2 AND setting_value = $3`,
-              [lockPayload, lockKey, existing.rows[0].setting_value]
+              [lockPayload, lockKey, existing.rows[0].setting_value, lockId]
             );
             if (updateRes.rowCount > 0) {
               return { acquired: true, lockId };
@@ -921,43 +981,96 @@ export class ExamCacheService {
 
   /**
    * Release generation lock after generation completes or fails.
+   * Performs exact owner-token comparison using updated_by column, with LIKE fallback for legacy rows.
    */
   public static async releaseGenerationLock(configHash: string, lockId: string): Promise<void> {
     if (!configHash || !lockId) return;
     const lockKey = `lock:${configHash.slice(0, 58)}`;
     try {
       await db.query(
-        `DELETE FROM platform_settings WHERE setting_key = $1 AND setting_value LIKE $2`,
-        [lockKey, `%"lockId":"${lockId}"%`]
+        `DELETE FROM platform_settings WHERE setting_key = $1 AND (updated_by = $2 OR setting_value LIKE $3)`,
+        [lockKey, lockId, `%"lockId":"${lockId}"%`]
       );
     } catch (_) {}
   }
 
   /**
    * Wait for a concurrent instance to finish generation and store the result in shared_cached_exams.
+   * Supports positional arguments, an options object, and provides legacy fallback for argument order.
    */
   public static async waitForConcurrentGeneration(
     configHash: string,
-    maxWaitMs: number = 25000,
+    expectedCountOrOptions: number | { expectedCount?: number; maxWaitMs?: number; pollIntervalMs?: number; identity?: AuthoritativeCurriculumIdentity } = 1,
+    maxWaitMs: number = 35000,
     pollIntervalMs: number = 2000
   ): Promise<CachedExamRecord | null> {
+    let expectedCount = 1;
+    let actualMaxWaitMs = maxWaitMs;
+    let actualPollIntervalMs = pollIntervalMs;
+    let expectedIdentity: AuthoritativeCurriculumIdentity | undefined;
+
+    if (typeof expectedCountOrOptions === 'object' && expectedCountOrOptions !== null) {
+      expectedCount = Number(expectedCountOrOptions.expectedCount) || 1;
+      actualMaxWaitMs = Number(expectedCountOrOptions.maxWaitMs) || 35000;
+      actualPollIntervalMs = Number(expectedCountOrOptions.pollIntervalMs) || 2000;
+      expectedIdentity = expectedCountOrOptions.identity;
+    } else if (typeof expectedCountOrOptions === 'number') {
+      // Defensive fallback for legacy call site: if 2nd arg > 100, caller passed (configHash, maxWaitMs)
+      if (expectedCountOrOptions > 100 && maxWaitMs === 35000) {
+        actualMaxWaitMs = expectedCountOrOptions;
+        expectedCount = 1;
+      } else {
+        expectedCount = Math.max(1, expectedCountOrOptions);
+        actualMaxWaitMs = maxWaitMs;
+        actualPollIntervalMs = pollIntervalMs;
+      }
+    }
+
     const start = Date.now();
-    while (Date.now() - start < maxWaitMs) {
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    while (Date.now() - start < actualMaxWaitMs) {
+      await new Promise(resolve => setTimeout(resolve, actualPollIntervalMs));
       const res = await db.query(
         `SELECT sce.* FROM shared_cached_exams sce
-         WHERE sce.config_hash = $1 AND sce.provenance_verified = 1
+         WHERE sce.config_hash = $1
+           AND sce.provenance_verified = 1
+           AND sce.total_questions >= $2
          ORDER BY sce.version_number DESC, sce.created_at DESC
          LIMIT 1`,
-        [configHash]
+        [configHash, expectedCount]
       );
       if (res.rows.length > 0) {
         const row = res.rows[0];
         let questions: any[] = [];
         try {
           questions = typeof row.questions_data === 'string' ? JSON.parse(row.questions_data) : row.questions_data;
-        } catch (_) {}
-        if (questions.length > 0) {
+        } catch (_) {
+          questions = [];
+        }
+
+        const isValidArray = Array.isArray(questions) && questions.length >= expectedCount;
+        const allQuestionsValid = isValidArray && questions.every(q =>
+          q && typeof q.question_text === 'string' && q.question_text.trim().length > 0 &&
+          Array.isArray(q.options) && q.options.length > 0
+        );
+
+        if (allQuestionsValid) {
+          const resolvedIdentity = await this.resolveCurriculumIdentity(row.book_id);
+
+          if (expectedIdentity) {
+            const matches =
+              row.book_id === expectedIdentity.bookId &&
+              row.academic_stage_id === expectedIdentity.academicStageId &&
+              row.grade_id === expectedIdentity.gradeId &&
+              row.subject_id === expectedIdentity.subjectId &&
+              Number(row.term) === Number(expectedIdentity.term) &&
+              row.school_type === expectedIdentity.schoolType;
+
+            if (!matches) {
+              console.warn(`⚠️ [ExamCacheService] waitForConcurrentGeneration: cached exam ${row.id} identity dimensions do not match expected identity. Skipping.`);
+              continue;
+            }
+          }
+
           return {
             examId: row.id,
             configKey: row.config_key,
@@ -965,7 +1078,7 @@ export class ExamCacheService {
             configHash: row.config_hash,
             contentHash: row.content_hash,
             versionNumber: Number(row.version_number) || 1,
-            curriculumIdentity: await this.resolveCurriculumIdentity(row.book_id),
+            curriculumIdentity: resolvedIdentity,
             unitIds: typeof row.unit_ids === 'string' ? JSON.parse(row.unit_ids) : row.unit_ids,
             unitSetKey: row.unit_set_key,
             parameters: typeof row.parameters_json === 'string' ? JSON.parse(row.parameters_json) : row.parameters_json,
@@ -1013,16 +1126,18 @@ export class ExamCacheService {
 
     const configKey = this.buildCanonicalConfigKey(identity, unitSetKey, paramHash);
     const configHash = this.computeConfigHash(configKey);
+    const requestedCount = Number(normalizedParams.count) || 1;
 
-    // Find the latest verified exam for this exact configuration
+    // Find the latest verified exam for this exact configuration satisfying the full requested count
     const res = await db.query(
       `SELECT sce.*
        FROM shared_cached_exams sce
        WHERE sce.config_hash = $1
          AND sce.provenance_verified = 1
+         AND sce.total_questions >= $2
        ORDER BY sce.version_number DESC, sce.created_at DESC
        LIMIT 1`,
-      [configHash]
+      [configHash, requestedCount]
     );
 
     if (res.rows.length === 0) {
@@ -1037,7 +1152,27 @@ export class ExamCacheService {
       return null;
     }
 
-    if (!Array.isArray(questions) || questions.length === 0) {
+    const isValidArray = Array.isArray(questions) && questions.length >= requestedCount;
+    const allQuestionsValid = isValidArray && questions.every(q =>
+      q && typeof q.question_text === 'string' && q.question_text.trim().length > 0 &&
+      Array.isArray(q.options) && q.options.length > 0
+    );
+
+    if (!allQuestionsValid) {
+      return null;
+    }
+
+    // Verify all curriculum identity dimensions match requested identity
+    const identityMatches =
+      row.book_id === identity.bookId &&
+      row.academic_stage_id === identity.academicStageId &&
+      row.grade_id === identity.gradeId &&
+      row.subject_id === identity.subjectId &&
+      Number(row.term) === Number(identity.term) &&
+      row.school_type === identity.schoolType;
+
+    if (!identityMatches) {
+      console.warn(`⚠️ [ExamCacheService] Fallback exam ${row.id} identity dimensions do not match requested identity. Rejecting.`);
       return null;
     }
 
