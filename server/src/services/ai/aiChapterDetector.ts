@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db.js';
+import { GeminiClient } from './geminiClient.js';
+import { cleanArabicText } from '../../utils/arabicTextNormalizer.js';
 
 export interface DetectedChapter {
   id?: string;
@@ -15,8 +17,8 @@ export interface DetectedChapter {
 export class AIChapterDetector {
   /**
    * Automatically analyzes textbook pages to detect Table of Contents and chapter partitions.
-   * If Gemini API is configured, uses Gemini Flash to extract the exact chapter structure.
-   * Otherwise uses a deterministic heuristic based on standard curriculum unit indicators.
+   * If Gemini API is configured and reachable, uses active Gemini Flash models to extract the exact chapter structure.
+   * Otherwise falls back to an intelligent, content-aware structural parser that detects unit headings from actual source text.
    */
   public async detectAndCreateChapters(params: {
     bookId: string;
@@ -32,28 +34,22 @@ export class AIChapterDetector {
 
     let detected: DetectedChapter[] = [];
 
-    // 1. Try Gemini AI detection using Table of Contents / first 20 pages with 3s fast timeout
+    // 1. Try AI detection using Table of Contents / first 30 pages with 15s timeout
     const geminiKey = process.env.GEMINI_API_KEY;
     if (geminiKey && pages.length > 0) {
       try {
-        const timeoutPromise = new Promise<DetectedChapter[]>((_, reject) =>
-          setTimeout(() => reject(new Error('Chapter detection timeout')), 3000)
-        );
-        detected = await Promise.race([
-          this.callGeminiForChapters({
-            bookTitleAr,
-            bookTitleEn: bookTitleEn || bookTitleAr,
-            totalPages,
-            pagesSlice: pages.slice(0, 20)
-          }),
-          timeoutPromise
-        ]);
+        detected = await this.callGeminiForChapters({
+          bookTitleAr,
+          bookTitleEn: bookTitleEn || bookTitleAr,
+          totalPages,
+          pagesSlice: pages.slice(0, 30)
+        });
       } catch (err) {
-        console.warn('⚠️ AI chapter detection fast fallback to heuristic:', err);
+        console.warn('⚠️ AI chapter detection fallback to structural heuristic:', err);
       }
     }
 
-    // 2. If Gemini didn't return valid chapters, use intelligent curriculum heuristic
+    // 2. If AI didn't return valid chapters, use universal content-aware structural parser
     if (!detected || detected.length < 2) {
       detected = this.detectHeuristicChapters({
         bookTitleAr,
@@ -67,7 +63,7 @@ export class AIChapterDetector {
     const createdChapters: DetectedChapter[] = [];
     const chapterIdMap = new Map<number, string>();
 
-    // Invariant (Phase 4G.3AG): Protect Existing Verified Books
+    // Invariant: Protect Existing Verified Books
     // Never delete chapters of a verified canonical book with existing valid chunks!
     const verifiedCheck = await db.query(
       `SELECT processing_status, (SELECT COUNT(*) FROM book_chunks WHERE book_id = $1) as chunk_count FROM books WHERE id = $1`,
@@ -153,7 +149,7 @@ export class AIChapterDetector {
   }
 
   /**
-   * Uses Gemini to parse Table of Contents and discover all units/chapters with page boundaries.
+   * Uses GeminiClient to parse Table of Contents and discover all units/chapters with page boundaries.
    */
   private async callGeminiForChapters(params: {
     bookTitleAr: string;
@@ -174,10 +170,10 @@ Do NOT limit to chapter 1. Extract ALL units/chapters present in the curriculum 
 
 For each chapter, determine:
 - chapter_number: integer (1, 2, 3...)
-- title_ar: authentic Arabic chapter/unit title (e.g. "الوحدة الأولى: الأعداد النسبية")
-- title_en: authentic English chapter/unit title (e.g. "Unit 1: Rational Numbers")
+- title_ar: authentic Arabic chapter/unit title (e.g. "الوحدة الأولى: ...")
+- title_en: authentic English chapter/unit title (e.g. "Unit 1: ...")
 - start_page: integer page number where the chapter starts
-- end_page: integer page number where the chapter ends (make sure it spans until the next chapter starts or the total pages)
+- end_page: integer page number where the chapter ends (make sure it spans until the next chapter starts or total pages)
 - description: concise 1-sentence educational overview
 
 Textbook Preview Pages:
@@ -195,58 +191,45 @@ Return ONLY a valid JSON array of chapter objects (no markdown code fences):
   }
 ]`;
 
-    const candidateModels = [
-      process.env.GEMINI_MODEL,
-      'gemini-flash-latest',
-      'gemini-2.5-flash',
-      'gemini-3.6-flash'
-    ].filter(Boolean) as string[];
-
-    for (const model of candidateModels) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.2, topP: 0.8 }
-            })
-          }
-        );
-
-        if (res.ok) {
-          const data = await res.json();
-          let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          rawText = rawText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-          const startIdx = rawText.indexOf('[');
-          const endIdx = rawText.lastIndexOf(']');
-          if (startIdx !== -1 && endIdx !== -1) {
-            rawText = rawText.substring(startIdx, endIdx + 1);
-            const parsed = JSON.parse(rawText);
-            if (Array.isArray(parsed) && parsed.length >= 2) {
-              return parsed.map((item: any, idx: number) => ({
-                chapter_number: item.chapter_number || (idx + 1),
-                title_ar: item.title_ar || `الوحدة #${idx + 1}`,
-                title_en: item.title_en || `Unit ${idx + 1}`,
-                start_page: Number(item.start_page) || 1,
-                end_page: Number(item.end_page) || params.totalPages,
-                description: item.description || ''
-              }));
-            }
-          }
+    try {
+      const rawResponse = await GeminiClient.generateContent({
+        prompt,
+        temperature: 0.1,
+        timeoutMs: 15000,
+        context: {
+          callPurpose: 'CHAPTER_DETECTION',
+          workflow: 'TEXTBOOK_INGESTION'
         }
-      } catch (err) {
-        console.warn(`Gemini model ${model} chapter detection failed, trying next:`, err);
+      });
+
+      let rawText = rawResponse.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+      const startIdx = rawText.indexOf('[');
+      const endIdx = rawText.lastIndexOf(']');
+      if (startIdx !== -1 && endIdx !== -1) {
+        rawText = rawText.substring(startIdx, endIdx + 1);
+        const parsed = JSON.parse(rawText);
+        if (Array.isArray(parsed) && parsed.length >= 2) {
+          return parsed.map((item: any, idx: number) => ({
+            chapter_number: item.chapter_number || (idx + 1),
+            title_ar: item.title_ar || `الوحدة #${idx + 1}`,
+            title_en: item.title_en || `Unit ${idx + 1}`,
+            start_page: Math.max(1, Number(item.start_page) || 1),
+            end_page: Math.min(params.totalPages, Number(item.end_page) || params.totalPages),
+            description: item.description || ''
+          }));
+        }
       }
+    } catch (err: any) {
+      console.warn('⚠️ Gemini chapter detection call failed:', err.message);
     }
 
     return [];
   }
 
   /**
-   * Deterministic heuristic curriculum detector based on subject keywords & standard divisions.
+   * Universal content-aware structural curriculum detector.
+   * Scans actual page texts for unit and chapter markers (Arabic & English),
+   * extracting authentic titles printed in the textbook WITHOUT any hardcoded grade or subject topics.
    */
   public detectHeuristicChapters(params: {
     bookTitleAr: string;
@@ -254,12 +237,10 @@ Return ONLY a valid JSON array of chapter objects (no markdown code fences):
     totalPages: number;
     pages: { pageNumber: number; text: string }[];
   }): DetectedChapter[] {
-    const { bookTitleAr, bookTitleEn, totalPages } = params;
-    const title = (bookTitleAr + ' ' + (bookTitleEn || '')).toLowerCase();
-    const isEnglishCurriculum = !/[\u0600-\u06FF]/.test(bookTitleAr) || title.includes('math') || title.includes('science') || (bookTitleEn && /math|science|english/i.test(bookTitleEn));
+    const { bookTitleAr, bookTitleEn, totalPages, pages } = params;
 
-    // Handle short / pilot / single-unit documents
-    if (totalPages <= 3) {
+    // Handle very short booklets / test fixtures (<= 3 pages)
+    if (totalPages <= 3 || pages.length <= 3) {
       return [
         {
           chapter_number: 1,
@@ -272,151 +253,135 @@ Return ONLY a valid JSON array of chapter objects (no markdown code fences):
       ];
     }
 
-    // 1. Mathematics Curriculum (Prep 1 Term 1)
-    if (title.includes('math') || title.includes('رياضيات') || title.includes('حساب')) {
-      const p1End = Math.round(totalPages * 0.28);
-      const p2End = Math.round(totalPages * 0.58);
-      const p3End = Math.round(totalPages * 0.78);
-      return [
-        {
-          chapter_number: 1,
-          title_ar: isEnglishCurriculum ? 'Unit 1: Numbers and Operations (Rational Numbers)' : 'الوحدة الأولى: الأعداد النسبية والعمليات عليها',
-          title_en: 'Unit 1: Numbers and Operations (Rational Numbers)',
-          start_page: 1,
-          end_page: p1End,
-          description: isEnglishCurriculum 
-            ? 'The set of rational numbers, ordering, comparisons, fundamental arithmetic operations, and properties.'
-            : 'مجموعة الأعداد النسبية، المقارنة، والعمليات الحسابية والخواص الأساسية.',
-          description_en: 'The set of rational numbers, ordering, comparisons, fundamental arithmetic operations, and properties.'
-        },
-        {
-          chapter_number: 2,
-          title_ar: isEnglishCurriculum ? 'Unit 2: Algebra & Algebraic Expressions' : 'الوحدة الثانية: الحدود والمقادير الجبرية',
-          title_en: 'Unit 2: Algebra & Algebraic Expressions',
-          start_page: p1End + 1,
-          end_page: p2End,
-          description: isEnglishCurriculum
-            ? 'Algebraic terms and expressions, degrees of terms, operations on polynomials, and linear equations.'
-            : 'المفاهيم الجبرية، جمع وطرح وضرب وقسمة الحدود والمقادير والمعادلات.',
-          description_en: 'Algebraic terms and expressions, degrees of terms, operations on polynomials, and linear equations.'
-        },
-        {
-          chapter_number: 3,
-          title_ar: isEnglishCurriculum ? 'Unit 3: Statistics & Probability' : 'الوحدة الثالثة: الإحصاء والاحتمال',
-          title_en: 'Unit 3: Statistics & Probability',
-          start_page: p2End + 1,
-          end_page: p3End,
-          description: isEnglishCurriculum
-            ? 'Measures of central tendency: arithmetic mean, median, mode, and probability principles.'
-            : 'مقاييس النزعة المركزية: المتوسط الحسابي، والوسيط، والمنوال، ومبادئ الاحتمال.',
-          description_en: 'Measures of central tendency: arithmetic mean, median, mode, and probability principles.'
-        },
-        {
-          chapter_number: 4,
-          title_ar: isEnglishCurriculum ? 'Unit 4: Geometry & Geometric Concepts' : 'الوحدة الرابعة: المفاهيم الهندسية والقياس والتطابق',
-          title_en: 'Unit 4: Geometry & Geometric Concepts',
-          start_page: p3End + 1,
-          end_page: totalPages,
-          description: isEnglishCurriculum
-            ? 'Angle relationships, vertically opposite angles, triangle congruence criteria, and parallelism.'
-            : 'العلاقات بين الزوايا، تطابق المثلثات، التوازي، والإنشاءات الهندسية.',
-          description_en: 'Angle relationships, vertically opposite angles, triangle congruence criteria, and parallelism.'
-        }
-      ];
+    // 1. Scan extracted pages for explicit structural headings
+    // Regex matches common Arabic and English unit patterns:
+    // e.g. "الوحدة الأولى: ...", "الوحدة 1: ...", "الفصل الأول: ...", "المحور الأول: ...", "Unit 1: ...", "Chapter 1: ..."
+    const arabicUnitRegex = /(?:^|\n)\s*(?:الوحدة|الفصل|المحور|المفهوم|الباب)\s+(الأولى|الأول|الثانية|الثاني|الثالثة|الثالث|الرابعة|الرابع|الخامسة|الخامس|السادسة|السادس|السابعة|السابع|الثامنة|الثامن|\d+)[:\s\-–—]+([^\n\r]+)/i;
+    const englishUnitRegex = /(?:^|\n)\s*(?:Unit|Chapter|Module|Theme)\s+(\d+|one|two|three|four|five|six|seven|eight)[:\s\-–—]+([^\n\r]+)/i;
+
+    interface DetectedMarker {
+      chapterNumber: number;
+      titleAr: string;
+      titleEn: string;
+      pageNumber: number;
     }
 
-    // 2. Science Curriculum (العلوم)
-    if (title.includes('science') || title.includes('علوم')) {
-      const p1End = Math.round(totalPages * 0.35);
-      const p2End = Math.round(totalPages * 0.70);
-      return [
-        {
-          chapter_number: 1,
-          title_ar: 'الوحدة الأولى: المادة وخواصها وتركيبها',
-          title_en: 'Unit 1: Matter and its Properties',
-          start_page: 1,
-          end_page: p1End,
-          description: 'المادة وخواصها الكيميائية والفيزيائية والكثافة والتركيب الذري.'
-        },
-        {
-          chapter_number: 2,
-          title_ar: 'الوحدة الثانية: الطاقة ومصادرها وصورها',
-          title_en: 'Unit 2: Energy: Sources and Forms',
-          start_page: p1End + 1,
-          end_page: p2End,
-          description: 'طاقة الوضع والحركة والطاقة الحرارية وتحولات الطاقة.'
-        },
-        {
-          chapter_number: 3,
-          title_ar: 'الوحدة الثالثة: التنوع والتكيف في الكائنات الحية',
-          title_en: 'Unit 3: Diversity and Adaptation in Living Organisms',
-          start_page: p2End + 1,
-          end_page: totalPages,
-          description: 'تصنيف الكائنات الحية والتكيف البيئي وتنوع البيئات.'
-        }
-      ];
-    }
+    const markers: DetectedMarker[] = [];
+    const seenNumbers = new Set<number>();
 
-    // 3. Arabic Language Curriculum (اللغة العربية)
-    if (title.includes('عرب') || title.includes('لغة عربية') || title.includes('arabic')) {
-      const p1End = Math.round(totalPages * 0.33);
-      const p2End = Math.round(totalPages * 0.66);
-      return [
-        {
-          chapter_number: 1,
-          title_ar: 'الوحدة الأولى: مكارم الأخلاق والقيم الإنسانية (نصوص وقواعد)',
-          title_en: 'Unit 1: Values and Ethics (Grammar & Texts)',
-          start_page: 1,
-          end_page: p1End,
-          description: 'دروس القراءة والنصوص المقررة وقواعد النحو والإملاء التأسيسية.'
-        },
-        {
-          chapter_number: 2,
-          title_ar: 'الوحدة الثانية: العلم والعمل وبناء الحضارة',
-          title_en: 'Unit 2: Knowledge and Work in Society',
-          start_page: p1End + 1,
-          end_page: p2End,
-          description: 'نصوص أدبية ومفاهيم نحوية متقدمة وتطبيقات لغوية منهجية.'
-        },
-        {
-          chapter_number: 3,
-          title_ar: 'الوحدة الثالثة: الفنون والآداب والمطالعة الموسعة',
-          title_en: 'Unit 3: Arts, Literature and Language Skills',
-          start_page: p2End + 1,
-          end_page: totalPages,
-          description: 'تطبيقات النحو والصرف وتذوق البلاغة والقصة المقررة.'
-        }
-      ];
-    }
+    const arabicOrdinals: Record<string, number> = {
+      'الأول': 1, 'الأولى': 1, '1': 1,
+      'الثاني': 2, 'الثانية': 2, '2': 2,
+      'الثالث': 3, 'الثالثة': 3, '3': 3,
+      'الرابع': 4, 'الرابعة': 4, '4': 4,
+      'الخامس': 5, 'الخامسة': 5, '5': 5,
+      'السادس': 6, 'السادسة': 6, '6': 6,
+      'السابع': 7, 'السابعة': 7, '7': 7,
+      'الثامن': 8, 'الثامنة': 8, '8': 8
+    };
 
-    // 4. Default 3-Chapter Partitioning for any other uploaded book
-    const partSize = Math.max(1, Math.floor(totalPages / 3));
-    return [
-      {
-        chapter_number: 1,
-        title_ar: 'الوحدة الأولى: المفاهيم التأسيسية والأسس المنهجية',
-        title_en: 'Unit 1: Core Concepts and Foundations',
-        start_page: 1,
-        end_page: partSize,
-        description: 'المفاهيم التأسيسية والقواعد الأولية للمنهج.'
-      },
-      {
-        chapter_number: 2,
-        title_ar: 'الوحدة الثانية: التطبيقات العملية والنظرية المتقدمة',
-        title_en: 'Unit 2: Applied Concepts and Advanced Topics',
-        start_page: partSize + 1,
-        end_page: partSize * 2,
-        description: 'المفاهيم والتطبيقات العملية والتمارين المقررة.'
-      },
-      {
-        chapter_number: 3,
-        title_ar: 'الوحدة الثالثة: التقييم التراكمي ونواتج التعلم الشاملة',
-        title_en: 'Unit 3: Comprehensive Review and Final Competencies',
-        start_page: (partSize * 2) + 1,
-        end_page: totalPages,
-        description: 'المراجعات التراكمية ونواتج التعلم المستهدفة.'
+    const englishOrdinals: Record<string, number> = {
+      '1': 1, 'one': 1,
+      '2': 2, 'two': 2,
+      '3': 3, 'three': 3,
+      '4': 4, 'four': 4,
+      '5': 5, 'five': 5,
+      '6': 6, 'six': 6,
+      '7': 7, 'seven': 7,
+      '8': 8, 'eight': 8
+    };
+
+    for (const page of pages) {
+      if (!page.text || page.text.length < 20) continue;
+
+      const arMatch = page.text.match(arabicUnitRegex);
+      if (arMatch) {
+        const rawNum = arMatch[1].trim();
+        const rawTitle = arMatch[2].trim().slice(0, 100);
+        const chNum = arabicOrdinals[rawNum] || parseInt(rawNum, 10) || (markers.length + 1);
+
+        if (!seenNumbers.has(chNum) && rawTitle.length >= 3) {
+          seenNumbers.add(chNum);
+          markers.push({
+            chapterNumber: chNum,
+            titleAr: `الوحدة ${rawNum}: ${rawTitle}`,
+            titleEn: `Unit ${chNum}: ${rawTitle}`,
+            pageNumber: page.pageNumber
+          });
+        }
+        continue;
       }
-    ];
+
+      const enMatch = page.text.match(englishUnitRegex);
+      if (enMatch) {
+        const rawNum = enMatch[1].trim().toLowerCase();
+        const rawTitle = enMatch[2].trim().slice(0, 100);
+        const chNum = englishOrdinals[rawNum] || parseInt(rawNum, 10) || (markers.length + 1);
+
+        if (!seenNumbers.has(chNum) && rawTitle.length >= 3) {
+          seenNumbers.add(chNum);
+          markers.push({
+            chapterNumber: chNum,
+            titleAr: `Unit ${chNum}: ${rawTitle}`,
+            titleEn: `Unit ${chNum}: ${rawTitle}`,
+            pageNumber: page.pageNumber
+          });
+        }
+      }
+    }
+
+    // Sort markers by chapter number
+    markers.sort((a, b) => a.chapterNumber - b.chapterNumber);
+
+    // If we discovered at least 2 authentic structural markers from the page text, construct chapters
+    if (markers.length >= 2) {
+      const chapters: DetectedChapter[] = [];
+      for (let i = 0; i < markers.length; i++) {
+        const current = markers[i];
+        const next = markers[i + 1];
+
+        const startPage = i === 0 ? 1 : current.pageNumber;
+        const endPage = next ? Math.max(startPage, next.pageNumber - 1) : totalPages;
+
+        chapters.push({
+          chapter_number: i + 1,
+          title_ar: current.titleAr,
+          title_en: current.titleEn,
+          start_page: startPage,
+          end_page: endPage,
+          description: `المحتوى التعليمي المقرر في ${current.titleAr} ومفهرس دلالياً.`
+        });
+      }
+      return chapters;
+    }
+
+    // 2. Default Content-Aware Partitioning (Universal across all subjects/grades)
+    // Partitions dynamically into proportional units using the authentic book title.
+    // Zero hardcoded Prep 1 titles!
+    const numPartitions = totalPages >= 80 ? 4 : (totalPages >= 30 ? 3 : 2);
+    const partSize = Math.max(1, Math.floor(totalPages / numPartitions));
+    const chapters: DetectedChapter[] = [];
+
+    const ordinalsAr = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة'];
+    const ordinalsEn = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'];
+
+    for (let i = 0; i < numPartitions; i++) {
+      const startPage = i === 0 ? 1 : (i * partSize) + 1;
+      const endPage = (i === numPartitions - 1) ? totalPages : (i + 1) * partSize;
+      const ordAr = ordinalsAr[i] || `${i + 1}`;
+      const ordEn = ordinalsEn[i] || `${i + 1}`;
+
+      chapters.push({
+        chapter_number: i + 1,
+        title_ar: `الوحدة ${ordAr}: محتوى ${bookTitleAr} (الجزء ${i + 1})`,
+        title_en: `Unit ${ordEn}: ${bookTitleEn || 'Content'} (Part ${i + 1})`,
+        start_page: startPage,
+        end_page: endPage,
+        description: `المحتوى التعليمي التأسيسي للمنهج المقرر والمفهرس دلالياً.`
+      });
+    }
+
+    return chapters;
   }
 }
 

@@ -13,6 +13,7 @@ import { createSemanticVector } from '../services/ai/vectorEmbedding.js';
 import { cleanArabicText } from '../utils/arabicTextNormalizer.js';
 import { aiChapterDetector } from '../services/ai/aiChapterDetector.js';
 import { BookIngestionService } from '../services/bookIngestionService.js';
+import { DurableIngestionJobService } from '../services/jobs/durableIngestionJobService.js';
 import { getStorageProvider } from '../services/storage/storageProvider.js';
 import { VisualAssetExtractor } from '../services/ai/visualAssetExtractor.js';
 
@@ -101,8 +102,7 @@ router.post(
         const end = Math.min(fileBuffer.length, (i + 1) * CHUNK_SIZE);
         const chunkSlice = fileBuffer.slice(start, end);
         await db.query(
-          `INSERT INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)
-           ON DUPLICATE KEY UPDATE chunk_data = VALUES(chunk_data)`,
+          `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
           [bookId, i, chunkSlice]
         );
       }
@@ -282,8 +282,7 @@ router.post(
       try {
         for (const r of chunkRows.rows) {
           await db.query(
-            `INSERT INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)
-             ON DUPLICATE KEY UPDATE chunk_data = VALUES(chunk_data)`,
+            `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
             [bookId, r.chunk_index, r.chunk_data]
           );
         }
@@ -372,21 +371,85 @@ router.post(
 // Get background processing status
 router.get('/status/:id', authenticateToken, async (req, res) => {
   const id = String(req.params.id);
-  const jobStatus = jobQueue.getStatus(id);
   const dbRes = await db.query('SELECT processing_status, processing_error, total_pages FROM books WHERE id = $1', [id]);
   
   if (dbRes.rows.length === 0) {
     return res.status(404).json({ error: 'الكتاب غير موجود' });
   }
 
+  // Check durable job record in database
+  const jobRes = await db.query(
+    `SELECT id, current_stage, status, attempt_count, max_attempts, checkpoint_data, last_error, updated_at
+     FROM book_ingestion_jobs
+     WHERE book_id = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [id]
+  ).catch(() => ({ rows: [] }));
+
+  const job = jobRes.rows[0];
   const currentDbStatus = dbRes.rows[0].processing_status;
+
+  let progress = currentDbStatus === 'COMPLETED' ? 100 : 20;
+  if (job) {
+    const stageProgress: Record<string, number> = {
+      UPLOADED: 10,
+      EXTRACTING_PAGES: 30,
+      OCR_PROCESSING: 50,
+      DETECTING_CHAPTERS: 70,
+      CHUNKING_AND_EMBEDDING: 85,
+      READINESS_AUDIT: 95,
+      COMPLETED: 100,
+      FAILED: 0,
+      BLOCKED: 0
+    };
+    progress = stageProgress[job.current_stage] !== undefined ? stageProgress[job.current_stage] : progress;
+  }
+
+  // Opportunistic auto-resumption: If worker crashed or timed out and lease expired, resume in background
+  if (job && job.attempt_count < (job.max_attempts || 3)) {
+    const isStalled = job.status === 'RETRYING' ||
+      (job.status === 'IN_PROGRESS' && job.lease_expires_at && new Date(job.lease_expires_at).getTime() < Date.now());
+    if (isStalled) {
+      DurableIngestionJobService.executeJobResumption(job.id).catch(err => {
+        console.warn(`[Status Polling] Opportunistic resume for job ${job.id} failed:`, err.message);
+      });
+    }
+  }
 
   return res.json({
     status: currentDbStatus,
-    progress: jobStatus.progress || (currentDbStatus === 'COMPLETED' ? 100 : 20),
-    error: dbRes.rows[0].processing_error || jobStatus.error,
-    totalPages: dbRes.rows[0].total_pages
+    stage: job?.current_stage || 'UNKNOWN',
+    jobStatus: job?.status || 'UNKNOWN',
+    progress,
+    error: dbRes.rows[0].processing_error || job?.last_error,
+    totalPages: dbRes.rows[0].total_pages,
+    jobId: job?.id
   });
+});
+
+// Recover / resume stalled ingestion jobs (Admin only)
+router.post('/jobs/recover', authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+  try {
+    const stalledJobs = await DurableIngestionJobService.recoverStalledJobs(5);
+    const executionResults: any[] = [];
+    for (const job of stalledJobs) {
+      const outcome = await DurableIngestionJobService.executeJobResumption(job.id);
+      executionResults.push({
+        jobId: job.id,
+        bookId: job.bookId,
+        outcome
+      });
+    }
+
+    return res.json({
+      message: `تم فحص المهام العالقة ومعالجة استئناف ${stalledJobs.length} مهام.`,
+      recoveredCount: stalledJobs.length,
+      resumedJobs: executionResults
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل استئناف المهام: ' + err.message });
+  }
 });
 
 // List Books (Filtered by Stage and Grade strictly for students)

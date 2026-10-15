@@ -23,9 +23,18 @@ class DatabaseManager {
   public async init(): Promise<void> {
     if (this.isInitialized) return;
 
+    const isTestEnv = process.env.NODE_ENV === 'test' ||
+      process.argv.some(arg => arg.toLowerCase().includes('test'));
+
+    // 0. If SQLITE_DB_PATH is explicitly set (e.g. in test suites), prioritize isolated SQLite
+    if (process.env.SQLITE_DB_PATH) {
+      await this.initSqlite(process.env.SQLITE_DB_PATH, isTestEnv);
+      if (this.isInitialized) return;
+    }
+
     // 1. Check TiDB Cloud Serverless (HTTP - Serverless Native, bypasses TCP port 4000)
     const tidbHost = process.env.TIDB_HOST || process.env.MYSQL_HOST;
-    if (tidbHost) {
+    if (tidbHost && !isTestEnv) {
       console.log('🌐 Connecting to TiDB Cloud Serverless (HTTP) at:', tidbHost);
       try {
         this.tidbConn = connect({
@@ -47,7 +56,7 @@ class DatabaseManager {
 
     // 2. Check PostgreSQL
     const databaseUrl = process.env.DATABASE_URL;
-    if (databaseUrl && !databaseUrl.includes('placeholder')) {
+    if (databaseUrl && !databaseUrl.includes('placeholder') && !isTestEnv) {
       console.log('Connecting to PostgreSQL database at:', databaseUrl.split('@')[1] || 'remote host');
       try {
         this.pgPool = new Pool({
@@ -68,6 +77,10 @@ class DatabaseManager {
     }
 
     // 3. Fallback to embedded SQLite
+    await this.initSqlite(process.env.SQLITE_DB_PATH, isTestEnv);
+  }
+
+  private async initSqlite(dbPathInput?: string, isTestEnv = false): Promise<void> {
     console.log('🗄️  Initializing embedded SQLite database...');
     try {
       const { default: Database } = await import('better-sqlite3');
@@ -78,11 +91,9 @@ class DatabaseManager {
       const persistentDbPath = path.normalize(path.join(persistentDir, 'platform.db')).toLowerCase();
 
       let dbPath: string;
-      const isTestEnv = process.env.NODE_ENV === 'test' ||
-        process.argv.some(arg => arg.toLowerCase().includes('test'));
 
-      if (process.env.SQLITE_DB_PATH) {
-        dbPath = path.resolve(process.env.SQLITE_DB_PATH);
+      if (dbPathInput || process.env.SQLITE_DB_PATH) {
+        dbPath = path.resolve(dbPathInput || process.env.SQLITE_DB_PATH!);
         const norm = path.normalize(dbPath).toLowerCase();
         if (isTestEnv && (norm === persistentDbPath || norm.includes('assessment_platform_data'))) {
           throw new Error(`CRITICAL TEST ISOLATION FAILURE: SQLITE_DB_PATH resolved to persistent DB: ${dbPath}`);
@@ -123,7 +134,7 @@ class DatabaseManager {
     if (this.sqlite) {
       return this.sqlite.name;
     }
-    return process.env.SQLITE_DB_PATH || null;
+    return null;
   }
 
   public getDialect(): 'sqlite' | 'mysql' | 'postgres' {

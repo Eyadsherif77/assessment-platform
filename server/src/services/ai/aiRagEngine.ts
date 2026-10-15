@@ -2,7 +2,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db.js';
-import { generateEmbedding, cosineSimilarity } from './vectorEmbedding.js';
+import { generateEmbedding, cosineSimilarity, computeEducationalBM25Score } from './vectorEmbedding.js';
 import { cleanArabicText, stripDocumentMetadataAndStructure } from '../../utils/arabicTextNormalizer.js';
 import { GeminiClient, GeminiProviderError } from './geminiClient.js';
 import { AnswerValidationService, normalizeArabicLevel1 } from '../answerValidationService.js';
@@ -1452,6 +1452,13 @@ Return valid JSON with exact keys:
           sim = cosineSimilarity(queryVec, chunkVec);
         } catch (e) {
           sim = 0;
+        }
+      }
+      // If embedding is missing or 0, fallback to educational BM25 lexical ranking
+      if (!row.embedding || sim === 0) {
+        const bm25 = computeEducationalBM25Score(queryText, row.content);
+        if (bm25 > 0) {
+          sim = bm25;
         }
       }
       return {

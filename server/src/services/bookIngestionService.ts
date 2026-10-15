@@ -11,6 +11,8 @@ import { ReadinessValidator, UnitReadinessStatus } from './readinessValidator.js
 import { getStorageProvider, IStorageProvider } from './storage/storageProvider.js';
 import { cleanArabicText } from '../utils/arabicTextNormalizer.js';
 import { createSemanticVector } from './ai/vectorEmbedding.js';
+import { DurableIngestionJobService } from './jobs/durableIngestionJobService.js';
+import { GeminiOcrService } from './ai/geminiOcrService.js';
 
 export type IngestionLifecycleStatus =
   | 'RECEIVED'
@@ -225,6 +227,24 @@ export class BookIngestionService {
     const issues: IngestionDiagnosticIssue[] = [];
 
     // =========================================================================
+    // STAGE 0: Durable Relational Job Registration & Atomic Claiming
+    // =========================================================================
+    const workerId = `worker_${uuidv4().slice(0, 8)}`;
+    let jobRecord: any = null;
+    try {
+      jobRecord = await DurableIngestionJobService.createOrGetJob({
+        bookId,
+        fileChecksum,
+        initialCheckpoint: { titleAr, titleEn }
+      });
+      await DurableIngestionJobService.claimJob(jobRecord.id, workerId);
+    } catch (jobErr: any) {
+      console.warn('⚠️ [BookIngestionService] Durable job registration notice:', jobErr.message);
+    }
+
+    const checkpoint = jobRecord?.checkpointData || {};
+
+    // =========================================================================
     // STAGE 1: File Integrity and Validation
     // =========================================================================
     if (!pdfBuffer || pdfBuffer.length < 100) {
@@ -348,45 +368,70 @@ export class BookIngestionService {
     let totalPages = 1;
     let extractedPages: { pageNumber: number; text: string; charCount: number }[] = [];
 
-    try {
-      const parsed = await pdfParse(pdfBuffer);
-      totalPages = parsed.numpages || 1;
-      const rawText = parsed.text || '';
+    // Checkpoint resumption: If pages were already extracted in a prior worker attempt, reuse them
+    if (checkpoint.extractedPages && Array.isArray(checkpoint.extractedPages) && checkpoint.extractedPages.length > 0) {
+      console.log(`♻️ [BookIngestionService] Resuming from checkpoint: ${checkpoint.extractedPages.length} extracted pages.`);
+      extractedPages = checkpoint.extractedPages;
+      totalPages = checkpoint.totalPages || extractedPages.length;
+    } else {
+      try {
+        const parsed = await pdfParse(pdfBuffer);
+        totalPages = parsed.numpages || 1;
+        const rawText = parsed.text || '';
 
-      const splitPages = rawText
-        .split(/\f|\n\s*\n\s*---\s*Page\s*\d+\s*---\s*\n/)
-        .map((s: string) => cleanArabicText(s.trim()));
+        const splitPages = rawText
+          .split(/\f|\n\s*\n\s*---\s*Page\s*\d+\s*---\s*\n/)
+          .map((s: string) => cleanArabicText(s.trim()));
 
-      if (splitPages.length > 1) {
-        extractedPages = splitPages.map((txt: string, idx: number) => ({
-          pageNumber: idx + 1,
-          text: txt,
-          charCount: txt.length
-        }));
-      } else {
-        const cleaned = cleanArabicText(rawText);
-        const pageSize = Math.max(800, Math.ceil(cleaned.length / totalPages));
-        let cur = 0;
-        let pNum = 1;
-        while (cur < cleaned.length) {
-          const chunk = cleaned.slice(cur, cur + pageSize).trim();
-          if (chunk.length > 0) {
-            extractedPages.push({ pageNumber: pNum++, text: chunk, charCount: chunk.length });
+        if (splitPages.length > 1) {
+          extractedPages = splitPages.map((txt: string, idx: number) => ({
+            pageNumber: idx + 1,
+            text: txt,
+            charCount: txt.length
+          }));
+        } else {
+          const cleaned = cleanArabicText(rawText);
+          const pageSize = Math.max(800, Math.ceil(cleaned.length / totalPages));
+          let cur = 0;
+          let pNum = 1;
+          while (cur < cleaned.length) {
+            const chunk = cleaned.slice(cur, cur + pageSize).trim();
+            if (chunk.length > 0) {
+              extractedPages.push({ pageNumber: pNum++, text: chunk, charCount: chunk.length });
+            }
+            cur += pageSize;
           }
-          cur += pageSize;
         }
+
+        // Account for any remaining empty pages
+        totalPages = Math.max(totalPages, extractedPages.length, 1);
+        if (extractedPages.length === 0) {
+          for (let pNum = 1; pNum <= totalPages; pNum++) {
+            extractedPages.push({ pageNumber: pNum, text: '', charCount: 0 });
+          }
+        }
+
+        if (jobRecord) {
+          await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'EXTRACTING_PAGES', {
+            totalPages,
+            extractedPageCount: extractedPages.length
+          }).catch(() => {});
+        }
+      } catch (parseErr: any) {
+        issues.push({
+          stage: 'PAGE_EXTRACTION',
+          code: 'PDF_PARSE_FAILED',
+          message: `فشل قراءة نصوص صفحات PDF: ${parseErr.message}`,
+          remediationGuidance: 'تحقق من سلامة تشفير وضغط ملف الـ PDF.'
+        });
+        if (jobRecord) {
+          await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `PDF parse failed: ${parseErr.message}`, false).catch(() => {});
+        }
+        return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, 0, 'BLOCKED', issues, startTime);
       }
-    } catch (parseErr: any) {
-      issues.push({
-        stage: 'PAGE_EXTRACTION',
-        code: 'PDF_PARSE_FAILED',
-        message: `فشل قراءة نصوص صفحات PDF: ${parseErr.message}`,
-        remediationGuidance: 'تحقق من سلامة تشفير وضغط ملف الـ PDF.'
-      });
-      return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, 0, 'BLOCKED', issues, startTime);
     }
 
-    // Ensure all totalPages are accounted for in extractedPages (scanned/blank pages have charCount 0)
+    // Ensure all totalPages are accounted for in extractedPages
     totalPages = Math.max(totalPages, extractedPages.length, 1);
     if (extractedPages.length === 0) {
       for (let pNum = 1; pNum <= totalPages; pNum++) {
@@ -395,27 +440,68 @@ export class BookIngestionService {
     }
 
     // =========================================================================
-    // STAGE 4 & 5: Detect Scanned/Low-Text Pages & OCR Handling (Zero Synthetic Text)
+    // STAGE 4 & 5: Detect Scanned/Low-Text Pages & Multimodal OCR Handling
     // =========================================================================
-    const lowTextThresholdChars = 30;
+    const lowTextThresholdChars = 35;
     const lowTextPages = extractedPages.filter(p => p.charCount < lowTextThresholdChars);
 
     if (lowTextPages.length > 0) {
       console.log(`⚠️ [BookIngestionService] Detected ${lowTextPages.length} low-text/scanned pages.`);
+      const ocrResults: Record<number, string> = checkpoint.ocrResults || {};
 
-      if (options.ocrProvider) {
-        console.log(`🔍 [BookIngestionService] Invoking genuine configured OCR provider for ${lowTextPages.length} pages...`);
-        for (const lp of lowTextPages) {
-          try {
-            const ocrResult = await options.ocrProvider(lp.pageNumber, pdfBuffer);
-            if (ocrResult && ocrResult.trim().length >= lowTextThresholdChars) {
-              const cleanedOcr = cleanArabicText(ocrResult.trim());
-              lp.text = cleanedOcr;
-              lp.charCount = cleanedOcr.length;
+      for (const lp of lowTextPages) {
+        // Reuse page-level checkpoint if already OCR'd in previous attempt
+        if (ocrResults[lp.pageNumber] && ocrResults[lp.pageNumber].length >= lowTextThresholdChars) {
+          lp.text = ocrResults[lp.pageNumber];
+          lp.charCount = lp.text.length;
+          continue;
+        }
+
+        try {
+          let ocrText = '';
+          if (options.ocrProvider) {
+            ocrText = (await options.ocrProvider(lp.pageNumber, pdfBuffer)) || '';
+          } else {
+            const ocrRes = await GeminiOcrService.ocrPage({
+              bookId,
+              pageNumber: lp.pageNumber,
+              fullPdfBuffer: pdfBuffer
+            });
+            if (ocrRes.status === 'EXTRACTED') {
+              ocrText = ocrRes.text;
+            } else if (ocrRes.status === 'FAILED_RETRYABLE') {
+              console.warn(`⏳ [BookIngestionService] OCR hit retryable state on page ${lp.pageNumber}. Checkpoint saved.`);
+              if (jobRecord) {
+                await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
+                  ocrResults
+                }).catch(() => {});
+                await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `OCR retryable on page ${lp.pageNumber}: ${ocrRes.error}`, true).catch(() => {});
+              }
+              issues.push({
+                stage: 'OCR_HANDLING',
+                code: 'OCR_PROVIDER_TEMPORARILY_UNAVAILABLE',
+                pageNumber: lp.pageNumber,
+                message: `مزود التعرف الضوئي OCR غير متاح مؤقتاً للصفحة ${lp.pageNumber} (${ocrRes.error || 'Rate limit / timeout'}). تم حفظ تقدم المعالجة لاستئنافها آلياً.`,
+                remediationGuidance: 'سيتم استئناف قراءة الصفحات المتبقية آلياً عند توفر الحصة.'
+              });
+              return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'REQUIRES_REMEDIATION', issues, startTime);
             }
-          } catch (ocrErr: any) {
-            console.warn(`OCR failed for page ${lp.pageNumber}:`, ocrErr.message);
           }
+
+          if (ocrText && ocrText.trim().length >= lowTextThresholdChars) {
+            const cleanedOcr = cleanArabicText(ocrText.trim());
+            lp.text = cleanedOcr;
+            lp.charCount = cleanedOcr.length;
+            ocrResults[lp.pageNumber] = cleanedOcr;
+
+            if (jobRecord) {
+              await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
+                ocrResults
+              }).catch(() => {});
+            }
+          }
+        } catch (ocrErr: any) {
+          console.warn(`OCR exception for page ${lp.pageNumber}:`, ocrErr.message);
         }
       }
 
@@ -426,9 +512,13 @@ export class BookIngestionService {
         issues.push({
           stage: 'OCR_HANDLING',
           code: 'UNRESOLVED_SCANNED_PAGES',
-          message: `الصفحات [${pageNumbers.slice(0, 10).join(', ')}${pageNumbers.length > 10 ? '...' : ''}] تحتوي على صور ممسوحة أو نصوص غير قابلة للاستخراج، ومزود OCR غير مهيأ أو لم يستطع قراءتها.`,
-          remediationGuidance: 'قم برفع نسخة رقمية أصلية أو تفعيل مزود التعرف الضوئي OCR لمعالجة الصفحات الممسوحة ضوئياً.'
+          message: `الصفحات [${pageNumbers.slice(0, 10).join(', ')}${pageNumbers.length > 10 ? '...' : ''}] تحتوي على صور ممسوحة أو نصوص غير قابلة للاستخراج، ومزود OCR لم يستطع قراءتها بالكامل.`,
+          remediationGuidance: 'قم برفع نسخة رقمية أصلية أو فحص جودة الصفحات الممسوحة ضوئياً.'
         });
+
+        if (jobRecord) {
+          await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `Unresolved scanned pages: ${pageNumbers.join(', ')}`, false).catch(() => {});
+        }
 
         // Fail-closed: Never generate synthetic placeholder text!
         return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'REQUIRES_REMEDIATION', issues, startTime);
@@ -499,20 +589,40 @@ export class BookIngestionService {
     // =========================================================================
     // STAGE 6: Chapter & Unit Detection & Boundary Validation
     // =========================================================================
-    const detectedChapters = await aiChapterDetector.detectAndCreateChapters({
-      bookId,
-      bookTitleAr: titleAr.trim(),
-      bookTitleEn: titleEn.trim(),
-      totalPages,
-      pages: extractedPages,
-      academicStageId,
-      gradeId,
-      subjectId
-    });
+    let detectedChapters: DetectedChapter[] = [];
+    if (checkpoint.detectedChapters && Array.isArray(checkpoint.detectedChapters) && checkpoint.detectedChapters.length > 0) {
+      console.log(`♻️ [BookIngestionService] Resuming from checkpoint: ${checkpoint.detectedChapters.length} detected chapters.`);
+      detectedChapters = checkpoint.detectedChapters;
+    } else {
+      detectedChapters = await aiChapterDetector.detectAndCreateChapters({
+        bookId,
+        bookTitleAr: titleAr.trim(),
+        bookTitleEn: titleEn.trim(),
+        totalPages,
+        pages: extractedPages,
+        academicStageId,
+        gradeId,
+        subjectId
+      });
+
+      if (jobRecord) {
+        await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'DETECTING_CHAPTERS', {
+          detectedChapters
+        }).catch(() => {});
+      }
+    }
 
     const boundaryCheck = this.validateChapterBoundaries(detectedChapters, totalPages);
     if (!boundaryCheck.valid) {
       issues.push(...boundaryCheck.issues);
+      if (jobRecord) {
+        await DurableIngestionJobService.markFailed(
+          jobRecord.id,
+          workerId,
+          boundaryCheck.issues.map(i => i.message).join('; '),
+          false
+        ).catch(() => {});
+      }
       return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'BLOCKED', issues, startTime);
     }
 
@@ -586,6 +696,12 @@ export class BookIngestionService {
       }
     }
 
+    if (jobRecord) {
+      await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'CHUNKING_AND_EMBEDDING', {
+        totalChunks: allChunks.length
+      }).catch(() => {});
+    }
+
     // =========================================================================
     // STAGE 8: Multimodal Extraction & Visual Asset Association
     // =========================================================================
@@ -601,12 +717,12 @@ export class BookIngestionService {
         stage: 'DURABLE_STORAGE',
         code: saveErr.code || 'STORAGE_SAVE_FAILED',
         message: `تعذر حفظ ملف الكتاب في وحدة التخزين المتينة: ${saveErr.message}`,
-        remediationGuidance: 'تأكد من تكوين رمز BLOB_READ_WRITE_TOKEN بشكل سليم في بيئة Vercel.'
+        remediationGuidance: 'تأكد من سلامة اتصال وحدة التخزين وتكوين التخزين المتين بشكل سليم.'
       });
-      // In serverless without Blob token, fail-closed safely
-      if (process.env.VERCEL && !process.env.BLOB_READ_WRITE_TOKEN) {
-        return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'BLOCKED', issues, startTime);
+      if (jobRecord) {
+        await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `Storage save failed: ${saveErr.message}`, true).catch(() => {});
       }
+      return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'BLOCKED', issues, startTime);
     }
 
     const subjectVisualReq = options.visualRequirements || this.inferVisualRequirement(subjectId, titleAr);
@@ -652,7 +768,7 @@ export class BookIngestionService {
           chapterNumber: ch.chapter_number,
           unitTitle: ch.title_ar,
           message: `فشل التحقق من وحدة التخزين: ${storageCheckErr.message}`,
-          remediationGuidance: 'تأكد من تكوين رمز BLOB_READ_WRITE_TOKEN بشكل سليم.'
+          remediationGuidance: 'تأكد من تكوين رمز التخزين أو جاهزية قاعدة البيانات بشكل سليم.'
         });
       }
 
@@ -749,6 +865,13 @@ export class BookIngestionService {
       });
     }
 
+    if (jobRecord) {
+      await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'READINESS_AUDIT', {
+        hasAnyBlockedUnit,
+        unitReportsCount: unitReports.length
+      }).catch(() => {});
+    }
+
     // =========================================================================
     // STAGE 11: Fail-Closed Publication Gate
     // =========================================================================
@@ -781,6 +904,23 @@ export class BookIngestionService {
         for (const du of dynamicUnitsToRegister) {
           ReadinessValidator.registerDynamicUnit(du);
         }
+        if (jobRecord) {
+          await DurableIngestionJobService.markCompleted(jobRecord.id, workerId, {
+            status: finalStatus,
+            totalPages,
+            totalChunks: allChunks.length,
+            unitsCount: unitReports.length
+          }).catch(() => {});
+        }
+      } else {
+        if (jobRecord) {
+          await DurableIngestionJobService.markFailed(
+            jobRecord.id,
+            workerId,
+            unitReports.flatMap(u => u.issues).map(i => i.message).join('; ') || 'Readiness verification blocked incomplete units',
+            false
+          ).catch(() => {});
+        }
       }
     } catch (persistErr: any) {
       console.error('❌ [BookIngestionService] Database persistence failed:', persistErr.message);
@@ -790,6 +930,9 @@ export class BookIngestionService {
         message: `فشل حفظ سجلات الكتاب أو المقاطع في قاعدة البيانات: ${persistErr.message}`,
         remediationGuidance: 'تحقق من اتصال قاعدة البيانات وحجم المقاطع وأعد المحاولة.'
       });
+      if (jobRecord) {
+        await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `Persistence failed: ${persistErr.message}`, true).catch(() => {});
+      }
       return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'BLOCKED', issues, startTime);
     }
 

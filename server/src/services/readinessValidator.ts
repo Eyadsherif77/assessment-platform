@@ -36,6 +36,7 @@ export interface UnitReadinessResult {
   subjectAr: string;
   status: UnitReadinessStatus;
   isEligibleForAI: boolean;
+  retrievalMode?: 'SEMANTIC_VECTOR' | 'EDUCATIONAL_BM25';
   visualDependencies: string;
   reason: string;
   evidence: string;
@@ -133,6 +134,8 @@ export class ReadinessValidator {
    */
   private static evaluateInventoryUnit(bookId: string, chapterId: string, unit: any): UnitReadinessResult {
     const isBlocked = unit.readiness_status === 'BLOCKED';
+    const isCond = unit.readiness_status === 'CONDITIONALLY_READY';
+    const retrievalMode = isBlocked ? undefined : (isCond ? 'EDUCATIONAL_BM25' : 'SEMANTIC_VECTOR');
     const requiredActions: string[] = [];
 
     const vis = unit.visual_dependencies || 'NONE';
@@ -160,6 +163,7 @@ export class ReadinessValidator {
       subjectAr: unit.subject_ar,
       status: unit.readiness_status,
       isEligibleForAI: !isBlocked,
+      retrievalMode,
       visualDependencies: vis,
       reason: unit.status_reason,
       evidence: unit.evidence_and_unresolved_issues,
@@ -188,8 +192,9 @@ export class ReadinessValidator {
       unitTitleEn: isSyntheticTestFixture ? 'Synthetic Test Unit' : 'Unknown Unit',
       gradeAr: 'غير معروف',
       subjectAr: 'غير معروف',
-      status: isSyntheticTestFixture ? 'VERIFIED_READY' : 'NOT_AUDITED',
+      status: isSyntheticTestFixture ? 'VERIFIED_READY' : 'BLOCKED',
       isEligibleForAI: isSyntheticTestFixture,
+      retrievalMode: isSyntheticTestFixture ? 'SEMANTIC_VECTOR' : undefined,
       visualDependencies: 'NONE',
       reason: isSyntheticTestFixture
         ? 'Synthetic mock fixture permitted strictly in offline test harness.'
@@ -207,6 +212,7 @@ export class ReadinessValidator {
     const totalChunks = parseInt(String(row.total_chunks || '0'), 10);
     const totalChars = parseInt(String(row.total_chars || '0'), 10);
     const embeddedChunks = parseInt(String(row.embedded_chunks || '0'), 10);
+    const outOfRangeChunks = parseInt(String(row.out_of_range_chunks || '0'), 10);
     const totalPages = parseInt(String(row.total_pages || '0'), 10);
     const startPage = parseInt(String(row.start_page || '0'), 10);
     const endPage = parseInt(String(row.end_page || '0'), 10);
@@ -243,10 +249,10 @@ export class ReadinessValidator {
       requiredActions.push('تأكد من أن نطاق صفحات الوحدة يحتوي على نصوص دراسية وشروحات كافية');
     }
 
-    // Check 5: Vector Embedding Integrity (100% chunks must have vector data)
-    if (totalChunks > 0 && embeddedChunks < totalChunks) {
-      issues.push(`تضمينات المتجهات للوحدة غير مكتملة (${embeddedChunks} من أصل ${totalChunks} مقطع)`);
-      requiredActions.push('توليد متجهات التضمين الدلالية للمقاطع الناقصة');
+    // Check 5: Out of range chunks
+    if (outOfRangeChunks > 0) {
+      issues.push(`الوحدة تحتوي على مقاطع خارج النطاق المحدد للصفحات (${outOfRangeChunks} مقاطع)`);
+      requiredActions.push('تنظيف المقاطع خارج النطاق أو إعادة ضبط حدود الوحدة');
     }
 
     // Check 6: Visual Requirement Gate
@@ -269,8 +275,29 @@ export class ReadinessValidator {
       }
     }
 
-    const isVerified = issues.length === 0;
-    const finalStatus: UnitReadinessStatus = isVerified ? 'VERIFIED_READY' : 'BLOCKED';
+    const hasMissingEmbeddings = totalChunks > 0 && embeddedChunks < totalChunks;
+    if (hasMissingEmbeddings) {
+      requiredActions.push('توليد متجهات التضمين الدلالية للمقاطع الناقصة');
+    }
+
+    const isBlocked = issues.length > 0;
+    let finalStatus: UnitReadinessStatus;
+    let retrievalMode: 'SEMANTIC_VECTOR' | 'EDUCATIONAL_BM25' | undefined;
+    let reason: string;
+
+    if (isBlocked) {
+      finalStatus = 'BLOCKED';
+      retrievalMode = undefined;
+      reason = issues.join(' | ');
+    } else if (hasMissingEmbeddings) {
+      finalStatus = 'CONDITIONALLY_READY';
+      retrievalMode = 'EDUCATIONAL_BM25';
+      reason = 'الوحدة جاهزة مشروطاً لتوليد الأسئلة عبر البحث المعجمي (BM25) لحين اكتمال توليد متجهات التضمين الدلالية.';
+    } else {
+      finalStatus = 'VERIFIED_READY';
+      retrievalMode = 'SEMANTIC_VECTOR';
+      reason = 'تم التحقق من جاهزية الوحدة واكتمال النصوص والمتجهات والأصول المرئية من قاعدة البيانات.';
+    }
 
     return {
       bookId,
@@ -282,11 +309,10 @@ export class ReadinessValidator {
       gradeAr: row.grade_ar || 'غير محدد',
       subjectAr: row.subject_ar || 'غير محدد',
       status: finalStatus,
-      isEligibleForAI: isVerified,
+      isEligibleForAI: !isBlocked,
+      retrievalMode,
       visualDependencies: visualReq,
-      reason: isVerified
-        ? 'تم التحقق من جاهزية الوحدة واكتمال النصوص والمتجهات والأصول المرئية من قاعدة البيانات.'
-        : issues.join(' | '),
+      reason,
       evidence: `${totalChunks} chunks, ${totalChars} chars, ${embeddedChunks} embeddings, ${visualAssetCount} visuals.`,
       requiredActions
     };
@@ -343,7 +369,8 @@ export class ReadinessValidator {
           g.name_ar AS grade_ar,
           COUNT(chk.id) AS total_chunks,
           COALESCE(SUM(LENGTH(chk.content)), 0) AS total_chars,
-          COUNT(CASE WHEN chk.embedding IS NOT NULL AND LENGTH(chk.embedding) > 50 THEN 1 END) AS embedded_chunks
+          COUNT(CASE WHEN chk.embedding IS NOT NULL AND LENGTH(chk.embedding) > 50 THEN 1 END) AS embedded_chunks,
+          COUNT(CASE WHEN chk.page_number < bc.start_page OR chk.page_number > bc.end_page THEN 1 END) AS out_of_range_chunks
         FROM books b
         JOIN book_chapters bc ON bc.book_id = b.id
         LEFT JOIN subjects s ON s.id = b.subject_id

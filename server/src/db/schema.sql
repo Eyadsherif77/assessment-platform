@@ -373,3 +373,23 @@ CREATE INDEX IF NOT EXISTS idx_metric_event ON ai_usage_metrics(event_type);
 CREATE INDEX IF NOT EXISTS idx_metric_created ON ai_usage_metrics(created_at);
 CREATE INDEX IF NOT EXISTS idx_metric_config ON ai_usage_metrics(config_hash);
 CREATE INDEX IF NOT EXISTS idx_metric_cached_exam ON ai_usage_metrics(cached_exam_id);
+
+CREATE TABLE IF NOT EXISTS book_ingestion_jobs (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    file_checksum TEXT NOT NULL,
+    current_stage TEXT NOT NULL DEFAULT 'UPLOADED',
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    attempt_count INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    lease_owner TEXT,
+    lease_expires_at TEXT,
+    checkpoint_data TEXT,
+    last_error TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_bij_book ON book_ingestion_jobs(book_id);
+CREATE INDEX IF NOT EXISTS idx_bij_stage_status ON book_ingestion_jobs(current_stage, status);
+CREATE INDEX IF NOT EXISTS idx_bij_lease ON book_ingestion_jobs(status, lease_expires_at);

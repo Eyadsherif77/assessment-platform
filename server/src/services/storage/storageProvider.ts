@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { db } from '../../db/db.js';
+
 export interface StorageMetadata {
   key: string;
   url: string;
@@ -12,7 +14,7 @@ export interface StorageMetadata {
   mimeType: string;
   sha256: string;
   durable: boolean;
-  storageType: 'local-fs' | 'ephemeral-serverless' | 'cloud-blob';
+  storageType: 'local-fs' | 'ephemeral-serverless' | 'cloud-blob' | 'database-chunks';
   isPrivate?: boolean;
 }
 
@@ -41,6 +43,14 @@ export function normalizeStorageKey(rawKey: string): string {
     .trim();
 }
 
+export function extractBookIdFromKey(rawKey: string): string {
+  const clean = normalizeStorageKey(rawKey);
+  const uuidMatch = clean.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (uuidMatch) return uuidMatch[0];
+  const parts = clean.split('/');
+  return parts[parts.length - 1].replace(/\.[^/.]+$/, '').replace(/^book_/, '');
+}
+
 export interface IStorageProvider {
   saveFile(key: string, buffer: Buffer, mimeType: string, options?: { isPrivate?: boolean }): Promise<StorageMetadata>;
   getFile(key: string, expectedSha256?: string): Promise<Buffer>;
@@ -48,7 +58,7 @@ export interface IStorageProvider {
   deleteFile(key: string): Promise<boolean>;
   getUrl(key: string): string;
   isDurable(): boolean;
-  getStorageType(): 'local-fs' | 'ephemeral-serverless' | 'cloud-blob';
+  getStorageType(): 'local-fs' | 'ephemeral-serverless' | 'cloud-blob' | 'database-chunks';
   getAbsolutePath?(key: string): string;
 }
 
@@ -340,6 +350,158 @@ export class VercelBlobStorageProvider implements IStorageProvider {
   }
 }
 
+/**
+ * Universal durable storage provider backed by TiDB Cloud / database `book_pdf_chunks`.
+ * Guarantees zero external token dependencies, 100% durable persistence on serverless (Vercel),
+ * binary chunk integrity, and fast HTTP Range chunk retrieval.
+ */
+export class DatabaseChunkStorageProvider implements IStorageProvider {
+  private fallbackLocal: LocalStorageProvider;
+
+  constructor() {
+    this.fallbackLocal = new LocalStorageProvider();
+  }
+
+  public isDurable(): boolean {
+    return true;
+  }
+
+  public getStorageType(): 'database-chunks' {
+    return 'database-chunks';
+  }
+
+  public getUrl(key: string): string {
+    const bookId = extractBookIdFromKey(key);
+    return `/api/books/${bookId}/pdf`;
+  }
+
+  public async saveFile(
+    key: string,
+    buffer: Buffer,
+    mimeType: string,
+    options?: { isPrivate?: boolean }
+  ): Promise<StorageMetadata> {
+    const bookId = extractBookIdFromKey(key);
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const totalChunks = Math.ceil(buffer.length / CHUNK_SIZE);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(buffer.length, (i + 1) * CHUNK_SIZE);
+      const chunkSlice = buffer.slice(start, end);
+      await db.query(
+        `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
+        [bookId, i, chunkSlice]
+      );
+    }
+
+    // Mirror to local disk if running in non-serverless dev
+    if (!process.env.VERCEL) {
+      await this.fallbackLocal.saveFile(key, buffer, mimeType, options).catch(() => {});
+    }
+
+    const crypto = await import('crypto');
+    const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+    return {
+      key: normalizeStorageKey(key),
+      url: this.getUrl(key),
+      sizeBytes: buffer.length,
+      mimeType,
+      sha256: hash,
+      durable: true,
+      storageType: 'database-chunks',
+      isPrivate: options?.isPrivate || false
+    };
+  }
+
+  public async getFile(key: string, expectedSha256?: string): Promise<Buffer> {
+    const bookId = extractBookIdFromKey(key);
+    const rowsRes = await db.query(
+      `SELECT chunk_index, chunk_data FROM book_pdf_chunks WHERE book_id = $1 ORDER BY chunk_index ASC`,
+      [bookId]
+    );
+
+    if (rowsRes.rows.length === 0) {
+      // Fallback to local storage provider
+      return await this.fallbackLocal.getFile(key, expectedSha256);
+    }
+
+    const buffers = rowsRes.rows.map((r: any) => {
+      const raw = r.chunk_data;
+      return Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    });
+    const fullBuffer = Buffer.concat(buffers);
+
+    if (expectedSha256) {
+      const crypto = await import('crypto');
+      const hash = crypto.createHash('sha256').update(fullBuffer).digest('hex');
+      if (hash !== expectedSha256) {
+        throw new StorageIntegrityError(
+          `STORAGE_INTEGRITY_MISMATCH: SHA-256 for key "${key}" (${hash}) does not match expected checksum (${expectedSha256})`
+        );
+      }
+    }
+
+    return fullBuffer;
+  }
+
+  /**
+   * Efficient range read: only queries and concatenates the specific 2MB chunks covering [start, end].
+   */
+  public async getFileRange(key: string, start: number, end: number): Promise<Buffer> {
+    const bookId = extractBookIdFromKey(key);
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const startChunk = Math.floor(start / CHUNK_SIZE);
+    const endChunk = Math.floor(end / CHUNK_SIZE);
+
+    const rowsRes = await db.query(
+      `SELECT chunk_index, chunk_data FROM book_pdf_chunks 
+       WHERE book_id = $1 AND chunk_index BETWEEN $2 AND $3 
+       ORDER BY chunk_index ASC`,
+      [bookId, startChunk, endChunk]
+    );
+
+    if (rowsRes.rows.length === 0) {
+      const full = await this.fallbackLocal.getFile(key);
+      return full.subarray(start, end + 1);
+    }
+
+    const buffers = rowsRes.rows.map((r: any) => {
+      const raw = r.chunk_data;
+      return Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    });
+    const combined = Buffer.concat(buffers);
+    const offsetInFirstChunk = start - (startChunk * CHUNK_SIZE);
+    const requestedLength = end - start + 1;
+
+    return combined.subarray(offsetInFirstChunk, offsetInFirstChunk + requestedLength);
+  }
+
+  public async exists(key: string): Promise<boolean> {
+    const bookId = extractBookIdFromKey(key);
+    try {
+      const countRes = await db.query(
+        `SELECT COUNT(*) as cnt FROM book_pdf_chunks WHERE book_id = $1`,
+        [bookId]
+      );
+      const cnt = parseInt(countRes.rows[0]?.cnt || '0', 10);
+      if (cnt > 0) return true;
+    } catch (_) {}
+
+    return await this.fallbackLocal.exists(key);
+  }
+
+  public async deleteFile(key: string): Promise<boolean> {
+    const bookId = extractBookIdFromKey(key);
+    try {
+      await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]);
+    } catch (_) {}
+    await this.fallbackLocal.deleteFile(key).catch(() => {});
+    return true;
+  }
+}
+
 let activeStorageProvider: IStorageProvider | null = null;
 
 export function getStorageProvider(): IStorageProvider {
@@ -347,19 +509,15 @@ export function getStorageProvider(): IStorageProvider {
     return activeStorageProvider;
   }
 
-  const isVercel = !!process.env.VERCEL || process.env.NODE_ENV === 'production';
   const hasBlobToken = !!process.env.BLOB_READ_WRITE_TOKEN;
   const forceBlob = process.env.STORAGE_PROVIDER === 'vercel-blob';
+  const forceDb = process.env.STORAGE_PROVIDER === 'database-chunks';
 
-  if (hasBlobToken || forceBlob) {
-    activeStorageProvider = new VercelBlobStorageProvider();
-  } else if (isVercel) {
-    // In production Vercel without token, initialize VercelBlobStorageProvider so it fails-closed upon storage calls
-    // It NEVER silently falls back to LocalStorageProvider or /tmp/uploads
+  if ((hasBlobToken || forceBlob) && !forceDb) {
     activeStorageProvider = new VercelBlobStorageProvider();
   } else {
-    // Local development
-    activeStorageProvider = new LocalStorageProvider();
+    // Canonical durable storage provider: TiDB Cloud book_pdf_chunks
+    activeStorageProvider = new DatabaseChunkStorageProvider();
   }
 
   return activeStorageProvider;

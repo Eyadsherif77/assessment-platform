@@ -94,3 +94,143 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
   const denominator = Math.sqrt(normA) * Math.sqrt(normB);
   return denominator === 0 ? 0 : dotProduct / denominator;
 }
+
+export interface VectorValidationResult {
+  valid: boolean;
+  vector?: number[];
+  error?: string;
+}
+
+export function validateEmbeddingVector(
+  raw: any,
+  expectedDim = 768,
+  expectedModel?: string
+): VectorValidationResult {
+  if (raw === null || raw === undefined) {
+    return { valid: false, error: 'Vector is null or empty' };
+  }
+
+  let vectorArray: any[] = raw;
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return { valid: false, error: 'Vector is null or empty' };
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.model && expectedModel && parsed.model !== expectedModel) {
+          return {
+            valid: false,
+            error: `Model mismatch: expected ${expectedModel}, got ${parsed.model}`
+          };
+        }
+        if (Array.isArray(parsed.values)) {
+          vectorArray = parsed.values;
+        } else if (Array.isArray(parsed)) {
+          vectorArray = parsed;
+        } else {
+          return { valid: false, error: 'Invalid vector format: missing vector values array' };
+        }
+      } else {
+        return { valid: false, error: 'Invalid vector JSON structure' };
+      }
+    } catch {
+      return { valid: false, error: 'Failed to parse vector JSON string' };
+    }
+  }
+
+  if (!Array.isArray(vectorArray) || vectorArray.length === 0) {
+    return { valid: false, error: 'Vector is null or empty' };
+  }
+
+  if (vectorArray.length !== expectedDim) {
+    return {
+      valid: false,
+      error: `Dimension mismatch: expected ${expectedDim}, got ${vectorArray.length}`
+    };
+  }
+
+  for (let i = 0; i < vectorArray.length; i++) {
+    const val = vectorArray[i];
+    if (typeof val !== 'number' || isNaN(val) || !isFinite(val)) {
+      return {
+        valid: false,
+        error: `Invalid numeric value at index ${i}: ${val}`
+      };
+    }
+  }
+
+  return { valid: true, vector: vectorArray };
+}
+
+function normalizeArabicBM25(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/ـ+/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function computeEducationalBM25Score(query: string, document: string): number {
+  if (!query || !document) return 0;
+
+  const normQuery = normalizeArabicBM25(query);
+  const normDoc = normalizeArabicBM25(document);
+
+  if (!normQuery || !normDoc) return 0;
+
+  const queryTerms = normQuery.split(/\s+/).filter(t => t.length > 1);
+  if (queryTerms.length === 0) return 0;
+
+  const docWords = normDoc.split(/\s+/);
+  if (docWords.length === 0) return 0;
+
+  const docFreq = new Map<string, number>();
+  for (const w of docWords) {
+    docFreq.set(w, (docFreq.get(w) || 0) + 1);
+    if (w.startsWith('ال') && w.length > 3) {
+      const stripped = w.slice(2);
+      docFreq.set(stripped, (docFreq.get(stripped) || 0) + 1);
+    }
+  }
+
+  const k1 = 1.2;
+  const b = 0.75;
+  const avgDocLength = 50;
+  const docLength = docWords.length;
+
+  let score = 0;
+  let matches = 0;
+
+  for (const term of queryTerms) {
+    let tf = docFreq.get(term) || 0;
+    if (tf === 0 && term.startsWith('ال') && term.length > 3) {
+      tf = docFreq.get(term.slice(2)) || 0;
+    }
+    if (tf === 0) {
+      tf = docFreq.get('ال' + term) || 0;
+    }
+
+    if (tf > 0) {
+      matches++;
+      const num = tf * (k1 + 1);
+      const denom = tf + k1 * (1 - b + b * (docLength / avgDocLength));
+      score += num / denom;
+    }
+  }
+
+  if (matches === 0) return 0;
+
+  const queryCoverage = matches / queryTerms.length;
+  const finalScore = Number((0.4 * queryCoverage + 0.6 * Math.min(1.0, score / queryTerms.length)).toFixed(4));
+  return finalScore;
+}
+
