@@ -454,7 +454,8 @@ export const StudentDashboard: React.FC = () => {
         if (Array.isArray(data)) {
           setBooks(data);
           if (data.length > 0) {
-            handleSelectAiBook(data[0]);
+            const firstAvailable = data.find((b: any) => b.is_available !== false) || data[0];
+            handleSelectAiBook(firstAvailable);
           } else {
             setSelectedAiBook(null);
           }
@@ -487,7 +488,8 @@ export const StudentDashboard: React.FC = () => {
 
   useEffect(() => {
     if (books.length > 0 && !selectedAiBook) {
-      handleSelectAiBook(books[0]);
+      const firstAvailable = books.find((b: any) => b.is_available !== false) || books[0];
+      handleSelectAiBook(firstAvailable);
     }
   }, [books, selectedAiBook]);
 
@@ -1171,16 +1173,25 @@ export const StudentDashboard: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
                   {books.map(b => {
                     const isSelected = selectedAiBook?.id === b.id;
+                    const isAvailable = b.is_available !== false;
                     return (
                       <div
                         key={b.id}
-                        onClick={() => { handleSelectAiBook(b); setAiStep(2); }}
+                        onClick={() => {
+                          if (!isAvailable) {
+                            alert(isAr ? (b.message || 'جاري رفع كتاب الوزارة المعتمد لهذه المادة.') : 'Official textbook is being prepared for this subject.');
+                            return;
+                          }
+                          handleSelectAiBook(b);
+                          setAiStep(2);
+                        }}
                         style={{
                           padding: '1.5rem',
                           borderRadius: 'var(--radius-xl)',
                           border: isSelected ? '2px solid var(--primary-600)' : '1px solid var(--border-light)',
-                          background: isSelected ? 'var(--primary-50)' : 'var(--bg-card)',
-                          cursor: 'pointer',
+                          background: !isAvailable ? 'var(--bg-muted, #f8fafc)' : isSelected ? 'var(--primary-50)' : 'var(--bg-card)',
+                          cursor: isAvailable ? 'pointer' : 'not-allowed',
+                          opacity: isAvailable ? 1 : 0.65,
                           transition: 'all 0.2s ease',
                           display: 'flex',
                           alignItems: 'center',
@@ -1191,7 +1202,9 @@ export const StudentDashboard: React.FC = () => {
                           width: '46px',
                           height: '46px',
                           borderRadius: 'var(--radius-lg)',
-                          background: 'linear-gradient(135deg, var(--primary-600), var(--primary-800))',
+                          background: isAvailable
+                            ? 'linear-gradient(135deg, var(--primary-600), var(--primary-800))'
+                            : 'linear-gradient(135deg, #94a3b8, #64748b)',
                           color: '#FFFFFF',
                           display: 'flex',
                           alignItems: 'center',
@@ -1200,10 +1213,15 @@ export const StudentDashboard: React.FC = () => {
                         }}>
                           <BookOpen size={22} />
                         </div>
-                        <div>
+                        <div style={{ flex: 1 }}>
                           <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.25rem' }}>
                             {isAr ? b.title_ar : (b.title_en || b.title_ar)}
                           </h4>
+                          {!isAvailable && (
+                            <span style={{ fontSize: '0.78rem', color: '#d97706', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                              ⏳ {isAr ? 'قيد التجهيز والرفع' : 'Coming Soon'}
+                            </span>
+                          )}
                         </div>
 
                       </div>

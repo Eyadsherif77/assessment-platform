@@ -114,7 +114,10 @@ async function main() {
       titleAr: 'كتاب ممسوح ضوئياً بدون نصوص',
       academicStageId: validStageId,
       gradeId: validGradeId,
-      subjectId: validSubjectId
+      subjectId: validSubjectId,
+      options: {
+        ocrProvider: async () => ''
+      }
     });
 
     assert.strictEqual(result.status, 'REQUIRES_REMEDIATION', 'Blank PDF must require remediation');
@@ -306,20 +309,20 @@ async function main() {
   // ==========================================================================
   console.log('\n--- Test Group 6: Authoritative Curriculum & Regression Integrity ---');
 
-  await runTest('12. Existing 13-book inventory of 54 units remains 100% verified ready and untouched', async () => {
+  await runTest('12. Existing 13-book inventory of 55 units remains 100% verified ready and untouched', async () => {
     const summary = ReadinessValidator.getReadinessSummary();
-    assert.strictEqual(summary.totalUnits, 54, 'Must have exactly 54 total authoritative units');
-    assert.strictEqual(summary.verifiedReady, 54, 'All 54 authoritative units must remain VERIFIED_READY');
+    assert.strictEqual(summary.totalUnits, 55, 'Must have exactly 55 total authoritative units');
+    assert.strictEqual(summary.verifiedReady, 55, 'All 55 authoritative units must remain VERIFIED_READY');
     assert.strictEqual(summary.blocked, 0, 'No authoritative units can be blocked');
   });
 
-  await runTest('13. Storage abstraction detects ephemeral serverless environment and reports persistence status', async () => {
+  await runTest('13. Storage abstraction detects environment and reports persistence status', async () => {
     const storage = getStorageProvider();
     const isDurable = storage.isDurable();
     const type = storage.getStorageType();
 
     assert.ok(typeof isDurable === 'boolean');
-    assert.ok(['local-fs', 'ephemeral-serverless', 'cloud-blob'].includes(type));
+    assert.ok(['local-fs', 'ephemeral-serverless', 'cloud-blob', 'database-chunks'].includes(type));
   });
 
   console.log('\n================================================================');

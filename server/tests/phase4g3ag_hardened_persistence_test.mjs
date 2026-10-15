@@ -497,8 +497,8 @@ async function main() {
     ReadinessValidator.clearDynamicUnits();
     const summary = ReadinessValidator.getReadinessSummary();
 
-    assert.strictEqual(summary.totalUnits, 54, `Authoritative curriculum must contain exactly 54 units, found ${summary.totalUnits}`);
-    assert.strictEqual(summary.verifiedReady, 54, `All 54 canonical curriculum units must be VERIFIED_READY, found ${summary.verifiedReady}`);
+    assert.strictEqual(summary.totalUnits, 55, `Authoritative curriculum must contain exactly 55 units, found ${summary.totalUnits}`);
+    assert.strictEqual(summary.verifiedReady, 55, `All 55 canonical curriculum units must be VERIFIED_READY, found ${summary.verifiedReady}`);
     assert.strictEqual(summary.blocked, 0, `Must have 0 BLOCKED units, found ${summary.blocked}`);
     assert.strictEqual(summary.notAudited, 0, `Must have 0 NOT_AUDITED units, found ${summary.notAudited}`);
 

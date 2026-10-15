@@ -594,6 +594,364 @@ export function evaluateMathExpression(expr: string): MathEvaluationResult {
   }
 }
 
+export interface LinearEquationSolution {
+  success: boolean;
+  variable?: string;
+  solution?: number;
+  simplifiedSolution?: string;
+  error?: string;
+}
+
+/**
+ * Validates mathematical notation for structural correctness:
+ * - Balanced parentheses, square brackets, and curly braces
+ * - No invalid consecutive operators (e.g. ++, **, //)
+ * - No trailing dangling operators
+ * - No division by zero
+ */
+export function validateMathNotation(text: string): { isValid: boolean; reason?: string } {
+  if (!text || typeof text !== 'string') return { isValid: true };
+
+  // 1. Parentheses, brackets, and braces balance
+  const stack: string[] = [];
+  const pairs: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
+  const closing = new Set([')', ']', '}']);
+
+  for (const ch of text) {
+    if (pairs[ch]) {
+      stack.push(pairs[ch]);
+    } else if (closing.has(ch)) {
+      if (stack.length === 0 || stack.pop() !== ch) {
+        return { isValid: false, reason: `Unbalanced or mismatched bracket/parenthesis: "${ch}"` };
+      }
+    }
+  }
+  if (stack.length > 0) {
+    return { isValid: false, reason: `Unclosed parenthesis or bracket: expected "${stack[stack.length - 1]}"` };
+  }
+
+  // 2. Consecutive invalid operators: ++, **, //, etc.
+  if (/[\+\*\/×÷]{2,}/.test(text)) {
+    return { isValid: false, reason: 'Invalid consecutive mathematical operators detected' };
+  }
+
+  // 3. Trailing dangling operators at end of mathematical statement (excluding trailing punctuation)
+  const stripped = text.replace(/[؟\?\.\!\s]+$/, '');
+  if (/[\+\*\/×÷=]$/.test(stripped) || (/\-$/.test(stripped) && !/\b[a-zA-Z\u0621-\u064A0-9]+\-$/.test(stripped))) {
+    return { isValid: false, reason: 'Dangling mathematical operator at end of expression' };
+  }
+
+  // 4. Division by zero
+  if (/[\/÷]\s*0(?![0-9\.])/.test(text)) {
+    return { isValid: false, reason: 'Division by zero detected in mathematical expression' };
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Extracts and safely solves single-variable linear equations without eval().
+ * Supports both Latin variables (x, y, z, m, n) and Arabic variables (س, ص, ع, ن).
+ * Supports forms:
+ *   ax + b = c
+ *   ax - b = c
+ *   b + ax = c
+ *   b - ax = c
+ *   x / a + b = c
+ *   x + b = c
+ *   ax = c
+ */
+export function solveLinearEquation(text: string): LinearEquationSolution {
+  if (!text || typeof text !== 'string') {
+    return { success: false, error: 'EMPTY_TEXT' };
+  }
+
+  // Normalize digits and operators
+  const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  let cleaned = text;
+  for (let i = 0; i < 10; i++) {
+    cleaned = cleaned.replace(new RegExp(easternDigits[i], 'g'), String(i));
+  }
+  cleaned = cleaned
+    .replace(/×/g, '*')
+    .replace(/÷/g, '/')
+    .replace(/[\u064B-\u0652\u0670]/g, ''); // strip Arabic tashkeel
+
+  // Supported variables: English [a-zA-Z] or Arabic [سصعن]
+  const varPattern = '([a-zA-Z\u0633\u0635\u0639\u0646])';
+
+  // Form 1: (ax [+-] b = c) or (x [+-] b = c)
+  // e.g., "2x + 4 = 10", "س + 5 = 12", "3س - 9 = 0", "2.5x + 1 = 6"
+  const form1 = new RegExp(
+    `(-?\\d*(?:\\.\\d+)?)\\s*${varPattern}\\s*([\\+\\-])\\s*(\\d+(?:\\.\\d+)?)\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`
+  );
+  let match = cleaned.match(form1);
+  if (match) {
+    let aStr = match[1].trim();
+    const variable = match[2];
+    const sign = match[3];
+    const b = parseFloat(match[4]);
+    const c = parseFloat(match[5]);
+
+    let a = 1;
+    if (aStr === '' || aStr === '+') a = 1;
+    else if (aStr === '-') a = -1;
+    else a = parseFloat(aStr);
+
+    if (isNaN(a) || isNaN(b) || isNaN(c) || a === 0) {
+      return { success: false, error: 'MALFORMED_EQUATION_COEFFICIENTS' };
+    }
+
+    const signedB = sign === '-' ? -b : b;
+    const solution = (c - signedB) / a;
+    const rounded = Math.round(solution * 1e8) / 1e8;
+    return {
+      success: true,
+      variable,
+      solution: rounded,
+      simplifiedSolution: String(rounded)
+    };
+  }
+
+  // Form 2: (b [+-] ax = c)
+  // e.g., "12 - 2x = 4", "10 + 3س = 22"
+  const form2 = new RegExp(
+    `(-?\\d+(?:\\.\\d+)?)\\s*([\\+\\-])\\s*(\\d*(?:\\.\\d+)?)\\s*${varPattern}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`
+  );
+  match = cleaned.match(form2);
+  if (match) {
+    const b = parseFloat(match[1]);
+    const sign = match[2];
+    let aStr = match[3].trim();
+    const variable = match[4];
+    const c = parseFloat(match[5]);
+
+    let a = 1;
+    if (aStr === '' || aStr === '+') a = 1;
+    else if (aStr === '-') a = -1;
+    else a = parseFloat(aStr);
+
+    if (sign === '-') a = -a;
+
+    if (isNaN(a) || isNaN(b) || isNaN(c) || a === 0) {
+      return { success: false, error: 'MALFORMED_EQUATION_COEFFICIENTS' };
+    }
+
+    const solution = (c - b) / a;
+    const rounded = Math.round(solution * 1e8) / 1e8;
+    return {
+      success: true,
+      variable,
+      solution: rounded,
+      simplifiedSolution: String(rounded)
+    };
+  }
+
+  // Form 3: (x / a [+-] b = c)
+  // e.g., "x / 2 + 3 = 7", "س / 4 - 1 = 2"
+  const form3 = new RegExp(
+    `${varPattern}\\s*\\/\\s*(\\d+(?:\\.\\d+)?)\\s*([\\+\\-])\\s*(\\d+(?:\\.\\d+)?)\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`
+  );
+  match = cleaned.match(form3);
+  if (match) {
+    const variable = match[1];
+    const denom = parseFloat(match[2]);
+    const sign = match[3];
+    const b = parseFloat(match[4]);
+    const c = parseFloat(match[5]);
+
+    if (isNaN(denom) || isNaN(b) || isNaN(c) || denom === 0) {
+      return { success: false, error: 'DIVISION_BY_ZERO_OR_MALFORMED' };
+    }
+
+    const signedB = sign === '-' ? -b : b;
+    const solution = (c - signedB) * denom;
+    const rounded = Math.round(solution * 1e8) / 1e8;
+    return {
+      success: true,
+      variable,
+      solution: rounded,
+      simplifiedSolution: String(rounded)
+    };
+  }
+
+  // Form 4: (ax = c)
+  // e.g., "3x = 15", "5س = -20", "2.5x = 5"
+  const form4 = new RegExp(
+    `(-?\\d*(?:\\.\\d+)?)\\s*${varPattern}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`
+  );
+  match = cleaned.match(form4);
+  if (match) {
+    let aStr = match[1].trim();
+    const variable = match[2];
+    const c = parseFloat(match[3]);
+
+    let a = 1;
+    if (aStr === '' || aStr === '+') a = 1;
+    else if (aStr === '-') a = -1;
+    else a = parseFloat(aStr);
+
+    if (isNaN(a) || isNaN(c) || a === 0) {
+      return { success: false, error: 'MALFORMED_EQUATION_COEFFICIENTS' };
+    }
+
+    const solution = c / a;
+    const rounded = Math.round(solution * 1e8) / 1e8;
+    return {
+      success: true,
+      variable,
+      solution: rounded,
+      simplifiedSolution: String(rounded)
+    };
+  }
+
+  return { success: false, error: 'NO_SUPPORTED_LINEAR_EQUATION_FOUND' };
+}
+
+/**
+ * Safely parses any numeric representation:
+ * - Standard integers and decimals (e.g. 5, -3.2)
+ * - Fractions (e.g. "1/2", "-3/4", "10/2")
+ * - Eastern Arabic numerals (e.g. "٥", "٣.٥")
+ * - Numerical statements like "x = 4" or "س = 5"
+ */
+export function parseNumericValue(text: string): number | null {
+  if (!text || typeof text !== 'string') return null;
+
+  const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  let cleaned = text.trim();
+  for (let i = 0; i < 10; i++) {
+    cleaned = cleaned.replace(new RegExp(easternDigits[i], 'g'), String(i));
+  }
+  // Strip common variable prefixes: "x = ", "س = ", "value: ", etc.
+  cleaned = cleaned.replace(/^[a-zA-Z\u0633\u0635\u0639\u0646]\s*=\s*/, '').trim();
+
+  // Handle fraction "A/B"
+  const fracMatch = cleaned.match(/^(-?\d+(?:\.\d+)?)\s*[\/÷]\s*(-?\d+(?:\.\d+)?)$/);
+  if (fracMatch) {
+    const num = parseFloat(fracMatch[1]);
+    const den = parseFloat(fracMatch[2]);
+    if (!isNaN(num) && !isNaN(den) && den !== 0) {
+      return Math.round((num / den) * 1e8) / 1e8;
+    }
+  }
+
+  // Handle standard decimal or integer
+  const num = parseFloat(cleaned);
+  return !isNaN(num) ? Math.round(num * 1e8) / 1e8 : null;
+}
+
+/**
+ * Checks whether two values are mathematically equivalent:
+ * e.g. 0.5 and "1/2", 5 and "10/2", "3" and 3.0
+ */
+export function isMathematicallyEquivalent(val1: any, val2: any): boolean {
+  const n1 = typeof val1 === 'number' ? val1 : parseNumericValue(String(val1));
+  const n2 = typeof val2 === 'number' ? val2 : parseNumericValue(String(val2));
+
+  if (n1 !== null && n2 !== null) {
+    return Math.abs(n1 - n2) < 0.0001;
+  }
+  return false;
+}
+
+/**
+ * Validates options for strict uniqueness and single-correct-answer enforcement:
+ * - Detects duplicate options (exact, normalized Arabic level 1, or mathematical value)
+ * - Rejects questions where multiple options are mathematically equivalent (causing > 1 correct answer)
+ * - Rejects questions where distractors evaluate to the correct answer
+ */
+export function validateOptionsUniqueness(options: Array<{ id: string; text: string; is_correct?: boolean }>): {
+  isValid: boolean;
+  reason?: string;
+  hasMultipleCorrectAnswers?: boolean;
+} {
+  if (!options || !Array.isArray(options) || options.length < 2) {
+    return { isValid: false, reason: 'Options must have at least 2 choices' };
+  }
+
+  const seenIds = new Set<string>();
+  const seenTexts = new Set<string>();
+  const seenNormArabic = new Set<string>();
+  const seenNumericValues = new Map<number, string>(); // numericValue -> option text
+
+  let correctCount = 0;
+  let correctNumericValue: number | null = null;
+  let correctOptText = '';
+
+  for (const opt of options) {
+    const optId = String(opt.id || '').trim();
+    const optText = String(opt.text || '').trim();
+
+    if (!optId || !optText) {
+      return { isValid: false, reason: 'Option ID or text is empty' };
+    }
+
+    if (seenIds.has(optId)) {
+      return { isValid: false, reason: `Duplicate option identifier detected: "${optId}"` };
+    }
+    seenIds.add(optId);
+
+    const lowerText = optText.toLowerCase();
+    if (seenTexts.has(lowerText)) {
+      return { isValid: false, reason: `Duplicate option text detected: "${optText}"` };
+    }
+    seenTexts.add(lowerText);
+
+    const normAr = normalizeArabicLevel1(optText);
+    if (normAr && seenNormArabic.has(normAr) && normAr.length > 1) {
+      return { isValid: false, reason: `Duplicate option text after Arabic normalization: "${optText}"` };
+    }
+    if (normAr) seenNormArabic.add(normAr);
+
+    const numVal = parseNumericValue(optText);
+    if (opt.is_correct) {
+      correctCount++;
+      correctNumericValue = numVal;
+      correctOptText = optText;
+    }
+
+    // Mathematical equivalence check among options
+    if (numVal !== null) {
+      for (const [existingVal, existingText] of seenNumericValues.entries()) {
+        if (Math.abs(existingVal - numVal) < 0.0001) {
+          return {
+            isValid: false,
+            hasMultipleCorrectAnswers: Boolean(opt.is_correct || existingText === correctOptText),
+            reason: `MULTIPLE_DEFENSIBLE_OPTIONS: Options "${existingText}" and "${optText}" are mathematically equivalent (${numVal})`
+          };
+        }
+      }
+      seenNumericValues.set(numVal, optText);
+    }
+  }
+
+  if (correctCount !== 1) {
+    return {
+      isValid: false,
+      reason: `Question must have exactly 1 correct option (found ${correctCount})`
+    };
+  }
+
+  // Cross-check: If correct option has a numeric value, confirm no distractor matches it
+  if (correctNumericValue !== null) {
+    for (const opt of options) {
+      if (!opt.is_correct) {
+        const distVal = parseNumericValue(opt.text);
+        if (distVal !== null && Math.abs(distVal - correctNumericValue) < 0.0001) {
+          return {
+            isValid: false,
+            hasMultipleCorrectAnswers: true,
+            reason: `MULTIPLE_CORRECT_OPTIONS: Distractor "${opt.text}" mathematically matches correct option "${correctOptText}" (${correctNumericValue})`
+          };
+        }
+      }
+    }
+  }
+
+  return { isValid: true };
+}
+
 export type AnswerKeyStatus =
   | 'DETERMINISTICALLY_VERIFIED'
   | 'PENDING_REVIEW'
@@ -641,6 +999,11 @@ export class AnswerValidationService {
   public static evaluateMathExpression = evaluateMathExpression;
   public static signExamAttemptToken = signExamAttemptToken;
   public static verifyExamAttemptToken = verifyExamAttemptToken;
+  public static validateMathNotation = validateMathNotation;
+  public static solveLinearEquation = solveLinearEquation;
+  public static parseNumericValue = parseNumericValue;
+  public static isMathematicallyEquivalent = isMathematicallyEquivalent;
+  public static validateOptionsUniqueness = validateOptionsUniqueness;
 
   /**
    * Normalize Arabic and Eastern Arabic digits to standard Latin digits.
@@ -718,6 +1081,21 @@ export class AnswerValidationService {
       };
     }
 
+    // 1b. Mathematical notation check
+    const notationCheck = validateMathNotation(q.question_text);
+    if (!notationCheck.isValid) {
+      return {
+        questionId: qId,
+        structuralStatus: 'INVALID_STRUCTURE',
+        isStructurallyValid: false,
+        answerKeyStatus: 'REJECTED',
+        isAnswerKeyVerified: false,
+        verificationMethod: 'STRUCTURE_ONLY',
+        requiresTeacherReview: true,
+        reason: `INVALID_MATH_NOTATION: ${notationCheck.reason}`
+      };
+    }
+
     // 2. Options check
     const rawOptions = q.options;
     if (!rawOptions || !Array.isArray(rawOptions) || rawOptions.length < 2) {
@@ -733,12 +1111,10 @@ export class AnswerValidationService {
       };
     }
 
-    // Check for duplicate options (by text)
-    const seenTexts = new Set<string>();
-    const seenIds = new Set<string>();
+    // Check notation on each option
     for (const opt of rawOptions) {
-      const optText = (opt.text || opt.option_text || '').toString().trim().toLowerCase();
-      if (!optText) {
+      const optNotation = validateMathNotation(opt.text || opt.option_text || '');
+      if (!optNotation.isValid) {
         return {
           questionId: qId,
           structuralStatus: 'INVALID_STRUCTURE',
@@ -747,39 +1123,29 @@ export class AnswerValidationService {
           isAnswerKeyVerified: false,
           verificationMethod: 'STRUCTURE_ONLY',
           requiresTeacherReview: true,
-          reason: 'Option has empty or missing text'
+          reason: `INVALID_OPTION_MATH_NOTATION: ${optNotation.reason}`
         };
       }
-      if (seenTexts.has(optText)) {
-        return {
-          questionId: qId,
-          structuralStatus: 'DUPLICATE_OPTIONS',
-          isStructurallyValid: false,
-          answerKeyStatus: 'REJECTED',
-          isAnswerKeyVerified: false,
-          verificationMethod: 'STRUCTURE_ONLY',
-          requiresTeacherReview: true,
-          reason: `Duplicate option text detected: "${optText}"`
-        };
-      }
-      seenTexts.add(optText);
+    }
 
-      const optId = opt.id || opt.key || opt.label;
-      if (optId) {
-        if (seenIds.has(optId)) {
-          return {
-            questionId: qId,
-            structuralStatus: 'DUPLICATE_OPTIONS',
-            isStructurallyValid: false,
-            answerKeyStatus: 'REJECTED',
-            isAnswerKeyVerified: false,
-            verificationMethod: 'STRUCTURE_ONLY',
-            requiresTeacherReview: true,
-            reason: `Duplicate option identifier detected: "${optId}"`
-          };
-        }
-        seenIds.add(optId);
-      }
+    // Single-correct-answer and option uniqueness validation
+    const optionsUniqueness = validateOptionsUniqueness(rawOptions.map(o => ({
+      id: o.id || o.key || o.label || String(Math.random()),
+      text: (o.text || o.option_text || '').toString(),
+      is_correct: o.is_correct === true || o.is_correct === 1
+    })));
+
+    if (!optionsUniqueness.isValid) {
+      return {
+        questionId: qId,
+        structuralStatus: optionsUniqueness.hasMultipleCorrectAnswers ? 'INVALID_STRUCTURE' : 'DUPLICATE_OPTIONS',
+        isStructurallyValid: false,
+        answerKeyStatus: 'REJECTED',
+        isAnswerKeyVerified: false,
+        verificationMethod: 'STRUCTURE_ONLY',
+        requiresTeacherReview: true,
+        reason: optionsUniqueness.reason || 'Failed option uniqueness or single-correct-answer check'
+      };
     }
 
     // 3. Identify correct answer
@@ -831,15 +1197,79 @@ export class AnswerValidationService {
     const correctOptText = (correctOption.text || correctOption.option_text || '').toString().trim();
 
     // 4. Deterministic Answer-Key Validation Layer
-    // Check if question contains a deterministically evaluable math expression
+
+    // 4A. Check for Linear Equations (Algebraic Solver)
+    const eqSolution = solveLinearEquation(q.question_text);
+    if (eqSolution.success && typeof eqSolution.solution === 'number') {
+      const expectedSolution = eqSolution.solution;
+      const actualVal = parseNumericValue(correctOptText);
+
+      if (actualVal !== null && Math.abs(actualVal - expectedSolution) < 0.0001) {
+        // Also verify that NO other option matches this solution
+        const otherMatches = rawOptions.filter(o => {
+          if (o === correctOption) return false;
+          const v = parseNumericValue(o.text || o.option_text || '');
+          return v !== null && Math.abs(v - expectedSolution) < 0.0001;
+        });
+
+        if (otherMatches.length > 0) {
+          return {
+            questionId: qId,
+            structuralStatus: 'INVALID_STRUCTURE',
+            isStructurallyValid: false,
+            answerKeyStatus: 'REJECTED',
+            isAnswerKeyVerified: false,
+            verificationMethod: 'REJECTED',
+            requiresTeacherReview: true,
+            reason: `MULTIPLE_CORRECT_OPTIONS: Equation has multiple options matching solution ${expectedSolution}`
+          };
+        }
+
+        return {
+          questionId: qId,
+          structuralStatus: 'VALID',
+          isStructurallyValid: true,
+          answerKeyStatus: 'DETERMINISTICALLY_VERIFIED',
+          isAnswerKeyVerified: true,
+          verificationMethod: 'DETERMINISTIC_MATH',
+          requiresTeacherReview: false,
+          deterministicCalculation: {
+            expression: q.question_text,
+            expectedValue: expectedSolution,
+            actualOptionValue: actualVal,
+            isMatch: true
+          }
+        };
+      } else {
+        // Mathematical contradiction detected in the answer key!
+        return {
+          questionId: qId,
+          structuralStatus: 'VALID',
+          isStructurallyValid: true,
+          answerKeyStatus: 'REJECTED',
+          isAnswerKeyVerified: false,
+          verificationMethod: 'REJECTED',
+          requiresTeacherReview: true,
+          reason: `DETERMINISTIC_MATH_MISMATCH: Linear equation solves to ${expectedSolution}, but selected correct option is "${correctOptText}" (${actualVal})`,
+          deterministicCalculation: {
+            expression: q.question_text,
+            expectedValue: expectedSolution,
+            actualOptionValue: actualVal !== null ? actualVal : correctOptText,
+            isMatch: false
+          }
+        };
+      }
+    }
+
+    // 4B. Check if question contains a deterministically evaluable arithmetic expression
     const mathExpr = this.extractMathExpression(q.question_text);
     if (mathExpr) {
       const expectedVal = this.evaluateArithmeticExpression(mathExpr);
       if (expectedVal !== null) {
         const normOptText = this.normalizeDigits(correctOptText).trim();
-        const actualVal = parseFloat(normOptText);
+        const actualVal = parseNumericValue(normOptText);
 
-        if (!isNaN(actualVal) && Math.abs(actualVal - expectedVal) < 0.0001) {
+        if (actualVal !== null && Math.abs(actualVal - expectedVal) < 0.0001) {
           return {
             questionId: qId,
             structuralStatus: 'VALID',
@@ -869,7 +1299,7 @@ export class AnswerValidationService {
             deterministicCalculation: {
               expression: mathExpr,
               expectedValue: expectedVal,
-              actualOptionValue: isNaN(actualVal) ? normOptText : actualVal,
+              actualOptionValue: actualVal !== null ? actualVal : normOptText,
               isMatch: false
             }
           };

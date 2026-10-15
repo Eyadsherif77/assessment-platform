@@ -249,6 +249,97 @@ function findBestSupportingPassage(questionText: string, chunkContent: string): 
   return truncateAtWordBoundary(bestSentence, 150);
 }
 
+export const VISUAL_INDICATOR_REGEX = /(الشكل\s*المقابل|في\s*الرسم\s*(?:الموضح|المقابل|التالي|أعلاه|المبين)?|الخريطة\s*الموضحة|بالاستعانة\s*بالخريطة|الشكل\s*رقم|بالرسم\s*المبين|من\s*الرسم|انظر\s*(?:إلى\s*)?الشكل|الرسم\s*البياني|المثلث\s*(?:أ\s*ب\s*ج|[a-zA-Z]{3})\s*في\s*الشكل|الزاوية\s*الموضحة|طول\s*[أ-يa-zA-Z]+\s*في\s*الشكل|in\s+the\s+(?:opposite|given|following|above|shown)\s+(?:figure|diagram|graph|drawing|chart)|from\s+the\s+(?:graph|figure|diagram)|shown\s+in\s+the\s+(?:figure|diagram|graph)|refer\s+to\s+the\s+(?:figure|diagram)|look\s+at\s+the\s+(?:figure|diagram))/i;
+
+/**
+ * Normalizes question text into a canonical parameter skeleton by replacing
+ * numbers (integers, floats, fractions, Eastern digits) with <NUM> and variables with <VAR>.
+ * Used for detecting parameter-only duplicates (e.g. 2x + 3 = 7 vs 3x + 4 = 10).
+ */
+export function extractQuestionSkeleton(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  const easternDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  let cleaned = text.trim().toLowerCase();
+  for (let i = 0; i < 10; i++) {
+    cleaned = cleaned.replace(new RegExp(easternDigits[i], 'g'), String(i));
+  }
+  // Replace coefficient + variable (e.g. 2x, 3.5y, 2س)
+  cleaned = cleaned.replace(/(\d+(?:\.\d+)?)\s*([a-zA-Z\u0633\u0635\u0639\u0646])/g, '<NUM><VAR>');
+  // Replace variable / number fractions (e.g. x/2, س/3)
+  cleaned = cleaned.replace(/([a-zA-Z\u0633\u0635\u0639\u0646])\s*[\/÷]\s*(\d+(?:\.\d+)?)/g, '<VAR>/<NUM>');
+  // Replace fractions like 1/2, 3/4
+  cleaned = cleaned.replace(/\d+\s*[\/÷]\s*\d+/g, '<NUM>');
+  // Replace remaining floats and integers
+  cleaned = cleaned.replace(/\d+(?:\.\d+)?/g, '<NUM>');
+  // Normalize standalone mathematical variable symbols (x, y, z, س, ص, ع, ن)
+  cleaned = cleaned.replace(/\b[a-zA-Z\u0633\u0635\u0639\u0646]\b/g, '<VAR>');
+  // Strip punctuation and diacritics
+  cleaned = cleaned.replace(/[\u064B-\u0652\u0670\u0640]/g, '');
+  cleaned = cleaned.replace(/[؟\?\.\!،,;:\-_=\(\)\[\]\{\}]+/g, ' ');
+  return cleaned.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Computes Jaccard word token similarity between two strings.
+ */
+export function computeJaccardSimilarity(textA: string, textB: string): number {
+  const stopWords = new Set([
+    'what', 'which', 'where', 'when', 'from', 'with', 'that', 'this', 'have', 'does',
+    'ما', 'ماذا', 'لماذا', 'كيف', 'أين', 'متى', 'في', 'من', 'على', 'عن', 'إلى', 'هو', 'هي', 'أن', 'إن'
+  ]);
+  const getTokens = (t: string) => new Set(
+    t.toLowerCase().split(/[^\w\u0600-\u06FF]+/).filter(w => w.length > 2 && !stopWords.has(w))
+  );
+  const setA = getTokens(textA);
+  const setB = getTokens(textB);
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let intersection = 0;
+  for (const w of setA) {
+    if (setB.has(w)) intersection++;
+  }
+  const union = setA.size + setB.size - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+/**
+ * Detects whether a candidate question is an exact duplicate, parameter-only duplicate,
+ * or paraphrased duplicate of any existing question.
+ */
+export function isDuplicateOrParameterVariant(
+  candidateText: string,
+  existingList: Array<{ question_text: string; id?: string } | string>,
+  currentId?: string
+): { isDuplicate: boolean; reason?: string } {
+  const normCand = candidateText.trim().toLowerCase().replace(/[؟\?\.\!]/g, '');
+  const skelCand = extractQuestionSkeleton(candidateText);
+
+  for (const eq of existingList) {
+    if (typeof eq === 'object' && currentId && eq.id === currentId) continue;
+    const eqText = typeof eq === 'string' ? eq : (eq?.question_text || '');
+    if (!eqText) continue;
+    const normEq = eqText.trim().toLowerCase().replace(/[؟\?\.\!]/g, '');
+
+    // Level 1: Exact text match
+    if (normEq === normCand) {
+      return { isDuplicate: true, reason: 'EXACT_DUPLICATE: Question text matches an existing question identically' };
+    }
+
+    // Level 2: Parameter-only duplicate (identical skeleton with only numbers changed)
+    const skelEq = extractQuestionSkeleton(eqText);
+    if (skelEq.length > 15 && skelCand.length > 15 && skelEq === skelCand) {
+      return { isDuplicate: true, reason: 'PARAMETER_DUPLICATE: Repeated question with only numerical parameters changed' };
+    }
+
+    // Level 3: High token semantic similarity (paraphrase duplicate)
+    const jaccard = computeJaccardSimilarity(candidateText, eqText);
+    if (jaccard >= 0.65) {
+      return { isDuplicate: true, reason: `PARAPHRASED_DUPLICATE: Question has ${Math.round(jaccard * 100)}% semantic token overlap with an existing question` };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
 /**
  * Teacher Quality Score Evaluator:
  * - Relevance Score >= 90%
@@ -258,7 +349,8 @@ function findBestSupportingPassage(questionText: string, chunkContent: string): 
  * 
  * Rejects any question containing AI boilerplate ("according to the text", "وفقاً للنص"),
  * structural references (page, chapter, unit, lesson), excessive option length (> 12 words),
- * or non-educational content.
+ * missing geometry diagrams, invalid math notation, ambiguous/multiple correct options,
+ * parameter-only duplicates, or non-educational content.
  */
 export function evaluateQuestionQuality(
   q: GroundedQuestion,
@@ -276,23 +368,65 @@ export function evaluateQuestionQuality(
     };
   }
 
-  // 1. Duplicate check (Duplicate Questions = 0%)
-  const qNorm = q.question_text.trim().toLowerCase().replace(/[؟\?\.\!]/g, '');
-  const isDup = existingQuestions.some(eq => {
-    if (eq.id === q.id) return false;
-    const eqNorm = eq.question_text.trim().toLowerCase().replace(/[؟\?\.\!]/g, '');
-    return eqNorm === qNorm;
-  });
-
-  if (isDup) {
+  // 1. Duplicate check (Exact, Parameter-only, and Paraphrased)
+  const dupCheck = isDuplicateOrParameterVariant(q.question_text, existingQuestions, q.id);
+  if (dupCheck.isDuplicate) {
     return {
       isValid: false,
       relevanceScore: 0,
       educationalValue: 0,
       metadataPresence: 0,
       isDuplicate: true,
-      reason: 'Duplicate question detected (fails 0% duplicate rule)'
+      reason: dupCheck.reason || 'Duplicate question detected (fails 0% duplicate rule)'
     };
+  }
+
+  // 1b. Visual Asset / Geometry Check (Never generate a geometry question that depends on a missing diagram)
+  const hasVisualMarker = VISUAL_INDICATOR_REGEX.test(q.question_text);
+  const isGeometry = Boolean(q.has_visual_dependency || hasVisualMarker);
+  if (isGeometry) {
+    if (!q.diagram_url || !VisualAssetExtractor.isVisualAssetValid(q.diagram_url)) {
+      return {
+        isValid: false,
+        relevanceScore: 0,
+        educationalValue: 0,
+        metadataPresence: 0,
+        isDuplicate: false,
+        reason: 'MISSING_GEOMETRY_DIAGRAM: Question references or depends on a visual diagram, but no verified visual asset is attached'
+      };
+    }
+  }
+
+  // 1c. Mathematical Notation Check
+  const notationCheck = AnswerValidationService.validateMathNotation(q.question_text);
+  if (!notationCheck.isValid) {
+    return {
+      isValid: false,
+      relevanceScore: 0,
+      educationalValue: 0,
+      metadataPresence: 0,
+      isDuplicate: false,
+      reason: `INVALID_MATH_NOTATION: ${notationCheck.reason}`
+    };
+  }
+
+  // 1d. Options Uniqueness and Single-Correct-Answer Gate
+  if (q.options && q.options.length >= 2) {
+    const optUniq = AnswerValidationService.validateOptionsUniqueness(q.options.map(o => ({
+      id: o.id || String(Math.random()),
+      text: o.text || '',
+      is_correct: Boolean(o.is_correct)
+    })));
+    if (!optUniq.isValid) {
+      return {
+        isValid: false,
+        relevanceScore: 0,
+        educationalValue: 0,
+        metadataPresence: 0,
+        isDuplicate: false,
+        reason: optUniq.reason || 'Failed option uniqueness or single-correct-answer check'
+      };
+    }
   }
 
   // 2. Metadata Presence (Target: 0%)
@@ -433,7 +567,7 @@ export function evaluateQuestionQuality(
     }
   }
 
-  const isValid = metadataPresence === 0 && eduScore >= 90 && relScore >= 90 && !isDup;
+  const isValid = metadataPresence === 0 && eduScore >= 90 && relScore >= 90;
 
   return {
     isValid,
@@ -481,6 +615,17 @@ export async function verifyQuestionProvenance(
     );
     if (chRes.rows.length === 0) {
       return { isVerified: false, reason: `CHAPTER_NOT_FOUND_IN_BOOK: Chapter ${q.chapter_id} does not belong to book ${bookId}` };
+    }
+    const chRow = chRes.rows[0];
+    const chStart = Number(chRow.start_page) || 0;
+    const chEnd = Number(chRow.end_page) || 0;
+    if (chStart > 0 && chEnd >= chStart) {
+      if (q.page_reference < chStart || q.page_reference > chEnd) {
+        return {
+          isVerified: false,
+          reason: `CROSS_UNIT_PAGE_LEAKAGE: Question page reference (${q.page_reference}) is outside chapter boundaries [${chStart}, ${chEnd}] for chapter ${q.chapter_id}`
+        };
+      }
     }
   }
 
@@ -709,8 +854,6 @@ export const DISQUALIFIED_GEOMETRY_CHAPTER_IDS = new Set([
   '1b9f4377-6ae0-4c24-b588-c221900597ec', // Book 2 Ch 4: Prep 1 Math Geometry & Measurement
   'dba6933a-2b80-4d3b-ada4-3ac6acfb58c1'  // Book 7 Ch 3: Prep 2 Math Geometry Theorems & Triangles
 ]);
-
-export const VISUAL_INDICATOR_REGEX = /(الشكل\s*المقابل|في\s*الرسم\s*الموضح|الخريطة\s*الموضحة|بالاستعانة\s*بالخريطة|الشكل\s*رقم|بالرسم\s*المبين|من\s*الرسم|انظر\s*الشكل|الرسم\s*البياني)/i;
 
 /**
  * Air-gap sanitizer:
@@ -1367,6 +1510,20 @@ Return valid JSON with exact keys:
       return [];
     }
 
+    // Authoritative unit boundary resolution to prevent cross-unit chunk leakage (Phase 2 & Gate 1)
+    let unitStartPage = 0;
+    let unitEndPage = 0;
+    try {
+      const chRow = await db.query(
+        'SELECT start_page, end_page FROM book_chapters WHERE id = $1 AND book_id = $2',
+        [chapterId, bookId]
+      );
+      if (chRow.rows.length > 0) {
+        unitStartPage = Number(chRow.rows[0].start_page) || 0;
+        unitEndPage = Number(chRow.rows[0].end_page) || 0;
+      }
+    } catch (_) {}
+
     // 1. Sanitize all chunks (stripping page numbers, headers, footers, labels, TOC, publisher boilerplate)
     // Prep 2 Social Studies: Regular units (1-4) end at page 96.
     // Revision unit covers pages 97-104.
@@ -1378,6 +1535,12 @@ Return valid JSON with exact keys:
             return false;
           }
           if (isPrep2RevisionChapter && (row.page_number < 97 || row.page_number > 104)) {
+            return false;
+          }
+        }
+        // Strict unit boundary filter: eliminate any cross-unit or neighboring unit chunk leakage
+        if (unitStartPage > 0 && unitEndPage >= unitStartPage) {
+          if (row.page_number < unitStartPage || row.page_number > unitEndPage) {
             return false;
           }
         }
@@ -1834,6 +1997,7 @@ Return valid JSON with exact keys:
     bookId: string;
     chapterId: string;
     count?: number;
+    difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED';
   }): Promise<GroundedQuestion[]> {
     const requiredCount = params.count || 3;
 
@@ -1965,7 +2129,8 @@ Return valid JSON with exact keys:
             subjectNameEn,
             studentId: params.studentId,
             gradeId: params.gradeId,
-            subjectId: params.subjectId
+            subjectId: params.subjectId,
+            difficulty: params.difficulty
           }
         );
         if (rawAiQuestions && rawAiQuestions.length > 0) {
@@ -2205,6 +2370,7 @@ Return valid JSON with exact keys:
       studentId?: string;
       gradeId?: string;
       subjectId?: string;
+      difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED';
     }
   ): Promise<GroundedQuestion[] | null> {
     const isEn = language === 'en';
@@ -2218,6 +2384,13 @@ Return valid JSON with exact keys:
     const stageInfoEn = stageGradeInfo?.gradeNameEn
       ? `${stageGradeInfo.gradeNameEn}${stageGradeInfo.stageNameEn ? ` - ${stageGradeInfo.stageNameEn}` : ''}`
       : 'the target school grade level';
+
+    const diffInstEn = stageGradeInfo?.difficulty
+      ? `\nTarget Difficulty Level: ${stageGradeInfo.difficulty}. (${stageGradeInfo.difficulty === 'EASY' ? 'Focus on direct recall of definitions and basic concepts.' : stageGradeInfo.difficulty === 'HARD' ? 'Focus on multi-step reasoning, calculations, problem solving, and analytical thinking.' : 'Balanced distribution between understanding and application.'})\n`
+      : '';
+    const diffInstAr = stageGradeInfo?.difficulty
+      ? `\nمستوى الصعوبة المطلوب: ${stageGradeInfo.difficulty === 'EASY' ? 'سهل (تركيز على المفاهيم المباشرة والتعريفات)' : stageGradeInfo.difficulty === 'HARD' ? 'صعب (تركيز على التفكير التحليلي، المسائل، والتطبيقات العميقة)' : 'متوسط متوازن بين الفهم والتطبيق'}.\n`
+      : '';
 
     // 40% Knowledge, 30% Understanding, 20% Application, 10% Analysis
     const knowledgeCount = Math.max(1, Math.round(count * 0.4));
@@ -2238,7 +2411,7 @@ Return valid JSON with exact keys:
       : '';
 
     const prompt = isEn ? `You are an experienced senior school teacher creating an official school examination in ${subjTitleEn} for students (${stageInfoEn}).
-Task: Create exactly ${count} multiple-choice questions strictly testing educational concepts, definitions, formulas, and scientific reasoning from the provided textbook content of ${subjTitleEn}.
+Task: Create exactly ${count} multiple-choice questions strictly testing educational concepts, definitions, formulas, and scientific reasoning from the provided textbook content of ${subjTitleEn}.${diffInstEn}
 
 CRITICAL SUBJECT ISOLATION & CURRICULUM ACCURACY (STRICT):
 1. You MUST generate questions derived strictly from ${subjTitleEn}.
@@ -2290,7 +2463,7 @@ Respond ONLY with a valid JSON array of objects (no markdown, no code fences, no
     "explanation": "Direct 1-2 sentence teacher explanation in simple, clear educational English."
   }
 ]` : `أنت معلم تربوي أول وخبير في إعداد الامتحانات المدرسية الرسمية لمادة (${subjTitleAr}) لطلاب (${stageInfoAr}).
-مهمتك: صياغة ${count} أسئلة اختيار من متعدد موضوعية ودقيقة مبنية حصرياً على المفاهيم العلمية والقوانين والتعريفات الموجودة في المحتوى المرفق لمادة (${subjTitleAr}).
+مهمتك: صياغة ${count} أسئلة اختيار من متعدد موضوعية ودقيقة مبنية حصرياً على المفاهيم العلمية والقوانين والتعريفات الموجودة في المحتوى المرفق لمادة (${subjTitleAr}).${diffInstAr}
 
 ضوابط المادة التخصصية والأسئلة العلمية (صارمة وإلزامية):
 1. الالتزام الحصري بمادة (${subjTitleAr}): لا تولد أسئلة من مواد أخرى إطلاقاً.
@@ -2476,24 +2649,45 @@ ${contextText}
    */
   public async evaluateSubmission(params: {
     studentId: string;
-    academicStageId: string;
-    gradeId: string;
-    subjectId: string;
+    academicStageId?: string;
+    gradeId?: string;
+    subjectId?: string;
     bookId: string;
     chapterId: string;
     attemptId?: string;
     questions: GroundedQuestion[];
-    studentAnswers: { question_id: string; selected_option_id: string }[];
+    studentAnswers?: { question_id: string; selected_option_id: string }[];
+    answers?: Record<string, string>;
   }): Promise<FullDiagnosticReport> {
-    const { studentId, academicStageId, gradeId, subjectId, bookId, chapterId, attemptId, questions, studentAnswers } = params;
+    const { studentId, academicStageId = '', gradeId = '', subjectId = '', bookId, chapterId, attemptId, questions } = params;
 
-    // Fetch chapter title
-    const chRes = await db.query(`SELECT title_ar, title_en, chapter_number FROM book_chapters WHERE id = $1`, [chapterId]);
+    const rawAnswers = params.studentAnswers || params.answers;
+    const studentAnswersList: Array<{ question_id: string; selected_option_id: string }> = Array.isArray(rawAnswers)
+      ? rawAnswers
+      : (typeof rawAnswers === 'object' && rawAnswers !== null)
+        ? Object.entries(rawAnswers).map(([qid, oid]) => ({
+            question_id: qid,
+            selected_option_id: String(oid)
+          }))
+        : [];
+
+    // Fetch all chapters for the book to ensure exact question-to-lesson attribution
+    const allChaptersRes = await db.query(
+      `SELECT id, title_ar, title_en, chapter_number, start_page, end_page FROM book_chapters WHERE book_id = $1`,
+      [bookId]
+    );
+    const chapterMap = new Map<string, any>();
+    allChaptersRes.rows.forEach((ch: any) => chapterMap.set(ch.id, ch));
+
+    const defaultChapter = chapterMap.get(chapterId) || {
+      title_ar: 'الوحدة المقررة',
+      title_en: 'Curriculum Unit',
+      start_page: 1,
+      end_page: 999
+    };
+
     const firstQText = (questions[0]?.question_text || '') + ' ' + (questions[0]?.explanation || '');
     const isEnEvaluation = (firstQText.match(/[a-zA-Z]/g) || []).length > (firstQText.match(/[\u0600-\u06FF]/g) || []).length;
-    const chapterName = isEnEvaluation
-      ? (chRes.rows[0]?.title_en || chRes.rows[0]?.title_ar || 'Chapter')
-      : (chRes.rows[0]?.title_ar || 'الفصل الدراسي المقبول');
 
     let authoritativeScore = 0;
     let authoritativeMaxScore = 0;
@@ -2509,7 +2703,7 @@ ${contextText}
     let deterministicallyVerifiedCount = 0;
 
     for (const q of questions) {
-      const submission = studentAnswers.find(a => a.question_id === q.id);
+      const submission = studentAnswersList.find(a => a.question_id === q.id);
       const selectedOptId = submission?.selected_option_id || '';
       const selectedOpt = q.options.find(o => o.id === selectedOptId);
       const correctOpt = q.options.find(o => o.is_correct);
@@ -2533,6 +2727,17 @@ ${contextText}
         pendingReviewCount++;
       }
 
+      // Exact per-question chapter and lesson attribution
+      const qChapter = (q.chapter_id ? chapterMap.get(q.chapter_id) : null) || defaultChapter;
+      const currentChapterName = isEnEvaluation
+        ? (qChapter.title_en || qChapter.title_ar || 'Unit')
+        : (qChapter.title_ar || 'الوحدة المقررة');
+
+      // Verified Page Reference check: never fabricate Page 1 if page is outside chapter boundaries or unavailable
+      const qPage = Number(q.page_reference) || 0;
+      const hasVerifiedPage = qPage > 0 &&
+        (!qChapter.start_page || (qPage >= qChapter.start_page && qPage <= qChapter.end_page));
+
       let studyRec = '';
       // Localise Bloom level to a student-facing label (never expose raw enum codes)
       const bloomLabelEn = BLOOM_TO_ENGLISH[q.bloom_level?.toUpperCase()] || 'Conceptual Understanding';
@@ -2546,36 +2751,52 @@ ${contextText}
       const cleanExcerpt = truncateAtWordBoundary(rawExcerpt, 120);
       const hasReliableExcerpt = cleanExcerpt.length > 0;
 
+      const topicTag = hasVerifiedPage
+        ? (isEnEvaluation ? `Page ${qPage} — ${topicQuestionLabel}` : `صفحة ${qPage} — ${topicQuestionLabel}`)
+        : `${currentChapterName} — ${topicQuestionLabel}`;
+
       if (isEnEvaluation) {
         if (!isCorrect) {
-          studyRec = hasReliableExcerpt
-            ? `🎯 Review Plan: Open "${chapterName}" → Page ${q.page_reference} and revisit the following passage: "${cleanExcerpt}". Skill focus: ${bloomLabelEn}.`
-            : `🎯 Review Plan: Open "${chapterName}" → Page ${q.page_reference} and review the section carefully to reinforce the concept. Skill focus: ${bloomLabelEn}.`;
-          weakTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
+          if (hasVerifiedPage) {
+            studyRec = hasReliableExcerpt
+              ? `🎯 Review Plan: Open "${currentChapterName}" → Page ${qPage} and revisit the following passage: "${cleanExcerpt}". Skill focus: ${bloomLabelEn}.`
+              : `🎯 Review Plan: Open "${currentChapterName}" → Page ${qPage} and review the section carefully to reinforce the concept. Skill focus: ${bloomLabelEn}.`;
+          } else {
+            studyRec = `🎯 Review Plan: Open "${currentChapterName}" and review the lesson concepts for "${topicQuestionLabel}". Skill focus: ${bloomLabelEn}.`;
+          }
+          weakTopics.push(topicTag);
           if (isAuthoritativeEligible) {
-            authoritativeWeakTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
+            authoritativeWeakTopics.push(topicTag);
           }
         } else {
-          studyRec = `✅ Correct answer for this question (Page ${q.page_reference}). Keep reviewing the full section to reinforce your understanding of ${bloomLabelEn}.`;
-          strongTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
+          studyRec = hasVerifiedPage
+            ? `✅ Correct answer for this question (Page ${qPage}). Keep reviewing "${currentChapterName}" to reinforce your understanding of ${bloomLabelEn}.`
+            : `✅ Correct answer for this question. Keep reviewing "${currentChapterName}" to reinforce your understanding of ${bloomLabelEn}.`;
+          strongTopics.push(topicTag);
           if (isAuthoritativeEligible) {
-            authoritativeStrongTopics.push(`Page ${q.page_reference} — ${topicQuestionLabel}`);
+            authoritativeStrongTopics.push(topicTag);
           }
         }
       } else {
         if (!isCorrect) {
-          studyRec = hasReliableExcerpt
-            ? `🎯 خطة المراجعة: ارجع إلى "${chapterName}" ← صفحة ${q.page_reference} وراجع النص التالي بعناية: "${cleanExcerpt}". مهارة التعلم: ${bloomLabelAr}.`
-            : `🎯 خطة المراجعة: ارجع إلى "${chapterName}" ← صفحة ${q.page_reference} وراجع محتوى الدرس بعناية لتثبيت المفاهيم. مهارة التعلم: ${bloomLabelAr}.`;
-          weakTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
+          if (hasVerifiedPage) {
+            studyRec = hasReliableExcerpt
+              ? `🎯 خطة المراجعة: ارجع إلى "${currentChapterName}" ← صفحة ${qPage} وراجع النص التالي بعناية: "${cleanExcerpt}". مهارة التعلم: ${bloomLabelAr}.`
+              : `🎯 خطة المراجعة: ارجع إلى "${currentChapterName}" ← صفحة ${qPage} وراجع محتوى الدرس بعناية لتثبيت المفاهيم. مهارة التعلم: ${bloomLabelAr}.`;
+          } else {
+            studyRec = `🎯 خطة المراجعة: ارجع إلى "${currentChapterName}" وراجع مفاهيم الدرس بعناية لتثبيت الفهم: "${topicQuestionLabel}". مهارة التعلم: ${bloomLabelAr}.`;
+          }
+          weakTopics.push(topicTag);
           if (isAuthoritativeEligible) {
-            authoritativeWeakTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
+            authoritativeWeakTopics.push(topicTag);
           }
         } else {
-          studyRec = `✅ إجابة صحيحة لهذا السؤال (صفحة ${q.page_reference}). تابع مراجعة الفصل كاملاً لتعزيز فهمك في مهارة: ${bloomLabelAr}.`;
-          strongTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
+          studyRec = hasVerifiedPage
+            ? `✅ إجابة صحيحة لهذا السؤال (صفحة ${qPage}). تابع مراجعة "${currentChapterName}" لتعزيز فهمك في مهارة: ${bloomLabelAr}.`
+            : `✅ إجابة صحيحة لهذا السؤال. تابع مراجعة "${currentChapterName}" لتعزيز فهمك في مهارة: ${bloomLabelAr}.`;
+          strongTopics.push(topicTag);
           if (isAuthoritativeEligible) {
-            authoritativeStrongTopics.push(`صفحة ${q.page_reference} — ${topicQuestionLabel}`);
+            authoritativeStrongTopics.push(topicTag);
           }
         }
       }
@@ -2594,7 +2815,7 @@ ${contextText}
         verification_method: valResult.verificationMethod,
         explanation: q.explanation,
         page_reference: q.page_reference,
-        topic_area: isEnEvaluation ? `${chapterName} (p. ${q.page_reference})` : `${chapterName} (ص ${q.page_reference})`,
+        topic_area: hasVerifiedPage ? (isEnEvaluation ? `${currentChapterName} (p. ${qPage})` : `${currentChapterName} (ص ${qPage})`) : currentChapterName,
         study_recommendation: studyRec
       });
     }
@@ -2681,7 +2902,7 @@ ${contextText}
         authoritativeMaxScore > 0 ? authoritativeScore : 0,
         authoritativeMaxScore,
         JSON.stringify(questions),
-        JSON.stringify(studentAnswers),
+        JSON.stringify(studentAnswersList),
         JSON.stringify(fullReport)
       ]
     );

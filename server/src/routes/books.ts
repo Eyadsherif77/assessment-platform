@@ -565,7 +565,64 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
     query += ` ORDER BY b.created_at DESC`;
 
     const result = await db.query(query, params);
-    return res.json(result.rows);
+    const existingBooks: any[] = result.rows.map(b => ({
+      ...b,
+      is_available: true,
+      availability_status: 'AVAILABLE'
+    }));
+
+    // Check for official subjects belonging to this grade that have no uploaded textbook yet (e.g. Prep 3 Mathematics)
+    const targetGradeId = req.user?.role === 'STUDENT' && req.studentProfile
+      ? req.studentProfile.gradeId
+      : (req.query.grade_id as string | undefined);
+
+    if (targetGradeId && (!req.query.subject_id || req.user?.role === 'STUDENT')) {
+      try {
+        const subjectsRes = await db.query(
+          `SELECT s.id, s.name_ar, s.name_en, s.grade_id,
+                  g.name_ar as grade_name_ar, g.name_en as grade_name_en,
+                  st.id as stage_id, st.name_ar as stage_name_ar, st.name_en as stage_name_en
+           FROM subjects s
+           JOIN grades g ON s.grade_id = g.id
+           JOIN academic_stages st ON g.stage_id = st.id
+           WHERE s.grade_id = $1
+           ORDER BY s.sort_order ASC`,
+          [targetGradeId]
+        );
+
+        const coveredSubjectIds = new Set(existingBooks.map((b: any) => b.subject_id));
+
+        for (const subj of subjectsRes.rows) {
+          if (!coveredSubjectIds.has(subj.id)) {
+            // Include official subject with clear upcoming status
+            existingBooks.push({
+              id: `placeholder_${subj.id}`,
+              title_ar: subj.name_ar,
+              title_en: subj.name_en || subj.name_ar,
+              file_url: null,
+              academic_stage_id: subj.stage_id,
+              grade_id: subj.grade_id,
+              subject_id: subj.id,
+              term: filterTerm || 1,
+              school_type: 'كلاهما',
+              processing_status: 'UPCOMING_TEXTBOOK',
+              subject_name_ar: subj.name_ar,
+              subject_name_en: subj.name_en,
+              stage_name_ar: subj.stage_name_ar,
+              grade_name_ar: subj.grade_name_ar,
+              chapters_count: 0,
+              is_available: false,
+              availability_status: 'UPCOMING_TEXTBOOK',
+              message: 'جاري رفع كتاب الوزارة المعتمد'
+            });
+          }
+        }
+      } catch (subjErr) {
+        console.warn('⚠️ Could not query upcoming subjects for grade:', subjErr);
+      }
+    }
+
+    return res.json(existingBooks);
   } catch (err: any) {
     return res.status(500).json({ error: 'خطأ في جلب قائمة الكتب: ' + err.message });
   }
@@ -575,6 +632,41 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
 router.get('/:id', authenticateToken, enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
+
+    // Handle placeholder / upcoming books gracefully
+    if (typeof id === 'string' && id.startsWith('placeholder_')) {
+      const subjectId = id.replace('placeholder_', '');
+      const subjRes = await db.query(
+        `SELECT s.id, s.name_ar, s.name_en, s.grade_id,
+                g.name_ar as grade_name_ar,
+                st.id as stage_id, st.name_ar as stage_name_ar
+         FROM subjects s
+         JOIN grades g ON s.grade_id = g.id
+         JOIN academic_stages st ON g.stage_id = st.id
+         WHERE s.id = $1`,
+        [subjectId]
+      );
+      if (subjRes.rows.length > 0) {
+        const s = subjRes.rows[0];
+        return res.json({
+          id,
+          title_ar: s.name_ar,
+          title_en: s.name_en,
+          subject_id: s.id,
+          grade_id: s.grade_id,
+          academic_stage_id: s.stage_id,
+          subject_name_ar: s.name_ar,
+          subject_name_en: s.name_en,
+          grade_name_ar: s.grade_name_ar,
+          stage_name_ar: s.stage_name_ar,
+          is_available: false,
+          availability_status: 'UPCOMING_TEXTBOOK',
+          message: 'جاري رفع كتاب الوزارة المعتمد',
+          chapters: []
+        });
+      }
+    }
+
     const bookRes = await db.query(
       `SELECT b.*, s.name_ar as subject_name_ar, s.name_en as subject_name_en,
               st.name_ar as stage_name_ar, g.name_ar as grade_name_ar

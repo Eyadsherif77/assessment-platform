@@ -16,10 +16,28 @@ const router = Router();
 // Generate AI Grounded Assessment
 router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
-    const { book_id, chapter_id, subject_id, count = 3 } = req.body;
+    const { book_id, chapter_id, subject_id, count = 3, difficulty, exam_type } = req.body;
 
     if (!book_id || !chapter_id || !subject_id) {
       return res.status(400).json({ error: 'الرجاء اختيار المادة والكتاب والفصل الدراسي للتقييم' });
+    }
+
+    // Fail closed immediately if the textbook is a placeholder or not yet available
+    if (typeof book_id === 'string' && book_id.startsWith('placeholder_')) {
+      return res.status(422).json({
+        error: 'عذراً، كتاب الوزارة المعتمد لهذه المادة قيد التجهيز والرفع ولم يتم اعتماده بعد.',
+        code: 'SUBJECT_TEXTBOOK_UNAVAILABLE'
+      });
+    }
+
+    // Normalize difficulty to canonical enum
+    const validDifficulties = ['EASY', 'MEDIUM', 'HARD', 'BALANCED'] as const;
+    let normalizedDifficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED' = 'MEDIUM';
+    if (difficulty && typeof difficulty === 'string') {
+      const upper = difficulty.toUpperCase().trim();
+      if (validDifficulties.includes(upper as any)) {
+        normalizedDifficulty = upper as any;
+      }
     }
 
     // Check student's monthly exam limit across all subjects
@@ -38,8 +56,19 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
     }
 
-    // 1. Authoritative Curriculum Identity Resolution
-    const identity = await ExamCacheService.resolveCurriculumIdentity(book_id);
+    // 1. Authoritative Curriculum Identity Resolution (Graceful fail-closed if book not found)
+    let identity;
+    try {
+      identity = await ExamCacheService.resolveCurriculumIdentity(book_id);
+    } catch (idErr: any) {
+      if (idErr.message && idErr.message.includes('BOOK_NOT_FOUND')) {
+        return res.status(422).json({
+          error: 'عذراً، كتاب الوزارة المعتمد لهذه المادة قيد التجهيز والرفع ولم يتم اعتماده بعد.',
+          code: 'SUBJECT_TEXTBOOK_UNAVAILABLE'
+        });
+      }
+      throw idErr;
+    }
 
     // 2. Validate Selection Consistency against DB authoritative truth
     const consistency = ExamCacheService.validateSelectionConsistency(identity, {
@@ -76,13 +105,13 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       });
     }
 
-    // 5. Shared Exam Cache Lookup with Strict Curriculum Identity & Student No-Repeat Rule
+    // 5. Shared Exam Cache Lookup with Strict Curriculum Identity, Difficulty & Student No-Repeat Rule
     const parsedCount = parseInt(count, 10) || 3;
     const cacheResult = await ExamCacheService.getCachedExamForStudent({
       studentId: req.user!.id,
       bookId: book_id,
       chapterIds: chapter_id,
-      examParams: { count: parsedCount }
+      examParams: { count: parsedCount, difficulty: normalizedDifficulty }
     });
 
     let questions: any[] = [];
@@ -155,7 +184,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             const fallback = await ExamCacheService.getVerifiedFallbackExam({
               bookId: book_id,
               chapterIds: chapter_id,
-              examParams: { count: parsedCount }
+              examParams: { count: parsedCount, difficulty: normalizedDifficulty }
             });
             if (fallback && fallback.questions && fallback.questions.length >= parsedCount) {
               console.log(`🛡️ [Verified Cache Fallback] Coordination timeout; serving verified exam version ${fallback.versionNumber} for student ${req.user!.id}`);
@@ -190,7 +219,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             subjectId: identity.subjectId,
             bookId: identity.bookId,
             chapterId: chapter_id,
-            count: parsedCount
+            count: parsedCount,
+            difficulty: normalizedDifficulty
           });
 
           if (!questions || questions.length < parsedCount) {
@@ -202,7 +232,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             examId: `ai_exam_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
             identity,
             unitIds: [chapter_id],
-            examParams: { count: parsedCount },
+            examParams: { count: parsedCount, difficulty: normalizedDifficulty },
             questions,
             assignedStudentId: req.user!.id
           });
@@ -221,7 +251,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
           const fallback = await ExamCacheService.getVerifiedFallbackExam({
             bookId: book_id,
             chapterIds: chapter_id,
-            examParams: { count: parsedCount }
+            examParams: { count: parsedCount, difficulty: normalizedDifficulty }
           });
 
           if (fallback && fallback.questions && fallback.questions.length >= parsedCount) {
