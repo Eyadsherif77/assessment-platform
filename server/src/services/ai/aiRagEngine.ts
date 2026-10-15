@@ -1295,7 +1295,11 @@ Return valid JSON with exact keys:
         parts,
         responseMimeType: 'application/json',
         temperature: 0.1,
-        timeoutMs: 10000
+        timeoutMs: 10000,
+        context: {
+          workflow: 'EXAM_BLIND_SOLVER',
+          callPurpose: 'BLIND_SOLVER_VERIFICATION'
+        }
       });
       const cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
       return JSON.parse(cleaned);
@@ -1364,12 +1368,18 @@ Return valid JSON with exact keys:
     }
 
     // 1. Sanitize all chunks (stripping page numbers, headers, footers, labels, TOC, publisher boilerplate)
-    // Prep 2 Social Studies Unit 4 (16d3a51f-5026-4445-9856-788c00aa1652) ends at page 96.
-    // Strictly filter out any chunks beyond page 96 to prevent revision leakage.
+    // Prep 2 Social Studies: Regular units (1-4) end at page 96.
+    // Revision unit covers pages 97-104.
+    // Strictly isolate regular unit retrieval from revision chunks and vice-versa.
     const sanitizedRows: RetrievedChunk[] = res.rows
       .filter((row: any) => {
-        if (isPrep2Social && chapterId === '16d3a51f-5026-4445-9856-788c00aa1652' && row.page_number > 96) {
-          return false;
+        if (isPrep2Social) {
+          if (!isPrep2RevisionChapter && row.page_number > 96) {
+            return false;
+          }
+          if (isPrep2RevisionChapter && (row.page_number < 97 || row.page_number > 104)) {
+            return false;
+          }
         }
         return true;
       })
@@ -1945,7 +1955,10 @@ Return valid JSON with exact keys:
             stageNameEn: book.stage_name_en,
             subjectCode,
             subjectNameAr,
-            subjectNameEn
+            subjectNameEn,
+            studentId: params.studentId,
+            gradeId: params.gradeId,
+            subjectId: params.subjectId
           }
         );
         if (rawAiQuestions && rawAiQuestions.length > 0) {
@@ -2002,7 +2015,10 @@ Return valid JSON with exact keys:
                 stageNameEn: book.stage_name_en,
                 subjectCode,
                 subjectNameAr,
-                subjectNameEn
+                subjectNameEn,
+                studentId: params.studentId,
+                gradeId: params.gradeId,
+                subjectId: params.subjectId
               }
             );
 
@@ -2183,6 +2199,9 @@ Return valid JSON with exact keys:
       subjectCode?: string;
       subjectNameAr?: string;
       subjectNameEn?: string;
+      studentId?: string;
+      gradeId?: string;
+      subjectId?: string;
     }
   ): Promise<GroundedQuestion[] | null> {
     const isEn = language === 'en';
@@ -2322,7 +2341,16 @@ ${contextText}
       let rawText = await GeminiClient.generateContent({
         prompt,
         responseMimeType: 'application/json',
-        temperature: 0.2
+        temperature: 0.2,
+        context: {
+          workflow: 'EXAM_QUESTION_GENERATION',
+          callPurpose: 'QUESTION_GENERATION',
+          bookId,
+          chapterId,
+          studentId: stageGradeInfo?.studentId,
+          gradeId: stageGradeInfo?.gradeId,
+          subjectId: stageGradeInfo?.subjectId
+        }
       });
 
       if (rawText) {

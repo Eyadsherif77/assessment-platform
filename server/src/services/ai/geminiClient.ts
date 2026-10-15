@@ -1,4 +1,6 @@
 import dotenv from 'dotenv';
+import { v4 as uuidv4 } from 'uuid';
+import { AiUsageMetricsService } from '../aiUsageMetricsService.js';
 dotenv.config();
 
 export interface GeminiContentPart {
@@ -9,6 +11,19 @@ export interface GeminiContentPart {
   };
 }
 
+export interface GeminiCallContext {
+  workflow?: string;
+  correlationId?: string;
+  studentId?: string;
+  bookId?: string;
+  chapterId?: string;
+  gradeId?: string;
+  subjectId?: string;
+  cachedExamId?: string;
+  configHash?: string;
+  callPurpose?: string;
+}
+
 export interface GeminiCallParams {
   systemInstruction?: string;
   prompt?: string;
@@ -17,6 +32,8 @@ export interface GeminiCallParams {
   responseMimeType?: string;
   maxOutputTokens?: number;
   timeoutMs?: number;
+  context?: GeminiCallContext;
+  telemetryContext?: GeminiCallContext;
 }
 
 /** Phase 4G.3AP: failure taxonomy used by the circuit breaker and by the HTTP layer. */
@@ -258,6 +275,8 @@ export class GeminiClient {
 
       let lastFailure: GeminiProviderError | null = null;
       let attempts = 0;
+      const ctx = params.context || params.telemetryContext || {};
+      const correlationId = ctx.correlationId || uuidv4();
 
       for (const model of this.candidateModels) {
         if (attempts >= this.maxModelsPerCall) break;
@@ -265,6 +284,7 @@ export class GeminiClient {
         if (attempts > 0) await this.sleepWithJitter(attempts - 1);
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeout);
+        const callStartTime = Date.now();
         try {
           const res = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -276,6 +296,7 @@ export class GeminiClient {
             }
           );
           clearTimeout(timer);
+          const durationMs = Date.now() - callStartTime;
 
           if (res.ok) {
             const data = await res.json();
@@ -287,11 +308,68 @@ export class GeminiClient {
               .trim();
             if (text.length > 0) {
               this.onSuccess(model);
+
+              // Record success telemetry safely (fail-open)
+              try {
+                const usage = data.usageMetadata;
+                const promptTokens = typeof usage?.promptTokenCount === 'number' ? usage.promptTokenCount : 0;
+                const candidatesTokens = typeof usage?.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : 0;
+                const cachedTokens = typeof usage?.cachedContentTokenCount === 'number' ? usage.cachedContentTokenCount : 0;
+                const thinkingDetails = (usage?.candidatesTokensDetails || []).find((d: any) => d.thought);
+                const thinkingTokens = typeof thinkingDetails?.tokenCount === 'number' ? thinkingDetails.tokenCount : 0;
+                const totalTokens = typeof usage?.totalTokenCount === 'number'
+                  ? usage.totalTokenCount
+                  : (promptTokens + candidatesTokens);
+                const isEstimated = !usage;
+
+                await AiUsageMetricsService.recordProviderCall({
+                  correlationId,
+                  studentId: ctx.studentId,
+                  bookId: ctx.bookId,
+                  chapterId: ctx.chapterId,
+                  gradeId: ctx.gradeId,
+                  subjectId: ctx.subjectId,
+                  configHash: ctx.configHash,
+                  cachedExamId: ctx.cachedExamId,
+                  modelName: model,
+                  promptTokens,
+                  candidatesTokens,
+                  cachedTokens,
+                  thinkingTokens,
+                  totalTokens,
+                  durationMs,
+                  isEstimated,
+                  attemptNumber: attempts + 1,
+                  callPurpose: ctx.workflow || ctx.callPurpose || 'EXAM_GENERATION'
+                }).catch(e => console.warn('⚠️ [GeminiClient] Telemetry recordProviderCall error:', e?.message || e));
+              } catch (tErr) {
+                console.warn('⚠️ [GeminiClient] Telemetry dispatch error:', tErr);
+              }
+
               return text;
             }
             this.onFailure(model, 'UNKNOWN');
             attempts++;
             lastFailure = new GeminiProviderError('UNKNOWN', undefined, 'empty response');
+
+            try {
+              await AiUsageMetricsService.recordProviderFailure({
+                correlationId,
+                studentId: ctx.studentId,
+                bookId: ctx.bookId,
+                chapterId: ctx.chapterId,
+                gradeId: ctx.gradeId,
+                subjectId: ctx.subjectId,
+                configHash: ctx.configHash,
+                cachedExamId: ctx.cachedExamId,
+                modelName: model,
+                errorCode: 'EMPTY_RESPONSE',
+                durationMs,
+                attemptNumber: attempts,
+                callPurpose: ctx.workflow || ctx.callPurpose || 'EXAM_GENERATION'
+              }).catch(e => console.warn('⚠️ [GeminiClient] Telemetry recordProviderFailure error:', e?.message || e));
+            } catch (_) {}
+
             console.warn(`[GeminiClient] ${model} returned an empty response.`);
             continue;
           }
@@ -300,6 +378,24 @@ export class GeminiClient {
           const errMsg: string = errorData.error?.message || `HTTP ${res.status}`;
           const { category, retryAfterMs } = this.classify(res.status, errMsg);
           console.warn(`[GeminiClient] ${model} failed: ${category} (HTTP ${res.status}).`);
+
+          try {
+            await AiUsageMetricsService.recordProviderFailure({
+              correlationId,
+              studentId: ctx.studentId,
+              bookId: ctx.bookId,
+              chapterId: ctx.chapterId,
+              gradeId: ctx.gradeId,
+              subjectId: ctx.subjectId,
+              configHash: ctx.configHash,
+              cachedExamId: ctx.cachedExamId,
+              modelName: model,
+              errorCode: category,
+              durationMs,
+              attemptNumber: attempts + 1,
+              callPurpose: ctx.workflow || ctx.callPurpose || 'EXAM_GENERATION'
+            }).catch(e => console.warn('⚠️ [GeminiClient] Telemetry recordProviderFailure error:', e?.message || e));
+          } catch (_) {}
 
           if (category === 'AUTHENTICATION') {
             this.getBreaker(model).probing = false;
@@ -311,6 +407,7 @@ export class GeminiClient {
           if (res.status === 400) break; // payload/config error is model-independent: do not amplify
         } catch (err: any) {
           clearTimeout(timer);
+          const durationMs = Date.now() - callStartTime;
           if (err instanceof GeminiProviderError) {
             if (err.category === 'AUTHENTICATION') throw err;
             lastFailure = err;
@@ -322,6 +419,24 @@ export class GeminiClient {
           this.onFailure(model, category);
           attempts++;
           lastFailure = new GeminiProviderError(category);
+
+          try {
+            await AiUsageMetricsService.recordProviderFailure({
+              correlationId,
+              studentId: ctx.studentId,
+              bookId: ctx.bookId,
+              chapterId: ctx.chapterId,
+              gradeId: ctx.gradeId,
+              subjectId: ctx.subjectId,
+              configHash: ctx.configHash,
+              cachedExamId: ctx.cachedExamId,
+              modelName: model,
+              errorCode: category,
+              durationMs,
+              attemptNumber: attempts,
+              callPurpose: ctx.workflow || ctx.callPurpose || 'EXAM_GENERATION'
+            }).catch(e => console.warn('⚠️ [GeminiClient] Telemetry recordProviderFailure error:', e?.message || e));
+          } catch (_) {}
         }
       }
 

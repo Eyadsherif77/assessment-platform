@@ -720,6 +720,26 @@
       "status_reason": "Pure text curriculum; chunks are contiguous and verified."
     },
     {
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": "7f2409f5-19e4-4d89-9a2c-f684c31be991",
+      "book_title_ar": "الدراسات الاجتماعية",
+      "book_title_en": "Social Studies",
+      "grade_ar": "الصف الثاني الإعدادي",
+      "subject_ar": "الدراسات الاجتماعية",
+      "chapter_number": 5,
+      "unit_title_ar": "المراجعة العامة على الفصل الدراسي الأول",
+      "unit_title_en": "General Semester Revision",
+      "start_page": 97,
+      "end_page": 104,
+      "source_pdf_path": "server/uploads/book_81b8a308-7fcf-4938-8c45-aa0056624f32.pdf",
+      "text_coverage": "8 pages",
+      "chunk_coverage": "Verified contiguous chunks (8 chunks)",
+      "visual_dependencies": "NONE",
+      "evidence_and_unresolved_issues": "All semester revision pages contain extractable text and model examinations; chunks assigned; zero diagram dependency.",
+      "readiness_status": "VERIFIED_READY",
+      "status_reason": "General semester revision materials verified across pages 97-104."
+    },
+    {
       "book_id": "37bfa0c0-c4ce-419f-930a-000043d8d3f9",
       "chapter_id": "af732e7e-1a38-4b17-b23e-d09ac0ac92f1",
       "book_title_ar": "اللغة الإنجليزية",

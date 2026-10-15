@@ -1,0 +1,189 @@
+{
+  "timestamp": "2026-10-15T09:08:54.540Z",
+  "bookId": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+  "chapters": [
+    {
+      "id": "b123b656-03b1-4af5-be4e-971dd5ba74a6",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_number": 1,
+      "title_ar": "الوحدة الأولى: الملامح الطبيعية لقارتي آسيا وأوروبا",
+      "title_en": "Unit 1: Natural Features of Asia and Europe Continents",
+      "description": "موقع ومظاهر سطح قارتي آسيا وأوروبا، المعادن ومصادر الطاقة في قارتي آسيا وأوروبا، وأنشطة وتقييم ختامي للوحدة الأولى",
+      "start_page": 7,
+      "end_page": 26,
+      "created_at": "2026-10-06 01:00:17",
+      "description_en": "Location and surface features of Asia and Europe, minerals and energy resources, unit activities and assessment"
+    },
+    {
+      "id": "ae5ca8ad-b23f-4875-ba5d-8b3f0091ffa2",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_number": 2,
+      "title_ar": "الوحدة الثانية: الحضارات القديمة في قارة آسيا وعلاقتها بمصر",
+      "title_en": "Unit 2: Ancient Civilizations in Asia Continent and Their Relations with Egypt",
+      "description": "نماذج للحضارات القديمة بالشرق الأدنى (العراق وفينيقيا)، حضارات بلاد اليمن القديم، حضارات الشرق الأقصى (الهند والصين)، الحضارة الإسلامية، وأنشطة وتقييم ختامي للوحدة الثانية",
+      "start_page": 27,
+      "end_page": 56,
+      "created_at": "2026-10-06 01:00:17",
+      "description_en": "Ancient Near East civilizations (Mesopotamia, Phoenicia), ancient Yemen, Far East civilizations (India, China), Islamic civilization, and unit assessment"
+    },
+    {
+      "id": "5b304263-9134-470a-81c6-677db64ce02a",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_number": 3,
+      "title_ar": "الوحدة الثالثة: النُّظم البيئية في قارتي آسيا وأوروبا",
+      "title_en": "Unit 3: Ecosystems in Asia and Europe Continents",
+      "description": "نُظم الغابات في قارتي آسيا وأوروبا، نُظم الحشائش ونُظم الصحاري، النُّظم البيئية المائية، وأنشطة وتقييم ختامي للوحدة الثالثة",
+      "start_page": 57,
+      "end_page": 80,
+      "created_at": "2026-10-06 01:00:17",
+      "description_en": "Forest systems in Asia and Europe, grassland and desert systems, aquatic ecosystems, and unit assessment"
+    },
+    {
+      "id": "c4000000-7fcf-4938-8c45-aa0056624f34",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_number": 4,
+      "title_ar": "الوحدة الرابعة: الحضارات القديمة في قارة أوروبا وعلاقتها بمصر",
+      "title_en": "Unit 4: Ancient Civilizations in Europe Continent and Their Relations with Egypt",
+      "description": "الحضارة اليونانية، الحضارة الرومانية وعلاقتها بمصر والمسرح الروماني بالإسكندرية، وأنشطة وتقييم ختامي للوحدة الرابعة",
+      "start_page": 81,
+      "end_page": 96,
+      "created_at": "2026-10-11 20:24:40",
+      "description_en": "Greek civilization, Roman civilization and its relations with Egypt, and unit assessment"
+    }
+  ],
+  "unassignedChunks": [
+    {
+      "id": "bddd7ea7-4300-4255-98c5-d0ac4f0af45d",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 97,
+      "chunk_index": 0
+    },
+    {
+      "id": "2b4402a5-7e0e-4f40-a40d-ba9e7f79f7b6",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 98,
+      "chunk_index": 0
+    },
+    {
+      "id": "c05f49ac-8b0c-4774-9168-9fde699300de",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 99,
+      "chunk_index": 0
+    },
+    {
+      "id": "970e5683-e52f-44d6-924c-ef0c8595d086",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 100,
+      "chunk_index": 0
+    },
+    {
+      "id": "fc7a7c19-11e3-4691-902b-002cdd21d703",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 101,
+      "chunk_index": 0
+    },
+    {
+      "id": "cd5de032-7026-4cf2-91a7-5a0a0e7965ba",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 102,
+      "chunk_index": 0
+    },
+    {
+      "id": "bc822680-a0c1-4cac-8f73-2ac40ef46e63",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 103,
+      "chunk_index": 0
+    },
+    {
+      "id": "b4cfd1d3-6df4-4f37-a2bf-f07f4f19b086",
+      "book_id": "81b8a308-7fcf-4938-8c45-aa0056624f32",
+      "chapter_id": null,
+      "page_number": 104,
+      "chunk_index": 0
+    }
+  ],
+  "aiUsageMetricsColumns": [
+    {
+      "COLUMN_NAME": "id",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "event_type",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "student_id",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "book_id",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "chapter_id",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "config_hash",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "cached_exam_id",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "model_name",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "prompt_tokens",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "candidates_tokens",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "total_tokens",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "estimated_cost_usd",
+      "DATA_TYPE": "double",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "duration_ms",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "error_code",
+      "DATA_TYPE": "varchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "DATA_TYPE": "datetime",
+      "IS_NULLABLE": "YES"
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import { ExamCacheService } from '../services/examCacheService.js';
 import { signExamAttemptToken, verifyExamAttemptToken, ExamAttemptTokenPayload } from '../services/answerValidationService.js';
 import { ReadinessValidator } from '../services/readinessValidator.js';
 import { VisualAssetExtractor } from '../services/ai/visualAssetExtractor.js';
+import { AiUsageMetricsService } from '../services/aiUsageMetricsService.js';
 
 const router = Router();
 
@@ -99,8 +100,25 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       contentHash = cacheResult.exam.contentHash;
       versionNumber = cacheResult.exam.versionNumber || 1;
       await ExamCacheService.recordStudentAssignment(cacheResult.cacheKey, req.user!.id, cacheResult.exam.examId);
+      // Record cache hit event in telemetry (0 provider tokens, $0.00 provider cost)
+      AiUsageMetricsService.recordCacheHit({
+        studentId: req.user!.id,
+        bookId: book_id,
+        chapterId: chapter_id,
+        configHash: cacheResult.exam.configHash,
+        cachedExamId: cacheResult.exam.examId
+      }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheHit error:', e?.message || e));
     } else {
       console.log(`🔄 [Shared Exam Cache ${cacheResult.reason}] Coordinating fresh exam generation for student ${req.user!.id}`);
+
+      // Record cache miss in telemetry
+      AiUsageMetricsService.recordCacheMiss({
+        studentId: req.user!.id,
+        bookId: book_id,
+        chapterId: chapter_id,
+        configHash: cacheResult.configHash,
+        reason: cacheResult.reason
+      }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheMiss error:', e?.message || e));
 
       // Multi-instance concurrency coordination: only 1 Vercel instance generates for this configHash at a time
       const lock = await ExamCacheService.acquireGenerationLock(configHash);
@@ -117,6 +135,13 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
           contentHash = awaitedExam.contentHash;
           versionNumber = awaitedExam.versionNumber || 1;
           await ExamCacheService.recordStudentAssignment(awaitedExam.configKey, req.user!.id, awaitedExam.examId);
+          AiUsageMetricsService.recordCacheHit({
+            studentId: req.user!.id,
+            bookId: book_id,
+            chapterId: chapter_id,
+            configHash: awaitedExam.configHash,
+            cachedExamId: awaitedExam.examId
+          }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheHit error:', e?.message || e));
         }
       }
 
@@ -163,6 +188,13 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             versionNumber = fallback.versionNumber || 1;
             isFallbackExam = true;
             await ExamCacheService.recordStudentAssignment(fallback.configKey, req.user!.id, fallback.examId);
+            AiUsageMetricsService.recordCacheHit({
+              studentId: req.user!.id,
+              bookId: book_id,
+              chapterId: chapter_id,
+              configHash: fallback.configHash,
+              cachedExamId: fallback.examId
+            }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheHit error:', e?.message || e));
           } else {
             // No compatible verified cached exam exists; fail closed and bubble up provider error
             throw genErr;
