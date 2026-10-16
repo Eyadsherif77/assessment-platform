@@ -1408,4 +1408,139 @@ export class AiUsageMetricsService {
       byExam
     };
   }
+
+  /**
+   * Link all telemetry records of a generation session to the final stored exam ID.
+   * Updates cached_exam_id for all calls (generation, blind solver, failures, retries)
+   * that ran under this generationSessionId (stored in correlation_id).
+   */
+  public static async linkSessionToExam(
+    generationSessionId?: string,
+    cachedExamId?: string
+  ): Promise<void> {
+    if (!generationSessionId || !cachedExamId) return;
+    await this.ensureTable();
+    try {
+      await db.query(
+        `UPDATE ai_usage_metrics 
+         SET cached_exam_id = $1 
+         WHERE correlation_id = $2 AND (cached_exam_id IS NULL OR cached_exam_id = '')`,
+        [cachedExamId, generationSessionId]
+      );
+    } catch (err: any) {
+      console.warn('⚠️ [AiUsageMetricsService] linkSessionToExam error:', err?.message || err);
+    }
+  }
+
+  /**
+   * Retrieve reliable aggregated cost and token breakdown for a specific generated exam.
+   * Separates question generation cost from blind solver cost, counts attempts/retries,
+   * and ensures zero confusion with CACHE_HIT lookups.
+   */
+  public static async getExamCostBreakdown(examId: string): Promise<{
+    cachedExamId: string;
+    generationSessionId: string | null;
+    totalCostUsd: number;
+    questionGenerationCostUsd: number;
+    blindSolverCostUsd: number;
+    promptTokens: number;
+    candidatesTokens: number;
+    totalTokens: number;
+    successfulCalls: number;
+    failedCalls: number;
+    totalCalls: number;
+  } | null> {
+    if (!examId) return null;
+    await this.ensureTable();
+    try {
+      // 1. Primary lookup by cached_exam_id
+      const primaryRes = await db.query(
+        `SELECT 
+           cached_exam_id,
+           MAX(correlation_id) as generation_session_id,
+           COALESCE(SUM(estimated_cost_usd), 0) as total_cost,
+           COALESCE(SUM(CASE WHEN call_purpose = 'EXAM_QUESTION_GENERATION' THEN estimated_cost_usd ELSE 0 END), 0) as gen_cost,
+           COALESCE(SUM(CASE WHEN call_purpose = 'EXAM_BLIND_SOLVER' THEN estimated_cost_usd ELSE 0 END), 0) as solver_cost,
+           COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+           COALESCE(SUM(candidates_tokens), 0) as candidates_tokens,
+           COALESCE(SUM(total_tokens), 0) as total_tokens,
+           COUNT(CASE WHEN event_type = 'PROVIDER_CALL' THEN 1 END) as successful_calls,
+           COUNT(CASE WHEN event_type = 'PROVIDER_FAILURE' THEN 1 END) as failed_calls,
+           COUNT(*) as total_calls
+         FROM ai_usage_metrics
+         WHERE cached_exam_id = $1 AND event_type IN ('PROVIDER_CALL', 'PROVIDER_FAILURE')
+         GROUP BY cached_exam_id`,
+        [examId]
+      );
+
+      let row: any = primaryRes.rows.length > 0 ? primaryRes.rows[0] : null;
+
+      // 2. Fallback: If no records linked by cached_exam_id, recover session via parameters_json in shared_cached_exams
+      if (!row) {
+        const examRes = await db.query(
+          `SELECT parameters_json FROM shared_cached_exams WHERE id = $1 LIMIT 1`,
+          [examId]
+        );
+
+        if (examRes.rows.length > 0 && examRes.rows[0].parameters_json) {
+          let sessionFromParams: string | null = null;
+          try {
+            const rawParams = examRes.rows[0].parameters_json;
+            const parsed = typeof rawParams === 'string' ? JSON.parse(rawParams) : rawParams;
+            if (parsed && typeof parsed.generationSessionId === 'string') {
+              const sid = parsed.generationSessionId.trim();
+              if (sid.length >= 10 && sid.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(sid)) {
+                sessionFromParams = sid;
+              }
+            }
+          } catch (_) {}
+
+          if (sessionFromParams) {
+            const fallbackRes = await db.query(
+              `SELECT 
+                 $1 as cached_exam_id,
+                 MAX(correlation_id) as generation_session_id,
+                 COALESCE(SUM(estimated_cost_usd), 0) as total_cost,
+                 COALESCE(SUM(CASE WHEN call_purpose = 'EXAM_QUESTION_GENERATION' THEN estimated_cost_usd ELSE 0 END), 0) as gen_cost,
+                 COALESCE(SUM(CASE WHEN call_purpose = 'EXAM_BLIND_SOLVER' THEN estimated_cost_usd ELSE 0 END), 0) as solver_cost,
+                 COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+                 COALESCE(SUM(candidates_tokens), 0) as candidates_tokens,
+                 COALESCE(SUM(total_tokens), 0) as total_tokens,
+                 COUNT(CASE WHEN event_type = 'PROVIDER_CALL' THEN 1 END) as successful_calls,
+                 COUNT(CASE WHEN event_type = 'PROVIDER_FAILURE' THEN 1 END) as failed_calls,
+                 COUNT(*) as total_calls
+               FROM ai_usage_metrics
+               WHERE correlation_id = $2 AND event_type IN ('PROVIDER_CALL', 'PROVIDER_FAILURE')
+               GROUP BY correlation_id`,
+              [examId, sessionFromParams]
+            );
+
+            if (fallbackRes.rows.length > 0) {
+              row = fallbackRes.rows[0];
+            }
+          }
+        }
+      }
+
+      if (!row) return null;
+
+      return {
+        cachedExamId: row.cached_exam_id || examId,
+        generationSessionId: row.generation_session_id || null,
+        totalCostUsd: Number(Number(row.total_cost).toFixed(6)),
+        questionGenerationCostUsd: Number(Number(row.gen_cost).toFixed(6)),
+        blindSolverCostUsd: Number(Number(row.solver_cost).toFixed(6)),
+        promptTokens: Number(row.prompt_tokens) || 0,
+        candidatesTokens: Number(row.candidates_tokens) || 0,
+        totalTokens: Number(row.total_tokens) || 0,
+        successfulCalls: Number(row.successful_calls) || 0,
+        failedCalls: Number(row.failed_calls) || 0,
+        totalCalls: Number(row.total_calls) || 0
+      };
+    } catch (err: any) {
+      console.warn('⚠️ [AiUsageMetricsService] getExamCostBreakdown error:', err?.message || err);
+      return null;
+    }
+  }
 }
+

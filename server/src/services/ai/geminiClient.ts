@@ -14,6 +14,7 @@ export interface GeminiContentPart {
 export interface GeminiCallContext {
   workflow?: string;
   correlationId?: string;
+  generationSessionId?: string;
   studentId?: string;
   bookId?: string;
   chapterId?: string;
@@ -276,7 +277,7 @@ export class GeminiClient {
       let lastFailure: GeminiProviderError | null = null;
       let attempts = 0;
       const ctx = params.context || params.telemetryContext || {};
-      const correlationId = ctx.correlationId || uuidv4();
+      const correlationId = ctx.correlationId || ctx.generationSessionId || uuidv4();
 
       for (const model of this.candidateModels) {
         if (attempts >= this.maxModelsPerCall) break;

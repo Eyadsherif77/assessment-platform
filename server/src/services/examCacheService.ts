@@ -2,6 +2,7 @@ import { db } from '../db/db.js';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { AnswerValidationService, ExamValidationSummary, QuestionValidationResult } from './answerValidationService.js';
+import { AiUsageMetricsService } from './aiUsageMetricsService.js';
 
 export interface AuthoritativeCurriculumIdentity {
   bookId: string;
@@ -711,6 +712,7 @@ export class ExamCacheService {
     questions: any[];
     assignedStudentId?: string;
     skipProvenanceCheck?: boolean; // strictly for test fixtures
+    generationSessionId?: string;
   }): Promise<CachedExamRecord> {
     const normalizedUnits = [...new Set(params.unitIds)].sort();
     const unitSetKey = normalizedUnits.join(',');
@@ -748,7 +750,11 @@ export class ExamCacheService {
 
     const examId = params.examId || `cached_exam_${uuidv4()}`;
     const questionsJson = JSON.stringify(annotatedQuestions);
-    const paramsJson = JSON.stringify(normalizedParams);
+    const paramsWithSession = {
+      ...normalizedParams,
+      ...(params.generationSessionId ? { generationSessionId: params.generationSessionId } : {})
+    };
+    const paramsJson = JSON.stringify(paramsWithSession);
     const unitsJson = JSON.stringify(normalizedUnits);
 
     // Verify Question Provenance
@@ -841,6 +847,12 @@ export class ExamCacheService {
     if (params.assignedStudentId) {
       await this.recordStudentAssignment(configKey, params.assignedStudentId, finalExamId);
       assignedStudents.add(params.assignedStudentId);
+    }
+
+    if (params.generationSessionId && finalExamId) {
+      await AiUsageMetricsService.linkSessionToExam(params.generationSessionId, finalExamId).catch(err => {
+        console.warn('⚠️ [ExamCacheService] linkSessionToExam error:', err?.message || err);
+      });
     }
 
     const record: CachedExamRecord = {

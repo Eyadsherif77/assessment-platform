@@ -1384,7 +1384,7 @@ class AIRagEngine {
    * Retrieves or constructs the bounded blind solver adapter.
    * Wraps GeminiClient with strict per-attempt timeouts, budgets, schema checks, and fail-closed handling.
    */
-  public getBlindSolver(): BlindSolverFunction {
+  public getBlindSolver(generationSessionId?: string): BlindSolverFunction {
     if (AIRagEngine.blindSolverOverride) {
       return AIRagEngine.blindSolverOverride;
     }
@@ -1441,7 +1441,9 @@ Return valid JSON with exact keys:
         timeoutMs: 10000,
         context: {
           workflow: 'EXAM_BLIND_SOLVER',
-          callPurpose: 'BLIND_SOLVER_VERIFICATION'
+          callPurpose: 'BLIND_SOLVER_VERIFICATION',
+          correlationId: generationSessionId,
+          generationSessionId
         }
       });
       const cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
@@ -1998,6 +2000,7 @@ Return valid JSON with exact keys:
     chapterId: string;
     count?: number;
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED';
+    generationSessionId?: string;
   }): Promise<GroundedQuestion[]> {
     const requiredCount = params.count || 3;
 
@@ -2130,7 +2133,8 @@ Return valid JSON with exact keys:
             studentId: params.studentId,
             gradeId: params.gradeId,
             subjectId: params.subjectId,
-            difficulty: params.difficulty
+            difficulty: params.difficulty,
+            generationSessionId: params.generationSessionId
           }
         );
         if (rawAiQuestions && rawAiQuestions.length > 0) {
@@ -2145,6 +2149,7 @@ Return valid JSON with exact keys:
             needed: requiredCount - validQuestions.length,
             isSeenByStudent,
             stats: verifyStats,
+            generationSessionId: params.generationSessionId,
             label: 'Pass 1'
           });
           validQuestions.push(...accepted);
@@ -2190,7 +2195,8 @@ Return valid JSON with exact keys:
                 subjectNameEn,
                 studentId: params.studentId,
                 gradeId: params.gradeId,
-                subjectId: params.subjectId
+                subjectId: params.subjectId,
+                generationSessionId: params.generationSessionId
               }
             );
 
@@ -2207,6 +2213,7 @@ Return valid JSON with exact keys:
                 needed: requiredCount - validQuestions.length,
                 isSeenByStudent,
                 stats: verifyStats,
+                generationSessionId: params.generationSessionId,
                 label: 'Pass 2'
               });
               validQuestions.push(...accepted2);
@@ -2268,8 +2275,9 @@ Return valid JSON with exact keys:
     label: string;
     concurrency?: number;
     stats?: { solverExecFailures: number };
+    generationSessionId?: string;
   }): Promise<GroundedQuestion[]> {
-    const { rawQuestions, bookId, chapterId, chunks, existing, contextWords, needed, isSeenByStudent, label } = params;
+    const { rawQuestions, bookId, chapterId, chunks, existing, contextWords, needed, isSeenByStudent, label, generationSessionId } = params;
     const concurrency = Math.max(1, params.concurrency ?? 4);
     const norm = (t: string) => t.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' ');
     const taken = new Set<string>(existing.map(q => norm(q.question_text)));
@@ -2294,7 +2302,7 @@ Return valid JSON with exact keys:
     }
 
     // Stage B (expensive, bounded-parallel): strict provenance + independent blind solver
-    const solver = this.getBlindSolver();
+    const solver = this.getBlindSolver(generationSessionId);
     const verdicts: boolean[] = new Array(prefiltered.length).fill(false);
     let verifiedSoFar = 0;
     let cursor = 0;
@@ -2371,6 +2379,7 @@ Return valid JSON with exact keys:
       gradeId?: string;
       subjectId?: string;
       difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED';
+      generationSessionId?: string;
     }
   ): Promise<GroundedQuestion[] | null> {
     const isEn = language === 'en';
@@ -2521,6 +2530,8 @@ ${contextText}
         context: {
           workflow: 'EXAM_QUESTION_GENERATION',
           callPurpose: 'QUESTION_GENERATION',
+          correlationId: stageGradeInfo?.generationSessionId,
+          generationSessionId: stageGradeInfo?.generationSessionId,
           bookId,
           chapterId,
           studentId: stageGradeInfo?.studentId,

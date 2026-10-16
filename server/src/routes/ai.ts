@@ -140,6 +140,9 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
     } else {
       console.log(`🔄 [Shared Exam Cache ${cacheResult.reason}] Coordinating fresh exam generation for student ${req.user!.id}`);
 
+      // Unique generation session ID to correlate all AI calls (generation + blind solver + retries) for this exam creation
+      const generationSessionId = `gen_sess_${uuidv4()}`;
+
       // Record cache miss in telemetry
       AiUsageMetricsService.recordCacheMiss({
         studentId: req.user!.id,
@@ -220,7 +223,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             bookId: identity.bookId,
             chapterId: chapter_id,
             count: parsedCount,
-            difficulty: normalizedDifficulty
+            difficulty: normalizedDifficulty,
+            generationSessionId
           });
 
           if (!questions || questions.length < parsedCount) {
@@ -234,7 +238,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             unitIds: [chapter_id],
             examParams: { count: parsedCount, difficulty: normalizedDifficulty },
             questions,
-            assignedStudentId: req.user!.id
+            assignedStudentId: req.user!.id,
+            generationSessionId
           });
           cachedExamId = stored.examId;
           configHash = stored.configHash;
