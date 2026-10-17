@@ -902,8 +902,27 @@ router.post('/impersonate/:id', async (req: AuthenticatedRequest, res) => {
 
     let profileData: any = null;
     if (target.role === 'TEACHER') {
-      const tp = await db.query(`SELECT * FROM teacher_profiles WHERE user_id = $1`, [target.id]);
+      const tp = await db.query(
+        `SELECT tp.*, g.name_ar as grade_name_ar, g.name_en as grade_name_en,
+                stg.name_ar as stage_name_ar, stg.name_en as stage_name_en
+         FROM teacher_profiles tp
+         LEFT JOIN grades g ON tp.grade_id = g.id
+         LEFT JOIN academic_stages stg ON tp.academic_stage_id = stg.id
+         WHERE tp.user_id = $1`,
+        [target.id]
+      );
       profileData = tp.rows[0] || null;
+      if (profileData) {
+        if (typeof profileData.assigned_subjects === 'string') {
+          try { profileData.assigned_subjects = JSON.parse(profileData.assigned_subjects); } catch (_) {}
+        }
+        if (typeof profileData.assigned_grades === 'string') {
+          try { profileData.assigned_grades = JSON.parse(profileData.assigned_grades); } catch (_) {}
+        }
+        if (typeof profileData.teaching_assignments === 'string') {
+          try { profileData.teaching_assignments = JSON.parse(profileData.teaching_assignments); } catch (_) {}
+        }
+      }
     }
 
     const impersonationToken = generateToken({

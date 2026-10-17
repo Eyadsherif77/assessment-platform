@@ -283,8 +283,14 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
       }
     }
 
-    // 3. Stats
-    const totalStudentsRes = await db.query(`SELECT COUNT(*) as count FROM student_profiles`);
+    // 3. Stats (strictly scoped to teacher's grade if assigned)
+    let totalStudentsSql = `SELECT COUNT(*) as count FROM student_profiles sp`;
+    const totalStudentsParams: any[] = [];
+    if (profileGradeId) {
+      totalStudentsSql += ` WHERE sp.grade_id = $1`;
+      totalStudentsParams.push(profileGradeId);
+    }
+    const totalStudentsRes = await db.query(totalStudentsSql, totalStudentsParams);
     const totalStudents = Number(totalStudentsRes.rows[0]?.count) || 0;
 
     let myExamsSql = `SELECT COUNT(*) as count FROM exams WHERE (teacher_id = $1 OR teacher_id = 'admin-owner-001')`;
@@ -298,15 +304,17 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
     const myExamsRes = await db.query(myExamsSql, myExamsParams);
     const totalMyExams = Number(myExamsRes.rows[0]?.count) || 0;
 
-    // 4. Student attempts on teacher exams in this subject
+    // 4. Completed student attempts on teacher exams in this subject
     let examAttemptsSql = `
       SELECT ea.id, ea.exam_id, ea.score, ea.total_points, ea.completed_at,
-             u.full_name as student_name, sp.student_code, e.title_ar as exam_title
+             u.full_name as student_name, sp.student_code, e.title_ar as exam_title,
+             e.chapter_id
       FROM exam_attempts ea
       JOIN exams e ON ea.exam_id = e.id
       JOIN users u ON ea.student_id = u.id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
       WHERE (e.teacher_id = $1 OR e.teacher_id = 'admin-owner-001' OR e.teacher_id IS NULL)
+        AND (ea.status = 'COMPLETED' OR ea.status = 'GRADED' OR ea.completed_at IS NOT NULL)
     `;
     const examAttemptsParams: any[] = [teacherId];
     if (subjectId) {
@@ -315,6 +323,10 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
       ))`;
       examAttemptsParams.push(subjectId);
     }
+    if (profileGradeId) {
+      examAttemptsParams.push(profileGradeId);
+      examAttemptsSql += ` AND (e.grade_id = $${examAttemptsParams.length} OR e.grade_id IS NULL)`;
+    }
     examAttemptsSql += ` ORDER BY ea.completed_at DESC LIMIT 50`;
     const examAttemptsRes = await db.query(examAttemptsSql, examAttemptsParams);
 
@@ -322,7 +334,7 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
     let aiAttemptsRes: any = { rows: [] };
     if (subjectId) {
       aiAttemptsRes = await db.query(`
-        SELECT ae.id, ae.score, ae.total_questions, ae.created_at,
+        SELECT ae.id, ae.score, ae.total_questions, ae.created_at, ae.chapter_id,
                u.full_name as student_name,
                sp.student_code,
                COALESCE(bc.title_ar, b.title_ar, s.name_ar, 'تقييم تشخيصي معتمد') as exam_title
@@ -354,6 +366,7 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
           id: r.id,
           attempt_id: r.id,
           exam_id: r.exam_id,
+          chapter_id: r.chapter_id || null,
           attempt_type: 'EXAM',
           student_name: r.student_name,
           student_code: r.student_code || '',
@@ -372,12 +385,14 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         return {
           id: r.id,
           attempt_id: r.id,
+          chapter_id: r.chapter_id || null,
           attempt_type: 'AI_EVALUATION',
           student_name: r.student_name,
           student_code: r.student_code || '',
           exam_title: r.exam_title,
           score,
           total_points: total,
+          total_questions: total,
           percentage: pct,
           status: pct >= 80 ? 'MASTERED' : pct >= 50 ? 'DEVELOPING' : 'NEEDS_WORK',
           completed_at: r.created_at
@@ -385,14 +400,14 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
       })
     ].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
 
-    // Calculate average score
-    let avgScore = 86;
+    // Calculate real average score (null when 0 attempts)
+    let avgScore: number | null = null;
     if (recentAttempts.length > 0) {
       const sum = recentAttempts.reduce((acc, cur) => acc + cur.percentage, 0);
       avgScore = Math.round(sum / recentAttempts.length);
     }
 
-    // 6. Chapters mastery strictly in teacher's subject
+    // 6. Chapters mastery strictly in teacher's subject & grade
     let chaptersMastery: any[] = [];
     if (subjectId) {
       let chSql = `
@@ -412,13 +427,20 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
 
       const chRes = await db.query(chSql, [subjectId]);
 
-      chaptersMastery = chRes.rows.map((ch: any, idx: number) => {
-        // Find matching attempts for this chapter if any
-        const matchingAttempts = recentAttempts.filter(a => a.exam_title && a.exam_title.includes(ch.title_ar));
-        let pct = 85 - (idx % 3) * 7;
+      chaptersMastery = chRes.rows.map((ch: any) => {
+        // Find matching real attempts for this chapter
+        const matchingAttempts = recentAttempts.filter(a => 
+          (a.chapter_id && a.chapter_id === ch.id) ||
+          (a.exam_title && (a.exam_title.includes(ch.title_ar) || ch.title_ar.includes(a.exam_title)))
+        );
+
+        let pct: number | null = null;
+        let status: 'MASTERED' | 'DEVELOPING' | 'NEEDS_WORK' | 'NOT_ASSESSED' = 'NOT_ASSESSED';
         if (matchingAttempts.length > 0) {
           pct = Math.round(matchingAttempts.reduce((acc, cur) => acc + cur.percentage, 0) / matchingAttempts.length);
+          status = pct >= 80 ? 'MASTERED' : pct >= 50 ? 'DEVELOPING' : 'NEEDS_WORK';
         }
+
         return {
           id: ch.id,
           chapter_number: ch.chapter_number,
@@ -426,15 +448,16 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
           title_en: ch.title_en,
           book_title: ch.book_title,
           mastery_percentage: pct,
-          status: pct >= 80 ? 'MASTERED' : pct >= 50 ? 'DEVELOPING' : 'NEEDS_WORK',
+          status,
           attempts_count: matchingAttempts.length
         };
       });
     }
 
-    // Top and lowest chapters
-    const sortedChapters = [...chaptersMastery].sort((a, b) => b.mastery_percentage - a.mastery_percentage);
-    const topChapter = sortedChapters[0] || null;
+    // Top and lowest chapters (only from chapters with real attempts)
+    const assessedChapters = chaptersMastery.filter(ch => ch.attempts_count > 0 && ch.mastery_percentage !== null);
+    const sortedChapters = [...assessedChapters].sort((a, b) => (b.mastery_percentage || 0) - (a.mastery_percentage || 0));
+    const topChapter = sortedChapters.length > 0 ? sortedChapters[0] : null;
     const lowestChapter = sortedChapters.length > 1 ? sortedChapters[sortedChapters.length - 1] : null;
 
     return res.json({

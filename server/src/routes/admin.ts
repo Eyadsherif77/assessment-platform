@@ -283,9 +283,19 @@ router.post('/impersonate/teacher/:id', async (req: AuthenticatedRequest, res) =
     const { id } = req.params;
 
     const teacherRes = await db.query(
-      `SELECT u.id, u.hybrid_id, u.email, u.full_name, u.role, u.permissions, tp.school_name, tp.specialization
+      `SELECT u.id, u.hybrid_id, u.email, u.full_name, u.role, u.permissions,
+              tp.school_id, tp.school_name, tp.specialization,
+              tp.governorate_id, tp.subject_id, tp.supervisor_id,
+              tp.grade_id, tp.academic_stage_id,
+              tp.assigned_subjects, tp.assigned_grades, tp.teaching_assignments,
+              g.name_ar as grade_name_ar, g.name_en as grade_name_en,
+              stg.name_ar as stage_name_ar, stg.name_en as stage_name_en,
+              sub.name_ar as subject_name_ar, sub.name_en as subject_name_en
        FROM users u
        LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+       LEFT JOIN grades g ON tp.grade_id = g.id
+       LEFT JOIN academic_stages stg ON tp.academic_stage_id = stg.id
+       LEFT JOIN subjects sub ON tp.subject_id = sub.id
        WHERE u.id = $1 AND u.role = 'TEACHER'`,
       [id]
     );
@@ -302,12 +312,27 @@ router.post('/impersonate/teacher/:id', async (req: AuthenticatedRequest, res) =
       } catch (_) {}
     }
 
+    let parsedAssignedSubjects = teacher.assigned_subjects;
+    if (typeof parsedAssignedSubjects === 'string') {
+      try { parsedAssignedSubjects = JSON.parse(parsedAssignedSubjects); } catch (_) {}
+    }
+    let parsedAssignedGrades = teacher.assigned_grades;
+    if (typeof parsedAssignedGrades === 'string') {
+      try { parsedAssignedGrades = JSON.parse(parsedAssignedGrades); } catch (_) {}
+    }
+    let parsedTeachingAssignments = teacher.teaching_assignments;
+    if (typeof parsedTeachingAssignments === 'string') {
+      try { parsedTeachingAssignments = JSON.parse(parsedTeachingAssignments); } catch (_) {}
+    }
+
     // Generate token for the teacher with impersonation marker
     const impersonationToken = generateToken({
       id: teacher.id,
       email: teacher.email,
       role: 'TEACHER',
-      fullName: teacher.full_name
+      fullName: teacher.full_name,
+      governorateId: teacher.governorate_id || undefined,
+      subjectId: teacher.subject_id || undefined
     });
 
     return res.json({
@@ -321,8 +346,21 @@ router.post('/impersonate/teacher/:id', async (req: AuthenticatedRequest, res) =
         fullName: teacher.full_name,
         permissions: permissionsObj,
         profile: {
+          user_id: teacher.id,
+          full_name: teacher.full_name,
           school_name: teacher.school_name,
-          specialization: teacher.specialization
+          specialization: teacher.specialization,
+          grade_id: teacher.grade_id,
+          academic_stage_id: teacher.academic_stage_id,
+          governorate_id: teacher.governorate_id,
+          subject_id: teacher.subject_id,
+          supervisor_id: teacher.supervisor_id,
+          grade_name_ar: teacher.grade_name_ar,
+          stage_name_ar: teacher.stage_name_ar,
+          subject_name_ar: teacher.subject_name_ar,
+          assigned_subjects: parsedAssignedSubjects,
+          assigned_grades: parsedAssignedGrades,
+          teaching_assignments: parsedTeachingAssignments
         }
       }
     });
@@ -352,9 +390,27 @@ router.get('/students', async (req: AuthenticatedRequest, res) => {
         sp.school_name,
         s.name_ar as stage_name_ar, 
         g.name_ar as grade_name_ar,
-        (SELECT COUNT(*) FROM exam_attempts ea WHERE ea.student_id = u.id) as attempts_count,
-        (SELECT ROUND(AVG(score), 1) FROM exam_attempts ea WHERE ea.student_id = u.id) as avg_score,
-        (SELECT COUNT(*) FROM ai_evaluations aie WHERE aie.student_id = u.id) as ai_evals_count
+        (
+          (SELECT COUNT(*) FROM exam_attempts ea WHERE ea.student_id = u.id AND (ea.status = 'COMPLETED' OR ea.status = 'GRADED' OR ea.completed_at IS NOT NULL))
+          +
+          (SELECT COUNT(*) FROM ai_evaluations aie WHERE aie.student_id = u.id)
+        ) as attempts_count,
+        (
+          SELECT COUNT(*) FROM exam_attempts ea WHERE ea.student_id = u.id AND ea.status = 'IN_PROGRESS' AND ea.completed_at IS NULL
+        ) as in_progress_count,
+        (
+          SELECT ROUND(AVG(score_pct), 1) FROM (
+            SELECT (ea.score / NULLIF(ea.total_points, 0)) * 100 as score_pct
+            FROM exam_attempts ea
+            WHERE ea.student_id = u.id AND (ea.status = 'COMPLETED' OR ea.status = 'GRADED' OR ea.completed_at IS NOT NULL) AND ea.total_points > 0
+            UNION ALL
+            SELECT (aie.score / NULLIF(aie.total_questions, 0)) * 100 as score_pct
+            FROM ai_evaluations aie
+            WHERE aie.student_id = u.id AND aie.total_questions > 0
+          ) as all_scores
+        ) as avg_score,
+        (SELECT COUNT(*) FROM ai_evaluations aie WHERE aie.student_id = u.id) as ai_evals_count,
+        (SELECT COUNT(*) FROM exam_attempts ea WHERE ea.student_id = u.id AND (ea.status = 'COMPLETED' OR ea.status = 'GRADED' OR ea.completed_at IS NOT NULL)) as standard_exams_count
       FROM users u
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
       LEFT JOIN academic_stages s ON sp.academic_stage_id = s.id
@@ -374,8 +430,10 @@ router.get('/students', async (req: AuthenticatedRequest, res) => {
       schoolType: row.school_type || 'عربي',
       section: row.section || null,
       attemptsCount: Number(row.attempts_count || 0),
+      inProgressCount: Number(row.in_progress_count || 0),
+      standardExamsCount: Number(row.standard_exams_count || 0),
       aiEvalsCount: Number(row.ai_evals_count || 0),
-      avgScore: row.avg_score !== null ? Number(row.avg_score) : null,
+      avgScore: row.avg_score !== null && !isNaN(Number(row.avg_score)) ? Number(row.avg_score) : null,
       isActive: row.is_active !== 0,
       createdAt: row.created_at
     }));
@@ -412,14 +470,66 @@ router.get('/students/:id/details', async (req: AuthenticatedRequest, res) => {
 
     const student = studentRes.rows[0];
 
-    const attempts = await db.query(
-      `SELECT ea.id, ea.score, ea.total_points, ea.status, ea.completed_at, e.title_ar as exam_title
+    const examAttemptsRes = await db.query(
+      `SELECT ea.id, ea.score, ea.total_points, ea.status, ea.completed_at, ea.started_at,
+              e.title_ar as exam_title, s.name_ar as subject_name_ar
        FROM exam_attempts ea
        JOIN exams e ON ea.exam_id = e.id
+       LEFT JOIN subjects s ON e.subject_id = s.id
        WHERE ea.student_id = $1
-       ORDER BY ea.completed_at DESC`,
+       ORDER BY COALESCE(ea.completed_at, ea.started_at) DESC`,
       [id]
     );
+
+    const aiEvalsRes = await db.query(
+      `SELECT ae.id, ae.score, ae.total_questions, ae.created_at,
+              s.name_ar as subject_name_ar,
+              COALESCE(bc.title_ar, b.title_ar, s.name_ar, 'تقييم تشخيصي معتمد') as exam_title
+       FROM ai_evaluations ae
+       LEFT JOIN subjects s ON ae.subject_id = s.id
+       LEFT JOIN book_chapters bc ON ae.chapter_id = bc.id
+       LEFT JOIN books b ON ae.book_id = b.id
+       WHERE ae.student_id = $1
+       ORDER BY ae.created_at DESC`,
+      [id]
+    );
+
+    const attempts = [
+      ...examAttemptsRes.rows.map((r: any) => {
+        const total = Number(r.total_points) || 1;
+        const score = Number(r.score) || 0;
+        const isDone = r.status === 'COMPLETED' || r.status === 'GRADED' || !!r.completed_at;
+        const pct = isDone ? Math.round((score / total) * 100) : null;
+        return {
+          id: r.id,
+          attempt_type: 'EXAM',
+          exam_title: r.exam_title,
+          subject_name_ar: r.subject_name_ar || 'امتحان دوري معتمد',
+          score,
+          total_points: total,
+          percentage: pct,
+          status: isDone ? 'COMPLETED' : (r.status || 'IN_PROGRESS'),
+          completed_at: r.completed_at || r.started_at
+        };
+      }),
+      ...aiEvalsRes.rows.map((r: any) => {
+        const total = Number(r.total_questions) || 1;
+        const score = Number(r.score) || 0;
+        const pct = Math.round((score / total) * 100);
+        return {
+          id: r.id,
+          attempt_type: 'AI_EVALUATION',
+          exam_title: r.exam_title,
+          subject_name_ar: r.subject_name_ar || 'تقييم ذكي',
+          score,
+          total_points: total,
+          total_questions: total,
+          percentage: pct,
+          status: 'COMPLETED',
+          completed_at: r.created_at
+        };
+      })
+    ].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime());
 
     const topicMastery = await db.query(
       `SELECT stm.*, sub.name_ar as subject_name_ar, bc.title_ar as chapter_title_ar
@@ -432,7 +542,7 @@ router.get('/students/:id/details', async (req: AuthenticatedRequest, res) => {
 
     return res.json({
       student,
-      attempts: attempts.rows,
+      attempts,
       topicMastery: topicMastery.rows
     });
   } catch (error: any) {

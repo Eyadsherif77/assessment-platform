@@ -65,6 +65,8 @@ interface StudentItem {
   schoolType: string;
   section?: string | null;
   attemptsCount: number;
+  inProgressCount?: number;
+  standardExamsCount?: number;
   aiEvalsCount: number;
   avgScore: number | null;
   isActive: boolean;
@@ -889,6 +891,10 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'curriculum') {
       fetchAdminBooks();
+    } else if (activeTab === 'students') {
+      fetchStudents();
+    } else if (activeTab === 'teachers') {
+      fetchTeachers();
     }
   }, [activeTab]);
 
@@ -2430,9 +2436,9 @@ export const AdminDashboard: React.FC = () => {
       {/* TAB 2: STUDENTS MANAGEMENT */}
       {activeTab === 'students' && (
         <div>
-          {/* Search bar */}
-          <div style={{ marginBottom: '1.5rem', maxWidth: '450px' }}>
-            <div style={{ position: 'relative' }}>
+          {/* Controls: Search + Live Refresh */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '420px' }}>
               <Search size={16} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: language === 'ar' ? '0.85rem' : 'auto', left: language === 'en' ? '0.85rem' : 'auto', color: 'var(--text-muted)' }} />
               <input
                 type="text"
@@ -2443,6 +2449,15 @@ export const AdminDashboard: React.FC = () => {
                 style={{ paddingRight: language === 'ar' ? '2.5rem' : '0.85rem', paddingLeft: language === 'en' ? '2.5rem' : '0.85rem' }}
               />
             </div>
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={() => fetchStudents()}
+              disabled={studentsLoading}
+              style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <RefreshCw size={14} className={studentsLoading ? 'spin' : ''} />
+              <span>{language === 'ar' ? 'تحديث بيانات الطلاب الحية' : 'Refresh Live Data'}</span>
+            </button>
           </div>
 
           {studentsLoading ? (
@@ -2502,10 +2517,21 @@ export const AdminDashboard: React.FC = () => {
                         </span>
                       </td>
                       <td style={{ padding: '0.85rem 1rem', fontSize: '0.85rem' }}>
-                        <div><strong>{student.attemptsCount}</strong> {language === 'ar' ? 'امتحانات' : 'exams'}</div>
-                        {student.avgScore !== null && (
-                          <div style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 700 }}>
+                        <div>
+                          <strong>{student.attemptsCount}</strong> {language === 'ar' ? 'مكتمل' : 'completed'}
+                          {(student.inProgressCount || 0) > 0 && (
+                            <span style={{ fontSize: '0.72rem', color: '#D97706', marginInlineStart: '0.35rem', fontWeight: 700 }}>
+                              ({student.inProgressCount} {language === 'ar' ? 'قيد الحل' : 'in progress'})
+                            </span>
+                          )}
+                        </div>
+                        {student.attemptsCount > 0 && student.avgScore !== null ? (
+                          <div style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 800 }}>
                             {language === 'ar' ? 'متوسط: ' : 'Avg: '}{student.avgScore}%
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {language === 'ar' ? 'لا توجد درجات' : 'No scores'}
                           </div>
                         )}
                       </td>
@@ -2981,24 +3007,56 @@ export const AdminDashboard: React.FC = () => {
               <div>
                 {/* Recent Exam Attempts */}
                 <h4 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.75rem', color: 'var(--text-title)' }}>
-                  {language === 'ar' ? 'سجل الامتحانات المكتملة:' : 'Completed Exam History:'}
+                  {language === 'ar' ? 'سجل تقييمات وامتحانات الطالب:' : 'Student Assessment & Exam History:'}
                 </h4>
                 {selectedStudentForDetails.attempts && selectedStudentForDetails.attempts.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
-                    {selectedStudentForDetails.attempts.map((att: any) => (
-                      <div key={att.id} style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{att.exam_title}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{att.completed_at ? new Date(att.completed_at).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : (language === 'ar' ? 'مكتمل' : 'Completed')}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1.5rem', maxHeight: '280px', overflowY: 'auto' }}>
+                    {selectedStudentForDetails.attempts.map((att: any) => {
+                      const isCompleted = att.status === 'COMPLETED' || att.completed_at;
+                      const isAi = att.type === 'AI_GENERATED';
+                      return (
+                        <div key={att.id} style={{ padding: '0.75rem 1rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 800, fontSize: '0.88rem' }}>{att.exam_title}</span>
+                              <span className={`badge ${isAi ? 'badge-primary' : 'badge-secondary'}`} style={{ fontSize: '0.68rem', padding: '0.15rem 0.45rem' }}>
+                                {isAi ? (language === 'ar' ? '🤖 تقييم ذكي' : 'AI Eval') : (language === 'ar' ? '📝 اختبار مدرسي' : 'School Exam')}
+                              </span>
+                              {att.subject_name && (
+                                <span className="badge" style={{ fontSize: '0.68rem', background: '#E0E7FF', color: '#3730A3', padding: '0.15rem 0.45rem' }}>
+                                  {att.subject_name}
+                                </span>
+                              )}
+                              <span className={`badge ${isCompleted ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.68rem', padding: '0.15rem 0.45rem' }}>
+                                {isCompleted ? (language === 'ar' ? 'مكتمل' : 'Completed') : (language === 'ar' ? 'قيد الحل' : 'In Progress')}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                              {att.completed_at ? new Date(att.completed_at).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US') : (language === 'ar' ? 'جاري الحل' : 'Active')}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: language === 'ar' ? 'left' : 'right' }}>
+                            {isCompleted ? (
+                              <>
+                                <div style={{ fontWeight: 900, color: '#16A34A', fontSize: '1.15rem' }}>
+                                  {att.percentage != null ? `${att.percentage}%` : `${att.score}%`}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                  {att.score} / {att.total_points || att.score} {language === 'ar' ? 'درجة' : 'pts'}
+                                </div>
+                              </>
+                            ) : (
+                              <span style={{ fontSize: '0.8rem', color: '#D97706', fontWeight: 700 }}>
+                                {language === 'ar' ? 'قيد الإجراء...' : 'In Progress...'}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span style={{ fontWeight: 800, color: '#16A34A', fontSize: '1.1rem' }}>
-                          {att.score}%
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div style={{ padding: '1rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                  <div style={{ padding: '1rem', background: '#F8FAFC', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem', textAlign: 'center' }}>
                     {language === 'ar' ? 'لم يقم الطالب بأي محاولات اختبارات حتى الآن.' : 'No attempts recorded for this student yet.'}
                   </div>
                 )}

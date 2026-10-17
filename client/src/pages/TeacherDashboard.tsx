@@ -15,7 +15,8 @@ import {
   Clock,
   Award,
   Eye,
-  Search
+  Search,
+  Lock
 } from 'lucide-react';
 
 export const TeacherDashboard: React.FC = () => {
@@ -54,23 +55,51 @@ export const TeacherDashboard: React.FC = () => {
     } catch (_) {}
   };
 
-const PREP_STAGE_ID = '61998777-4c5f-4e51-bc0a-38de938c842a'; // المرحلة الإعدادية
-const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
 
-  // Teacher's assigned grades and subjects memoization
-  const teacherAssignedGrades: string[] = React.useMemo(() => {
+  // Resolve assigned grade strictly from teacher profile/assignments
+  const assignedGradeId = React.useMemo(() => {
+    if (user?.profile?.grade_id) return user.profile.grade_id;
+    const tAssign = user?.profile?.teaching_assignments;
+    if (Array.isArray(tAssign) && tAssign.length > 0) {
+      const g = typeof tAssign[0] === 'object' ? tAssign[0]?.grade_id : tAssign[0];
+      if (g) return g;
+    }
     const raw = user?.profile?.assigned_grades;
-    if (Array.isArray(raw) && raw.length > 0) return raw;
+    if (Array.isArray(raw) && raw.length > 0) return raw[0];
     if (typeof raw === 'string') {
       try {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
       } catch (_) {}
-      return [raw];
+      if (raw) return raw;
     }
-    if (user?.profile?.grade_id) return [user.profile.grade_id];
-    return [];
-  }, [user?.profile?.assigned_grades, user?.profile?.grade_id]);
+    return '';
+  }, [user?.profile]);
+
+  // Teacher's assigned grades and subjects memoization
+  const teacherAssignedGrades: string[] = React.useMemo(() => {
+    const list: string[] = [];
+    if (assignedGradeId) list.push(assignedGradeId);
+    const tAssign = user?.profile?.teaching_assignments;
+    if (Array.isArray(tAssign)) {
+      for (const a of tAssign) {
+        const gid = typeof a === 'object' ? a?.grade_id : a;
+        if (gid && !list.includes(gid)) list.push(gid);
+      }
+    }
+    const raw = user?.profile?.assigned_grades;
+    if (Array.isArray(raw)) {
+      for (const g of raw) if (g && !list.includes(g)) list.push(g);
+    } else if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const g of parsed) if (g && !list.includes(g)) list.push(g);
+        }
+      } catch (_) {}
+    }
+    return list;
+  }, [assignedGradeId, user?.profile]);
 
   const teacherAssignedSubjects: string[] = React.useMemo(() => {
     const raw = user?.profile?.assigned_subjects;
@@ -89,10 +118,23 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
   // Metadata - Linked strictly to Teacher's assigned Grade & Stage
   const [allGrades, setAllGrades] = useState<any[]>([]);
-  const [selectedStageId, setSelectedStageId] = useState(user?.profile?.academic_stage_id || PREP_STAGE_ID);
-  const [selectedGradeId, setSelectedGradeId] = useState(user?.profile?.grade_id || PREP_3_GRADE_ID);
+  const [selectedStageId, setSelectedStageId] = useState(user?.profile?.academic_stage_id || '');
+  const [selectedGradeId, setSelectedGradeId] = useState(assignedGradeId || user?.profile?.grade_id || '');
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState(user?.profile?.subject_id || '');
+
+  // Computed assigned grade display label
+  const assignedGradeLabel = React.useMemo(() => {
+    if (user?.profile?.grade_name_ar) {
+      return isAr ? user.profile.grade_name_ar : (user.profile.grade_name_en || user.profile.grade_name_ar);
+    }
+    const effectiveGradeId = selectedGradeId || assignedGradeId;
+    const found = allGrades.find(g => g.id === effectiveGradeId);
+    if (found) {
+      return isAr ? `${found.name_ar}${found.stage_name_ar ? ` (${found.stage_name_ar})` : ''}` : (found.name_en || found.name_ar);
+    }
+    return isAr ? 'الصف المعتمد' : 'Assigned Grade';
+  }, [user?.profile, allGrades, selectedGradeId, assignedGradeId, isAr]);
 
   // Fetch grades strictly locked to teacher's authorized grades
   useEffect(() => {
@@ -106,34 +148,24 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
             if (accessibleGrades.length === 0) accessibleGrades = data;
           }
           setAllGrades(accessibleGrades);
-          if (accessibleGrades.length > 0) {
-            const hasCurrent = accessibleGrades.some(g => g.id === selectedGradeId);
-            if (!hasCurrent) {
-              setSelectedGradeId(accessibleGrades[0].id);
-              setSelectedStageId(accessibleGrades[0].stage_id);
-            }
+          // Only fallback to accessible grade if no grade was assigned to teacher
+          if (!assignedGradeId && !selectedGradeId && accessibleGrades.length > 0) {
+            setSelectedGradeId(accessibleGrades[0].id);
+            setSelectedStageId(accessibleGrades[0].stage_id);
           }
         }
       })
       .catch(console.error);
-  }, [teacherAssignedGrades]);
-
-  const handleGradeChange = (newGradeId: string) => {
-    setSelectedGradeId(newGradeId);
-    const gr = allGrades.find(g => g.id === newGradeId);
-    if (gr?.stage_id) {
-      setSelectedStageId(gr.stage_id);
-    }
-  };
+  }, [teacherAssignedGrades, assignedGradeId, selectedGradeId]);
 
   useEffect(() => {
-    if (user?.profile?.grade_id) {
-      setSelectedGradeId(user.profile.grade_id);
+    if (assignedGradeId) {
+      setSelectedGradeId(assignedGradeId);
     }
     if (user?.profile?.academic_stage_id) {
       setSelectedStageId(user.profile.academic_stage_id);
     }
-  }, [user?.profile?.grade_id, user?.profile?.academic_stage_id]);
+  }, [assignedGradeId, user?.profile?.academic_stage_id]);
 
   // Books State
   const [books, setBooks] = useState<any[]>([]);
@@ -820,31 +852,31 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   </span>
                 </div>
 
-                {/* Grade Switcher (Choose between all grades) */}
+                {/* Active Grade (Locked / Read-Only from Teacher Profile) */}
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(255,255,255,0.08)', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.18)', flexWrap: 'wrap', marginInlineStart: '0.5rem' }}>
                   <span style={{ fontSize: '0.82rem', color: '#CBD5E1', fontWeight: 700 }}>
                     {isAr ? '🎓 الصف الدراسي النشط:' : '🎓 Active Grade:'}
                   </span>
-                  <select
-                    value={selectedGradeId}
-                    onChange={(e) => handleGradeChange(e.target.value)}
-                    style={{
-                      background: '#1E293B',
-                      color: '#FFFFFF',
-                      border: '1px solid #475569',
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <span style={{
+                      background: '#0F172A',
+                      color: '#38BDF8',
+                      border: '1px solid rgba(56, 189, 248, 0.45)',
                       borderRadius: 'var(--radius-sm)',
                       padding: '0.25rem 0.65rem',
                       fontWeight: 800,
                       fontSize: '0.82rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {allGrades.map(g => (
-                      <option key={g.id} value={g.id}>
-                        {isAr ? `${g.name_ar} (${g.stage_name_ar || ''})` : (g.name_en || g.name_ar)}
-                      </option>
-                    ))}
-                  </select>
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem'
+                    }}>
+                      <Lock size={13} style={{ color: '#38BDF8' }} />
+                      <span>{assignedGradeLabel}</span>
+                    </span>
+                    <span className="badge badge-success" style={{ fontSize: '0.7rem', fontWeight: 800 }}>
+                      {isAr ? 'مثبت من حساب المعلم 🔒' : 'Locked to Assigned Grade 🔒'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1434,7 +1466,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <span className="badge badge-primary" style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', fontWeight: 700 }}>
-                  {isAr ? 'الصف الثالث الإعدادي' : 'Prep 3 Grade'}
+                  {assignedGradeLabel}
                 </span>
                 <button
                   className="btn btn-outline btn-sm"
@@ -1455,9 +1487,11 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                 isChapterMatchingSubject(ch, activeSubjectName)
               );
 
-              const sortedDisplayChapters = [...displayChapters].sort((a, b) => b.mastery_percentage - a.mastery_percentage);
-              const topMasteredChapter = sortedDisplayChapters[0] || null;
-              const lowestMasteredChapter = sortedDisplayChapters.length > 1 ? sortedDisplayChapters[sortedDisplayChapters.length - 1] : null;
+              const hasCompletedAttempts = (teacherAnalytics?.stats?.total_attempts ?? 0) > 0;
+              const assessedChapters = displayChapters.filter((ch: any) => (ch.attempts_count || 0) > 0);
+              const sortedAssessedChapters = [...assessedChapters].sort((a, b) => b.mastery_percentage - a.mastery_percentage);
+              const topMasteredChapter = sortedAssessedChapters[0] || null;
+              const lowestMasteredChapter = sortedAssessedChapters.length > 1 ? sortedAssessedChapters[sortedAssessedChapters.length - 1] : null;
 
               const displayAttempts = (teacherAnalytics?.recent_attempts || []).filter((att: any) => {
                 const title = (att.exam_title || '').toLowerCase();
@@ -1486,7 +1520,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         {teacherAnalytics?.stats?.total_students ?? 0}
                       </div>
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        {isAr ? 'في المرحلة المعتمدة' : 'In prep grade'}
+                        {isAr ? `في ${assignedGradeLabel}` : 'In assigned grade'}
                       </span>
                     </div>
 
@@ -1495,13 +1529,15 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                           {isAr ? 'متوسط نسبة الإتقان' : 'Average Mastery'}
                         </span>
-                        <TrendingUp size={16} color="#16A34A" />
+                        <TrendingUp size={16} color={hasCompletedAttempts ? '#16A34A' : 'var(--text-muted)'} />
                       </div>
-                      <div style={{ fontSize: '1.9rem', fontWeight: 900, color: '#16A34A' }}>
-                        {teacherAnalytics?.stats?.avg_score != null ? `${Math.round(teacherAnalytics.stats.avg_score)}%` : '0%'}
+                      <div style={{ fontSize: '1.9rem', fontWeight: 900, color: hasCompletedAttempts ? '#16A34A' : 'var(--text-muted)' }}>
+                        {hasCompletedAttempts && teacherAnalytics?.stats?.avg_score != null ? `${Math.round(teacherAnalytics.stats.avg_score)}%` : '--'}
                       </div>
-                      <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 700 }}>
-                        {isAr ? '✓ مؤشر استيعاب تقييمي' : '✓ Assessment metric'}
+                      <span style={{ fontSize: '0.72rem', color: hasCompletedAttempts ? '#16A34A' : 'var(--text-muted)', fontWeight: 700 }}>
+                        {hasCompletedAttempts 
+                          ? (isAr ? '✓ مؤشر استيعاب تقييمي' : '✓ Assessment metric')
+                          : (isAr ? 'لا توجد تقييمات مكتملة حتى الآن' : 'No completed assessments')}
                       </span>
                     </div>
 
@@ -1515,8 +1551,10 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                       <div style={{ fontSize: '1.9rem', fontWeight: 900, color: 'var(--primary-700)' }}>
                         {teacherAnalytics?.stats?.total_attempts ?? 0}
                       </div>
-                      <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 700 }}>
-                        {isAr ? '✓ تفاعل ونشاط مستمر' : '✓ Active participation'}
+                      <span style={{ fontSize: '0.72rem', color: hasCompletedAttempts ? '#16A34A' : 'var(--text-muted)', fontWeight: 700 }}>
+                        {hasCompletedAttempts 
+                          ? (isAr ? '✓ تفاعل ونشاط مستمر' : '✓ Active participation')
+                          : (isAr ? 'لا توجد تقييمات مكتملة حتى الآن' : 'No completed assessments')}
                       </span>
                     </div>
 
@@ -1525,15 +1563,15 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                           {isAr ? 'أعلى وحدة استيعاباً' : 'Top Mastered Unit'}
                         </span>
-                        <Award size={16} color="#16A34A" />
+                        <Award size={16} color={topMasteredChapter ? '#16A34A' : 'var(--text-muted)'} />
                       </div>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#16A34A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {topMasteredChapter?.title_ar || (isAr ? 'قيد التقييم' : 'Assessing')}
+                      <div style={{ fontSize: '1.05rem', fontWeight: 900, color: topMasteredChapter ? '#16A34A' : 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {topMasteredChapter?.title_ar || (isAr ? 'لا توجد تقييمات مكتملة حتى الآن' : 'No completed assessments')}
                       </div>
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                         {topMasteredChapter 
                           ? (isAr ? `نسبة إتقان ${topMasteredChapter.mastery_percentage}%` : `${topMasteredChapter.mastery_percentage}% mastery rate`)
-                          : (isAr ? 'لا توجد بيانات بعد' : 'Pending data')}
+                          : (isAr ? 'في انتظار حل الطلاب للاختبارات' : 'Pending student attempts')}
                       </span>
                     </div>
 
@@ -1542,15 +1580,15 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                           {isAr ? 'وحدة تحتاج تعزيز' : 'Needs Reinforcement'}
                         </span>
-                        <AlertTriangle size={16} color="#DC2626" />
+                        <AlertTriangle size={16} color={lowestMasteredChapter ? '#DC2626' : 'var(--text-muted)'} />
                       </div>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#DC2626', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {lowestMasteredChapter?.title_ar || (isAr ? 'قيد التقييم' : 'Assessing')}
+                      <div style={{ fontSize: '1.05rem', fontWeight: 900, color: lowestMasteredChapter ? '#DC2626' : 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {lowestMasteredChapter?.title_ar || (isAr ? 'لا توجد تقييمات مكتملة حتى الآن' : 'No completed assessments')}
                       </div>
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                         {lowestMasteredChapter 
-                          ? (isAr ? 'يوصى بتكثيف التطبيقات' : 'Review recommended')
-                          : (isAr ? 'لا توجد بيانات بعد' : 'Pending data')}
+                          ? (isAr ? `يوصى بتكثيف التطبيقات (${lowestMasteredChapter.mastery_percentage}%)` : `Review recommended (${lowestMasteredChapter.mastery_percentage}%)`)
+                          : (isAr ? 'في انتظار حل الطلاب للاختبارات' : 'Pending student attempts')}
                       </span>
                     </div>
                   </div>
@@ -1571,69 +1609,87 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                     </span>
                   </div>
 
+                  {/* Empty state alert when no attempts completed */}
+                  {!hasCompletedAttempts && displayChapters.length > 0 && (
+                    <div style={{ padding: '0.85rem 1.25rem', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 'var(--radius-md)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#92400E' }}>
+                      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                        {isAr 
+                          ? 'لا توجد تقييمات مكتملة حتى الآن — الوحدات الدراسية مسجلة أدناه وفي انتظار أولى إجابات الطلاب لاحتساب نسب الإتقان الفعلية.' 
+                          : 'No completed assessments yet — units below are part of the curriculum and awaiting first student submissions.'}
+                      </span>
+                    </div>
+                  )}
+
                   {displayChapters.length > 0 ? (
-                    displayChapters.map((ch: any) => (
-                      <div 
-                        key={ch.id || ch.chapter_number} 
-                        style={{ 
-                          padding: '1rem', 
-                          borderRadius: 'var(--radius-md)', 
-                          background: 'var(--bg-subtle)', 
-                          marginBottom: '0.75rem',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.5rem'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                            <span style={{ 
-                              width: '26px', 
-                              height: '26px', 
-                              borderRadius: '50%', 
-                              background: 'var(--primary-100)', 
-                              color: 'var(--primary-800)', 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'center', 
-                              fontWeight: 800, 
-                              fontSize: '0.75rem' 
-                            }}>
-                              {ch.chapter_number}
-                            </span>
-                            <strong style={{ fontSize: '0.92rem' }}>{ch.title_ar}</strong>
+                    displayChapters.map((ch: any) => {
+                      const chAttempts = Number(ch.attempts_count || 0);
+                      const hasChAttempts = chAttempts > 0;
+                      return (
+                        <div 
+                          key={ch.id || ch.chapter_number} 
+                          style={{ 
+                            padding: '1rem', 
+                            borderRadius: 'var(--radius-md)', 
+                            background: 'var(--bg-subtle)', 
+                            marginBottom: '0.75rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.5rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                              <span style={{ 
+                                width: '26px', 
+                                height: '26px', 
+                                borderRadius: '50%', 
+                                background: 'var(--primary-100)', 
+                                color: 'var(--primary-800)', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                fontWeight: 800, 
+                                fontSize: '0.75rem' 
+                              }}>
+                                {ch.chapter_number}
+                              </span>
+                              <strong style={{ fontSize: '0.92rem' }}>{ch.title_ar}</strong>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {isAr ? `${chAttempts} تقييم محلول` : `${chAttempts} solved assessments`}
+                              </span>
+                              <span 
+                                className={`badge ${!hasChAttempts ? 'badge-secondary' : ch.mastery_percentage >= 80 ? 'badge-success' : ch.mastery_percentage >= 50 ? 'badge-warning' : 'badge-danger'}`}
+                                style={{ fontSize: '0.75rem', fontWeight: 700 }}
+                              >
+                                {!hasChAttempts 
+                                  ? (isAr ? 'لم يُقيّم بعد' : 'Not Assessed') 
+                                  : ch.mastery_percentage >= 80 ? (isAr ? 'متقن 🌟' : 'Mastered 🌟') : ch.mastery_percentage >= 50 ? (isAr ? 'قيد التطوير 📈' : 'Developing 📈') : (isAr ? 'بحاجة لدعم ⚠️' : 'Needs Support ⚠️')}
+                              </span>
+                              <strong style={{ fontSize: '0.95rem', minWidth: '42px', textAlign: isAr ? 'left' : 'right', color: hasChAttempts ? 'inherit' : 'var(--text-muted)' }}>
+                                {hasChAttempts ? `${ch.mastery_percentage}%` : '--'}
+                              </strong>
+                            </div>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              {isAr ? `${ch.attempts_count || 15} تقييم محلول` : `${ch.attempts_count || 15} solved assessments`}
-                            </span>
-                            <span 
-                              className={`badge ${ch.mastery_percentage >= 80 ? 'badge-success' : ch.mastery_percentage >= 50 ? 'badge-warning' : 'badge-danger'}`}
-                              style={{ fontSize: '0.75rem', fontWeight: 700 }}
-                            >
-                              {ch.mastery_percentage >= 80 ? (isAr ? 'متقن 🌟' : 'Mastered 🌟') : ch.mastery_percentage >= 50 ? (isAr ? 'قيد التطوير 📈' : 'Developing 📈') : (isAr ? 'بحاجة لدعم ⚠️' : 'Needs Support ⚠️')}
-                            </span>
-                            <strong style={{ fontSize: '0.95rem', minWidth: '42px', textAlign: isAr ? 'left' : 'right' }}>
-                              {ch.mastery_percentage}%
-                            </strong>
+                          {/* Progress Bar */}
+                          <div style={{ width: '100%', height: '8px', background: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div 
+                              style={{ 
+                                width: hasChAttempts ? `${Math.min(ch.mastery_percentage, 100)}%` : '0%', 
+                                height: '100%', 
+                                background: ch.mastery_percentage >= 80 ? 'linear-gradient(90deg, #10B981, #059669)' : ch.mastery_percentage >= 50 ? 'linear-gradient(90deg, #F59E0B, #D97706)' : 'linear-gradient(90deg, #EF4444, #DC2626)',
+                                borderRadius: '4px',
+                                transition: 'width 0.4s ease'
+                              }} 
+                            />
                           </div>
                         </div>
-
-                        {/* Progress Bar */}
-                        <div style={{ width: '100%', height: '8px', background: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
-                          <div 
-                            style={{ 
-                              width: `${Math.min(ch.mastery_percentage, 100)}%`, 
-                              height: '100%', 
-                              background: ch.mastery_percentage >= 80 ? 'linear-gradient(90deg, #10B981, #059669)' : ch.mastery_percentage >= 50 ? 'linear-gradient(90deg, #F59E0B, #D97706)' : 'linear-gradient(90deg, #EF4444, #DC2626)',
-                              borderRadius: '4px',
-                              transition: 'width 0.4s ease'
-                            }} 
-                          />
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
                       <BookOpen size={36} style={{ opacity: 0.35, marginBottom: '0.6rem' }} />
@@ -1730,7 +1786,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                         <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
                           <Users size={36} style={{ opacity: 0.35, marginBottom: '0.6rem' }} />
                           <p style={{ fontWeight: 800, margin: 0, fontSize: '0.95rem' }}>
-                            {isAr ? 'لا توجد محاولات أو تقييمات مسجلة بعد في هذه المادة' : 'No student attempts recorded yet for this subject'}
+                            {isAr ? 'لا توجد تقييمات مكتملة حتى الآن' : 'No completed assessments yet'}
                           </p>
                           <p style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
                             {isAr ? 'بمجرد أن يخوض الطلاب تقييمات المادة ستظهر سجلاتهم ودرجاتهم هنا' : 'Student scores and submissions will appear here once submitted'}
