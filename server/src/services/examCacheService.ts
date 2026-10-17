@@ -27,6 +27,7 @@ export interface ExamGenerationParameters {
   difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED';
   language?: 'ar' | 'en';
   bloomLevels?: string[];
+  styleReferenceId?: string | null;
 }
 
 export interface CachedExamRecord {
@@ -233,7 +234,8 @@ export class ExamCacheService {
       questionTypes: params.questionTypes && params.questionTypes.length > 0 ? [...new Set(params.questionTypes)].sort() : ['MULTIPLE_CHOICE'],
       difficulty: params.difficulty || 'MEDIUM',
       language: params.language || 'ar',
-      bloomLevels: params.bloomLevels && params.bloomLevels.length > 0 ? [...new Set(params.bloomLevels)].sort() : undefined
+      bloomLevels: params.bloomLevels && params.bloomLevels.length > 0 ? [...new Set(params.bloomLevels)].sort() : undefined,
+      styleReferenceId: params.styleReferenceId ? String(params.styleReferenceId).trim() : null
     };
 
     const serialized = JSON.stringify(normalizedParams);
@@ -360,6 +362,170 @@ export class ExamCacheService {
     }
 
     return { isAuthorized: true };
+  }
+
+  /**
+   * Resolve authoritative subject ID for a teacher from their profile/account.
+   */
+  public static async resolveTeacherSubjectId(teacherId: string): Promise<string | null> {
+    if (!teacherId) return null;
+    const res = await db.query(
+      `SELECT u.subject_id as user_subject_id, tp.subject_id as profile_subject_id, tp.specialization
+       FROM users u
+       LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+       WHERE u.id = $1`,
+      [teacherId]
+    );
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    if (row.profile_subject_id) return row.profile_subject_id;
+    if (row.user_subject_id) return row.user_subject_id;
+    if (row.specialization) {
+      const specClean = row.specialization.replace(/^(اللغة|مادة|معلم أول|معلم)\s+/i, '').trim();
+      const sRes = await db.query(
+        `SELECT id FROM subjects WHERE name_ar LIKE $1 OR name_en LIKE $1 LIMIT 1`,
+        [`%${specClean}%`]
+      );
+      if (sRes.rows.length > 0) return sRes.rows[0].id;
+    }
+    return null;
+  }
+
+  /**
+   * Load style guidance from a designated style reference exam.
+   * - Enforces exact curriculum scope match (subject, grade, stage, term, unit).
+   * - Enforces teacher ownership/authorization.
+   * - Teaches style only (wording, structure, options, difficulty) - never copies questions or treats answer key as facts.
+   * - Uses zero paid AI calls (extracts style pattern directly from database).
+   * - Safe fallback on missing reference or retrieval failure without blocking exam generation.
+   */
+  public static async loadStyleGuidanceForReference(
+    styleReferenceId: string,
+    identity: AuthoritativeCurriculumIdentity,
+    options?: {
+      teacherId?: string;
+      userRole?: string;
+      chapterId?: string;
+    }
+  ): Promise<{ styleGuidance: string | null; error?: string; status?: number }> {
+    if (!styleReferenceId || typeof styleReferenceId !== 'string') {
+      return { styleGuidance: null };
+    }
+
+    try {
+      const examRes = await db.query(
+        `SELECT id, teacher_id, subject_id, academic_stage_id, grade_id, term, chapter_id, is_style_reference
+         FROM exams WHERE id = $1`,
+        [styleReferenceId.trim()]
+      );
+
+      // Missing reference fallback: fail safe, do not block generation
+      if (examRes.rows.length === 0) {
+        console.warn(`⚠️ [StyleReference] Reference '${styleReferenceId}' not found. Falling back to default generation.`);
+        return { styleGuidance: null };
+      }
+
+      const ref = examRes.rows[0];
+
+      // Ownership & authorization check
+      const isAdmin = options?.userRole === 'ADMIN' || options?.userRole === 'SUPERVISOR' || options?.userRole === 'CENTRAL_ADMIN';
+      if (options?.teacherId && !isAdmin && ref.teacher_id !== options.teacherId) {
+        return {
+          styleGuidance: null,
+          error: 'UNAUTHORIZED_REFERENCE: مرجع الأسلوب المختار لا ينتمي إلى حسابك',
+          status: 403
+        };
+      }
+
+      // Exact scope matching checks (fails closed on mismatch)
+      if (ref.subject_id !== identity.subjectId) {
+        return {
+          styleGuidance: null,
+          error: `STYLE_REFERENCE_SUBJECT_MISMATCH: مرجع الأسلوب يتبع مادة '${ref.subject_id}' والمطلوب '${identity.subjectId}'`,
+          status: 400
+        };
+      }
+
+      if (ref.grade_id && ref.grade_id !== identity.gradeId) {
+        return {
+          styleGuidance: null,
+          error: `STYLE_REFERENCE_GRADE_MISMATCH: مرجع الأسلوب يتبع الصف '${ref.grade_id}' والمطلوب '${identity.gradeId}'`,
+          status: 400
+        };
+      }
+
+      if (ref.academic_stage_id && ref.academic_stage_id !== identity.academicStageId) {
+        return {
+          styleGuidance: null,
+          error: `STYLE_REFERENCE_STAGE_MISMATCH: مرجع الأسلوب يتبع المرحلة '${ref.academic_stage_id}' والمطلوب '${identity.academicStageId}'`,
+          status: 400
+        };
+      }
+
+      if (ref.term && Number(ref.term) !== identity.term) {
+        return {
+          styleGuidance: null,
+          error: `STYLE_REFERENCE_TERM_MISMATCH: مرجع الأسلوب للترم ${ref.term} والمطلوب الترم ${identity.term}`,
+          status: 400
+        };
+      }
+
+      if (options?.chapterId && ref.chapter_id && ref.chapter_id !== options.chapterId) {
+        return {
+          styleGuidance: null,
+          error: `STYLE_REFERENCE_UNIT_MISMATCH: مرجع الأسلوب يتبع الوحدة '${ref.chapter_id}' والمطلوب '${options.chapterId}'`,
+          status: 400
+        };
+      }
+
+      // Zero paid AI calls: Extract style pattern directly from database questions
+      const qRes = await db.query(
+        `SELECT eq.question_text, eq.question_type, eq.points,
+                eqo.option_text, eqo.is_correct
+         FROM exam_questions eq
+         LEFT JOIN exam_question_options eqo ON eq.id = eqo.question_id
+         WHERE eq.exam_id = $1
+         ORDER BY eq.order_index ASC
+         LIMIT 40`,
+        [ref.id]
+      );
+
+      if (qRes.rows.length === 0) {
+        return { styleGuidance: null };
+      }
+
+      // Group options by question_text
+      const questionsMap = new Map<string, { text: string; options: string[] }>();
+      for (const row of qRes.rows) {
+        if (!questionsMap.has(row.question_text)) {
+          questionsMap.set(row.question_text, { text: row.question_text, options: [] });
+        }
+        if (row.option_text) {
+          questionsMap.get(row.question_text)!.options.push(row.option_text);
+        }
+      }
+
+      const sampleQuestions = Array.from(questionsMap.values()).slice(0, 4);
+      const styleLines: string[] = [
+        `نماذج من صياغة وبنية الأسئلة المعتمدة لدى المعلم للاسترشاد بطريقة الصياغة وطول الخيارات وأسلوب المشتتات:`
+      ];
+
+      sampleQuestions.forEach((sq, idx) => {
+        styleLines.push(`${idx + 1}. صيغة السؤال: "${sq.text}"`);
+        if (sq.options.length > 0) {
+          styleLines.push(`   أمثلة على طول وشكل الخيارات: [${sq.options.slice(0, 4).map(o => `"${o}"`).join('، ')}]`);
+        }
+      });
+
+      styleLines.push(
+        `تنبيه صارم: استخدم هذه النماذج كمرجع لأسلوب الصياغة ومستوى الصعوبة وشكل الخيارات فقط. لا تنسخ هذه الأسئلة أو إجاباتها، واعتمد حصرياً على نصوص الكتاب المدرسي المرفق كمصدر وحيد للمحتوى والإجابات الصحيحة.`
+      );
+
+      return { styleGuidance: styleLines.join('\n') };
+    } catch (dbErr: any) {
+      console.warn(`⚠️ [StyleReference] Safe retrieval fallback on error:`, dbErr?.message || dbErr);
+      return { styleGuidance: null };
+    }
   }
 
   /**

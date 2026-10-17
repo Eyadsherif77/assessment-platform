@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS exams (
     chapter_id TEXT REFERENCES book_chapters(id) ON DELETE SET NULL,
     duration_minutes INTEGER DEFAULT 30,
     is_published INTEGER DEFAULT 0,
+    is_style_reference INTEGER DEFAULT 0,
     school_type TEXT DEFAULT 'كلاهما',
     created_at TEXT DEFAULT (datetime('now'))
 );

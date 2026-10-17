@@ -2001,6 +2001,7 @@ Return valid JSON with exact keys:
     count?: number;
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED';
     generationSessionId?: string;
+    styleGuidance?: string | null;
   }): Promise<GroundedQuestion[]> {
     const requiredCount = params.count || 3;
 
@@ -2134,7 +2135,8 @@ Return valid JSON with exact keys:
             gradeId: params.gradeId,
             subjectId: params.subjectId,
             difficulty: params.difficulty,
-            generationSessionId: params.generationSessionId
+            generationSessionId: params.generationSessionId,
+            styleGuidance: params.styleGuidance
           }
         );
         if (rawAiQuestions && rawAiQuestions.length > 0) {
@@ -2196,7 +2198,9 @@ Return valid JSON with exact keys:
                 studentId: params.studentId,
                 gradeId: params.gradeId,
                 subjectId: params.subjectId,
-                generationSessionId: params.generationSessionId
+                difficulty: params.difficulty,
+                generationSessionId: params.generationSessionId,
+                styleGuidance: params.styleGuidance
               }
             );
 
@@ -2380,6 +2384,7 @@ Return valid JSON with exact keys:
       subjectId?: string;
       difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'BALANCED';
       generationSessionId?: string;
+      styleGuidance?: string | null;
     }
   ): Promise<GroundedQuestion[] | null> {
     const isEn = language === 'en';
@@ -2399,6 +2404,18 @@ Return valid JSON with exact keys:
       : '';
     const diffInstAr = stageGradeInfo?.difficulty
       ? `\nمستوى الصعوبة المطلوب: ${stageGradeInfo.difficulty === 'EASY' ? 'سهل (تركيز على المفاهيم المباشرة والتعريفات)' : stageGradeInfo.difficulty === 'HARD' ? 'صعب (تركيز على التفكير التحليلي، المسائل، والتطبيقات العميقة)' : 'متوسط متوازن بين الفهم والتطبيق'}.\n`
+      : '';
+
+    const styleGuidanceSection = stageGradeInfo?.styleGuidance
+      ? (isEn
+          ? `\nStyle Reference (Learn style only, NOT academic content):\n` +
+            `The teacher provided question style patterns for guidance. Use this style for phrasing, cognitive level, distractor structure, and tone.\n` +
+            `Do NOT copy questions verbatim. Do NOT treat these as factual knowledge for the current unit:\n` +
+            `${stageGradeInfo.styleGuidance}\n`
+          : `\nمرجع الأسلوب (تعلّم الأسلوب فقط، وليس المحتوى الأكاديمي):\n` +
+            `أعطاك المعلم نماذج أسئلة للاسترشاد بأسلوبها فقط. استخدم هذا الأسلوب في صياغة أسئلتك من حيث الطريقة والمستوى المعرفي وبنية الخيارات واللغة.\n` +
+            `لا تنسخ الأسئلة حرفياً. لا تعتبر إجابات هذه الأسئلة حقائق للوحدة الحالية:\n` +
+            `${stageGradeInfo.styleGuidance}\n`)
       : '';
 
     // 40% Knowledge, 30% Understanding, 20% Application, 10% Analysis
@@ -2453,7 +2470,7 @@ Teacher Language & Educational Quality Rules (STRICT):
    - Maximum 1–2 short sentences written as a teacher's direct answer key using clear, simple school-level English.
 7. ZERO document structure: Never mention page numbers, chapters, lessons, units, headings, or publisher info.
 8. MANDATORY GROUNDING: The correct answer (or its key terms) must appear explicitly in the provided content. Do not ask questions whose answers must come from outside the provided content.
-${avoidanceNotice}
+${avoidanceNotice}${styleGuidanceSection}
 Educational Textbook Content:
 ${contextText}
 
@@ -2502,7 +2519,7 @@ Respond ONLY with a valid JSON array of objects (no markdown, no code fences, no
    - جملة أو جملتان قصيرتان كنموذج إجابة معلم (مباشر ومحدد بلغة فصحى تعليمية واضحة ورصينة).
 7. ممنوع تماماً ذكر أرقام الصفحات أو الفصول أو الوحدات أو أي معلومات وصفية.
 8. التوثيق الإلزامي: يجب أن تكون الإجابة الصحيحة (أو مصطلحها/كلماتها الأساسية) واردة صراحةً في المحتوى المرفق، وأن تُبنى أسئلة النحو والإعراب والصرف على كلمات وجمل وقواعد وردت فعلاً في المحتوى. يُمنع طرح أسئلة تتطلب إجابات من خارج المحتوى (مثل أوزان أو إعراب كلمات لم ترد فيه)، ويُمنع أن تختلف خيارات السؤال عن بعضها بالتشكيل فقط.
-${avoidanceNotice}
+${avoidanceNotice}${styleGuidanceSection}
 المحتوى التعليمي المقرر لمادة (${subjTitleAr}):
 ${contextText}
 

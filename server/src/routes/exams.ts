@@ -221,12 +221,13 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
     }
 
     const creatorGovId = governorate_id || req.user?.governorateId || null;
+    const is_style_reference = (req.body.is_style_reference === true || req.body.is_style_reference === 1 || req.body.is_style_reference === '1') ? 1 : 0;
     const examId = uuidv4();
     await db.query(
       `INSERT INTO exams (
          id, title_ar, title_en, teacher_id, academic_stage_id, grade_id, subject_id,
-         book_id, chapter_id, duration_minutes, is_published, school_type, governorate_id, term
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+         book_id, chapter_id, duration_minutes, is_published, is_style_reference, school_type, governorate_id, term
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         examId,
         title_ar.trim(),
@@ -239,6 +240,7 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
         chapter_id || null,
         duration_minutes,
         is_published ? 1 : 0,
+        is_style_reference,
         finalSchoolType,
         creatorGovId,
         finalExamTerm
@@ -297,6 +299,94 @@ router.patch('/:id/publish', authenticateToken, requireRole(['TEACHER', 'ADMIN']
     return res.json({ message: 'تم تحديث حالة نشر الاختبار بنجاح' });
   } catch (err: any) {
     return res.status(500).json({ error: 'خطأ في تحديث حالة النشر' });
+  }
+});
+
+// Toggle style reference status (Teacher or Admin)
+router.patch('/:id/style-reference', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { is_style_reference } = req.body;
+    const val = (is_style_reference === true || is_style_reference === 1 || is_style_reference === '1') ? 1 : 0;
+
+    const examCheck = await db.query('SELECT id, teacher_id FROM exams WHERE id = $1', [id]);
+    if (examCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'الاختبار غير موجود' });
+    }
+
+    const exam = examCheck.rows[0];
+    const isAdmin = req.user!.role === 'ADMIN' || req.user!.role === 'SUPERVISOR' || req.user!.role === 'CENTRAL_ADMIN';
+    if (!isAdmin && exam.teacher_id !== req.user!.id) {
+      return res.status(403).json({ error: 'غير مصرح بتعديل اختبار لمعلم آخر' });
+    }
+
+    await db.query('UPDATE exams SET is_style_reference = $1 WHERE id = $2', [val, id]);
+
+    return res.json({
+      message: val ? 'تم تعيين الاختبار كمرجع لأسلوب الأسئلة' : 'تم إلغاء تعيين مرجع الأسلوب',
+      id,
+      is_style_reference: val
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في تحديث تعيين مرجع الأسلوب: ' + err.message });
+  }
+});
+
+// Query eligible style references for teachers (exact scope matching: subject, grade, term, unit)
+router.get('/style-references', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { grade_id, term, chapter_id, subject_id } = req.query;
+
+    let targetSubjectId = subject_id as string | undefined;
+    const isAdmin = req.user!.role === 'ADMIN' || req.user!.role === 'SUPERVISOR' || req.user!.role === 'CENTRAL_ADMIN';
+
+    // The teacher's subject comes from their authenticated account; do not ask them to select it again.
+    if (!isAdmin) {
+      targetSubjectId = await ExamCacheService.resolveTeacherSubjectId(req.user!.id) || undefined;
+      if (!targetSubjectId) {
+        return res.status(403).json({ error: 'لا يمكن تحديد مادة المعلم المعتمدة' });
+      }
+    }
+
+    let sql = `
+      SELECT e.id, e.title_ar, e.title_en, e.created_at, e.term, e.grade_id, e.chapter_id, e.subject_id,
+             (SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id) AS questions_count
+      FROM exams e
+      WHERE e.is_style_reference = 1
+    `;
+    const params: any[] = [];
+
+    if (!isAdmin) {
+      params.push(req.user!.id);
+      sql += ` AND e.teacher_id = $${params.length}`;
+    }
+
+    if (targetSubjectId) {
+      params.push(targetSubjectId);
+      sql += ` AND e.subject_id = $${params.length}`;
+    }
+
+    if (grade_id) {
+      params.push(grade_id);
+      sql += ` AND e.grade_id = $${params.length}`;
+    }
+
+    if (term) {
+      params.push(Number(term));
+      sql += ` AND e.term = $${params.length}`;
+    }
+
+    if (chapter_id) {
+      params.push(chapter_id);
+      sql += ` AND e.chapter_id = $${params.length}`;
+    }
+
+    sql += ` ORDER BY e.created_at DESC`;
+
+    const result = await db.query(sql, params);
+    return res.json({ style_references: result.rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب مراجع الأسلوب: ' + err.message });
   }
 });
 

@@ -143,6 +143,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
   const [newExamTitle, setNewExamTitle] = useState('');
   const [examDuration, setExamDuration] = useState('30');
   const [examSchoolType, setExamSchoolType] = useState<'عربي' | 'لغات' | 'كلاهما'>('كلاهما');
+  const [isStyleReference, setIsStyleReference] = useState<boolean>(false);
   const [examQuestions, setExamQuestions] = useState<any[]>([
     {
       question_text: '',
@@ -545,6 +546,29 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
     }
   };
 
+  // Toggle style reference status
+  const handleToggleStyleReference = async (examId: string, currentVal: any) => {
+    try {
+      const newVal = (currentVal === true || currentVal === 1 || currentVal === '1') ? 0 : 1;
+      const res = await fetch(apiUrl(`/api/exams/${examId}/style-reference`), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ is_style_reference: newVal })
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || (isAr ? 'فشل تحديث مرجع الأسلوب' : 'Failed to update style reference'));
+      }
+      loadTeacherData();
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || (isAr ? 'فشل تحديث مرجع الأسلوب' : 'Failed to update style reference'));
+    }
+  };
+
   // Create exam handler
   const handleCreateExam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -569,6 +593,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
           duration_minutes: parseInt(examDuration, 10) || 30,
           school_type: examSchoolType,
           is_published: true,
+          is_style_reference: isStyleReference ? 1 : 0,
           questions: examQuestions
         })
       });
@@ -578,6 +603,7 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
 
       alert('تم إنشاء ونشر الاختبار بنجاح!');
       setNewExamTitle('');
+      setIsStyleReference(false);
       loadTeacherData();
       setActiveTab('exams');
     } catch (err: any) {
@@ -1035,10 +1061,17 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
               {exams.map(exam => (
                 <div key={exam.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <span className="badge badge-primary">
-                        {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
-                      </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <span className="badge badge-primary">
+                          {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
+                        </span>
+                        {(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1') && (
+                          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontWeight: 700, border: '1px solid #c7d2fe' }}>
+                            🎨 {isAr ? 'مرجع أسلوب' : 'Style Reference'}
+                          </span>
+                        )}
+                      </div>
                       <span className={`badge ${exam.is_published ? 'badge-success' : 'badge-warning'}`}>
                         {exam.is_published ? (isAr ? 'منشور' : 'Published') : (isAr ? 'مسودة' : 'Draft')}
                       </span>
@@ -1050,21 +1083,36 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   </div>
 
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleOpenSubmissionsModal(exam)}
+                        style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <Eye size={15} />
+                        <span>{isAr ? `إجابات وتسليمات الطلاب (${exam.submissions_count || 0})` : `Submissions (${exam.submissions_count || 0})`}</span>
+                      </button>
+                      <button
+                        className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-secondary'}`}
+                        onClick={() => handleTogglePublish(exam.id, exam.is_published)}
+                      >
+                        {exam.is_published 
+                          ? (isAr ? 'إلغاء النشر' : 'Unpublish') 
+                          : (isAr ? 'نشر الاختبار للطلاب' : 'Publish to Students')}
+                      </button>
+                    </div>
                     <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleOpenSubmissionsModal(exam)}
-                      style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      className={`btn btn-sm ${(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1') ? 'btn-outline' : 'btn-secondary'}`}
+                      onClick={() => handleToggleStyleReference(exam.id, exam.is_style_reference)}
+                      title={isAr ? 'تحديد أو إلغاء اعتماد هذا الامتحان كمرجع أسلوبي لتوليد الأسئلة' : 'Toggle style reference status for AI generation'}
+                      style={{ fontWeight: 700, fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                     >
-                      <Eye size={15} />
-                      <span>{isAr ? `إجابات وتسليمات الطلاب (${exam.submissions_count || 0})` : `Submissions (${exam.submissions_count || 0})`}</span>
-                    </button>
-                    <button
-                      className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-secondary'}`}
-                      onClick={() => handleTogglePublish(exam.id, exam.is_published)}
-                    >
-                      {exam.is_published 
-                        ? (isAr ? 'إلغاء النشر' : 'Unpublish') 
-                        : (isAr ? 'نشر الاختبار للطلاب' : 'Publish to Students')}
+                      <span>🎨</span>
+                      <span>
+                        {(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1')
+                          ? (isAr ? 'إلغاء كمرجع أسلوب' : 'Remove Style Ref')
+                          : (isAr ? '«استخدم كمرجع لأسلوب الأسئلة»' : 'Use as Style Reference')}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -1205,6 +1253,47 @@ const PREP_3_GRADE_ID = '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف ال
                   </select>
                   <div style={{ fontSize: '0.72rem', color: 'var(--primary-700)', marginTop: '0.25rem', fontWeight: 600 }}>
                     {isAr ? '🔗 سيظهر الاختبار حصرياً لطلاب الصف ونوع المدرسة المحددين.' : '🔗 Strictly linked only to students matching this grade & school type.'}
+                  </div>
+                </div>
+
+                {/* Style Reference Checkbox */}
+                <div 
+                  style={{
+                    marginTop: '1rem',
+                    padding: '1rem 1.25rem',
+                    borderRadius: 'var(--radius-lg)',
+                    background: isStyleReference ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-subtle)',
+                    border: isStyleReference ? '1.5px solid var(--primary-500, #4f46e5)' : '1px solid var(--border-light)',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer'
+                  }} 
+                  onClick={() => setIsStyleReference(!isStyleReference)}
+                >
+                  <input
+                    type="checkbox"
+                    id="is-style-ref-checkbox"
+                    checked={isStyleReference}
+                    onChange={e => setIsStyleReference(e.target.checked)}
+                    onClick={e => e.stopPropagation()}
+                    style={{ marginTop: '0.25rem', width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <label 
+                      htmlFor="is-style-ref-checkbox" 
+                      style={{ fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, color: isStyleReference ? 'var(--primary-700, #4338ca)' : 'inherit' }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <span>🎨</span>
+                      <span>{isAr ? '«استخدم كمرجع لأسلوب الأسئلة»' : '«Use as Style Reference for Questions»'}</span>
+                    </label>
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      {isAr 
+                        ? 'عند تفعيل هذا الخيار، سيتم اعتماد نمط وصياغة أسئلة هذا الاختبار كنموذج أسلوبي للذكاء الاصطناعي عند توليد اختبارات جديدة لنفس مادتك وصفك الدراسي (دون نسخ الأسئلة نصياً).' 
+                        : 'When enabled, this exam\'s question phrasing style and structure will serve as an AI reference pattern for future quizzes in your subject & grade (without duplicating questions).'}
+                    </p>
                   </div>
                 </div>
 

@@ -14,9 +14,9 @@ import { AiUsageMetricsService } from '../services/aiUsageMetricsService.js';
 const router = Router();
 
 // Generate AI Grounded Assessment
-router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
+router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHER', 'ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN']), enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
-    const { book_id, chapter_id, subject_id, count = 3, difficulty, exam_type } = req.body;
+    const { book_id, chapter_id, subject_id, count = 3, difficulty, exam_type, style_reference_id } = req.body;
 
     if (!book_id || !chapter_id || !subject_id) {
       return res.status(400).json({ error: 'الرجاء اختيار المادة والكتاب والفصل الدراسي للتقييم' });
@@ -40,20 +40,22 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       }
     }
 
-    // Check student's monthly exam limit across all subjects
-    const limitStatus = await checkStudentExamLimit(req.user!.id);
-    if (!limitStatus.allowed) {
-      return res.status(403).json({
-        error: limitStatus.message,
-        code: 'MONTHLY_EXAM_LIMIT_REACHED',
-        limit: limitStatus.limit,
-        currentCount: limitStatus.currentCount
-      });
-    }
+    // If student, check monthly exam limit and profile completeness
+    if (req.user?.role === 'STUDENT') {
+      const limitStatus = await checkStudentExamLimit(req.user.id);
+      if (!limitStatus.allowed) {
+        return res.status(403).json({
+          error: limitStatus.message,
+          code: 'MONTHLY_EXAM_LIMIT_REACHED',
+          limit: limitStatus.limit,
+          currentCount: limitStatus.currentCount
+        });
+      }
 
-    const studentProfile = req.studentProfile;
-    if (!studentProfile) {
-      return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
+      const studentProfile = req.studentProfile;
+      if (!studentProfile) {
+        return res.status(403).json({ error: 'بيانات الملف الدراسي للطالب غير متوفرة' });
+      }
     }
 
     // 1. Authoritative Curriculum Identity Resolution (Graceful fail-closed if book not found)
@@ -70,27 +72,54 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       throw idErr;
     }
 
-    // 2. Validate Selection Consistency against DB authoritative truth
-    const consistency = ExamCacheService.validateSelectionConsistency(identity, {
-      subjectId: subject_id,
-      gradeId: studentProfile.gradeId,
-      academicStageId: studentProfile.academicStageId
-    });
-    if (!consistency.isValid) {
-      return res.status(400).json({ error: consistency.error });
+    // 2. Validate Selection Consistency & Eligibility
+    if (req.user?.role === 'STUDENT') {
+      const studentProfile = req.studentProfile!;
+      const consistency = ExamCacheService.validateSelectionConsistency(identity, {
+        subjectId: subject_id,
+        gradeId: studentProfile.gradeId,
+        academicStageId: studentProfile.academicStageId
+      });
+      if (!consistency.isValid) {
+        return res.status(400).json({ error: consistency.error });
+      }
+
+      const eligibility = await ExamCacheService.validateStudentEligibility(req.user.id, identity);
+      if (!eligibility.isEligible) {
+        return res.status(403).json({ error: eligibility.reason });
+      }
+    } else if (req.user?.role === 'TEACHER') {
+      const tAuth = await ExamCacheService.validateTeacherAuthorization(req.user.id, identity);
+      if (!tAuth.isAuthorized) {
+        return res.status(403).json({ error: tAuth.reason || 'غير مصرح للمعلم بتوليد اختبار لهذه المادة أو الكتاب' });
+      }
     }
 
-    // 3. Validate Student Eligibility (Stage, Grade, School Type)
-    const eligibility = await ExamCacheService.validateStudentEligibility(req.user!.id, identity);
-    if (!eligibility.isEligible) {
-      return res.status(403).json({ error: eligibility.reason });
+    // 3. Style Reference Validation & Guidance Extraction (Zero paid AI calls, DB-only)
+    let styleGuidance: string | null = null;
+    if (style_reference_id && typeof style_reference_id === 'string' && style_reference_id.trim()) {
+      const styleRes = await ExamCacheService.loadStyleGuidanceForReference(
+        style_reference_id.trim(),
+        identity,
+        {
+          teacherId: req.user?.role === 'TEACHER' ? req.user.id : undefined,
+          userRole: req.user?.role,
+          chapterId: chapter_id
+        }
+      );
+      if (styleRes.error) {
+        return res.status(styleRes.status || 400).json({
+          error: styleRes.error,
+          code: 'INVALID_STYLE_REFERENCE'
+        });
+      }
+      styleGuidance = styleRes.styleGuidance;
     }
 
     // 4. Verify chapter belongs to book and normalize unit selection
     await ExamCacheService.normalizeAndValidateUnitSelection(book_id, chapter_id);
 
-    // 4.5 Explicit Readiness Gate (Phase 4G.3J & Phase 4G.3K & Phase 4G.3AB)
-    // Fail closed if the unit is marked BLOCKED or NOT_AUDITED in the curriculum inventory or database
+    // 4.5 Explicit Readiness Gate
     const readiness = await ReadinessValidator.getUnitReadinessAsync(book_id, chapter_id);
     if (!readiness.isEligibleForAI) {
       return res.status(403).json({
@@ -105,13 +134,17 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
       });
     }
 
-    // 5. Shared Exam Cache Lookup with Strict Curriculum Identity, Difficulty & Student No-Repeat Rule
+    // 5. Shared Exam Cache Lookup with Strict Curriculum Identity, Difficulty & Partitioned styleReferenceId
     const parsedCount = parseInt(count, 10) || 3;
     const cacheResult = await ExamCacheService.getCachedExamForStudent({
       studentId: req.user!.id,
       bookId: book_id,
       chapterIds: chapter_id,
-      examParams: { count: parsedCount, difficulty: normalizedDifficulty }
+      examParams: {
+        count: parsedCount,
+        difficulty: normalizedDifficulty,
+        styleReferenceId: style_reference_id ? String(style_reference_id).trim() : null
+      }
     });
 
     let questions: any[] = [];
@@ -224,7 +257,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             chapterId: chapter_id,
             count: parsedCount,
             difficulty: normalizedDifficulty,
-            generationSessionId
+            generationSessionId,
+            styleGuidance
           });
 
           if (!questions || questions.length < parsedCount) {
@@ -236,7 +270,11 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
             examId: `ai_exam_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
             identity,
             unitIds: [chapter_id],
-            examParams: { count: parsedCount, difficulty: normalizedDifficulty },
+            examParams: {
+              count: parsedCount,
+              difficulty: normalizedDifficulty,
+              styleReferenceId: style_reference_id ? String(style_reference_id).trim() : null
+            },
             questions,
             assignedStudentId: req.user!.id,
             generationSessionId
@@ -256,7 +294,11 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT']), enfor
           const fallback = await ExamCacheService.getVerifiedFallbackExam({
             bookId: book_id,
             chapterIds: chapter_id,
-            examParams: { count: parsedCount, difficulty: normalizedDifficulty }
+            examParams: {
+              count: parsedCount,
+              difficulty: normalizedDifficulty,
+              styleReferenceId: style_reference_id ? String(style_reference_id).trim() : null
+            }
           });
 
           if (fallback && fallback.questions && fallback.questions.length >= parsedCount) {

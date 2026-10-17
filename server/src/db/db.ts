@@ -300,6 +300,7 @@ class DatabaseManager {
             'ALTER TABLE exams ADD COLUMN governorate_id VARCHAR(64) NULL',
             'ALTER TABLE exams ADD COLUMN term INT DEFAULT 1',
             'ALTER TABLE exams ADD COLUMN school_type VARCHAR(64) DEFAULT \'كلاهما\'',
+            'ALTER TABLE exams ADD COLUMN is_style_reference TINYINT NOT NULL DEFAULT 0',
             'ALTER TABLE books ADD COLUMN term INT DEFAULT 1',
             'ALTER TABLE books ADD COLUMN school_type VARCHAR(64) DEFAULT \'كلاهما\'',
             'ALTER TABLE teacher_profiles ADD COLUMN governorate_id VARCHAR(64) NULL',
@@ -424,6 +425,9 @@ class DatabaseManager {
         } catch (_) {}
         try {
           await this.query(`ALTER TABLE exams ADD COLUMN school_type TEXT DEFAULT 'كلاهما'`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE exams ADD COLUMN is_style_reference INTEGER DEFAULT 0`);
         } catch (_) {}
         try {
           await this.query(`ALTER TABLE users ADD COLUMN super_id TEXT`);
