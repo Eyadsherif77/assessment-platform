@@ -704,27 +704,55 @@ router.post('/subordinates', async (req: AuthenticatedRequest, res) => {
 
       const finalSpec = finalAssignedSubjects.join('، ') || specialization || null;
 
-      await db.query(
-        `INSERT INTO teacher_profiles (
-          user_id, full_name, school_name, specialization, 
-          governorate_id, subject_id, supervisor_id, grade_id, academic_stage_id,
-          assigned_subjects, assigned_grades, teaching_assignments
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [
-          newUserId,
-          fullName.trim(),
-          schoolName || null,
-          finalSpec,
-          assignedGovId,
-          assignedSubId,
-          user.id,
-          primaryGradeId,
-          assignedStageId,
-          JSON.stringify(finalAssignedSubjects),
-          JSON.stringify(finalAssignedGrades),
-          JSON.stringify(teachingAssignments || [])
-        ]
-      );
+      try {
+        await db.query(
+          `INSERT INTO teacher_profiles (
+            user_id, full_name, school_name, specialization, 
+            governorate_id, subject_id, supervisor_id, grade_id, academic_stage_id,
+            assigned_subjects, assigned_grades, teaching_assignments
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [
+            newUserId,
+            fullName.trim(),
+            schoolName || null,
+            finalSpec,
+            assignedGovId,
+            assignedSubId,
+            user.id,
+            primaryGradeId,
+            assignedStageId,
+            JSON.stringify(finalAssignedSubjects),
+            JSON.stringify(finalAssignedGrades),
+            JSON.stringify(teachingAssignments || [])
+          ]
+        );
+      } catch (insertErr: any) {
+        if (insertErr.message?.includes('teaching_assignments') || insertErr.code === 'ER_BAD_FIELD_ERROR' || insertErr.errno === 1054) {
+          console.warn('⚠️ teaching_assignments column missing during teacher_profile insert, falling back without it');
+          await db.query(
+            `INSERT INTO teacher_profiles (
+              user_id, full_name, school_name, specialization, 
+              governorate_id, subject_id, supervisor_id, grade_id, academic_stage_id,
+              assigned_subjects, assigned_grades
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              newUserId,
+              fullName.trim(),
+              schoolName || null,
+              finalSpec,
+              assignedGovId,
+              assignedSubId,
+              user.id,
+              primaryGradeId,
+              assignedStageId,
+              JSON.stringify(finalAssignedSubjects),
+              JSON.stringify(finalAssignedGrades)
+            ]
+          );
+        } else {
+          throw insertErr;
+        }
+      }
     }
 
     return res.status(201).json({

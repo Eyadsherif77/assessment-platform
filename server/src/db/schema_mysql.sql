@@ -111,6 +111,11 @@ CREATE TABLE IF NOT EXISTS teacher_profiles (
     governorate_id VARCHAR(64),
     subject_id VARCHAR(64),
     supervisor_id VARCHAR(64),
+    grade_id VARCHAR(64),
+    academic_stage_id VARCHAR(64),
+    assigned_subjects TEXT,
+    assigned_grades TEXT,
+    teaching_assignments TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

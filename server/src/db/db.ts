@@ -308,6 +308,9 @@ class DatabaseManager {
             'ALTER TABLE teacher_profiles ADD COLUMN supervisor_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN grade_id VARCHAR(64) NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN academic_stage_id VARCHAR(64) NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN assigned_subjects TEXT NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN assigned_grades TEXT NULL',
+            'ALTER TABLE teacher_profiles ADD COLUMN teaching_assignments TEXT NULL',
             'ALTER TABLE users ADD COLUMN initial_password VARCHAR(255) NULL',
             'ALTER TABLE student_profiles ADD COLUMN max_devices INT DEFAULT 2'
           ];
@@ -436,6 +439,9 @@ class DatabaseManager {
           await this.query(`ALTER TABLE users ADD COLUMN hybrid_id TEXT`);
         } catch (_) {}
         try {
+          await this.query(`ALTER TABLE users ADD COLUMN username TEXT`);
+        } catch (_) {}
+        try {
           await this.query(`ALTER TABLE users ADD COLUMN governorate_id TEXT`);
         } catch (_) {}
         try {
@@ -455,6 +461,12 @@ class DatabaseManager {
         } catch (_) {}
         try {
           await this.query(`ALTER TABLE teacher_profiles ADD COLUMN supervisor_id TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE teacher_profiles ADD COLUMN assigned_subjects TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE teacher_profiles ADD COLUMN assigned_grades TEXT`);
         } catch (_) {}
         try {
           await this.query(`ALTER TABLE teacher_profiles ADD COLUMN teaching_assignments TEXT`);
