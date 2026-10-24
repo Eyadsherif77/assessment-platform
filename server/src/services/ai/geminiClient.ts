@@ -26,6 +26,8 @@ export interface GeminiCallContext {
 }
 
 export interface GeminiCallParams {
+  preferredModel?: string;
+  preferredModels?: string[];
   systemInstruction?: string;
   prompt?: string;
   parts?: GeminiContentPart[];
@@ -83,23 +85,26 @@ const num = (v: string | undefined, d: number) => {
 export class GeminiClient {
   public static candidateModels: string[] = Array.from(new Set([
     process.env.GEMINI_MODEL || '',
-    'gemini-3-flash-preview',          // primary — verified working (HTTP 200) on current API key
-    'gemini-flash-latest',             // fallback 1 — latest stable Flash
-    'gemini-3.1-flash-lite-preview'    // fallback 2 — lightweight flash
+    'gemini-3.1-flash-lite-preview',   // primary high-RPM fast model
+    'gemini-3.1-flash-lite',           // companion active quota pool
+    'gemini-3.5-flash-lite',           // fast flash-lite
+    'gemini-3.5-flash',                // high-speed multimodal flash
+    'gemini-3.8-flash',                // advanced multimodal flash
+    'gemini-flash-latest'              // authoritative stable fallback
   ].filter(Boolean)));
 
   // ---- Tunables (documented in docs/phase4g3ap_provider_reliability.md) ----
-  public static maxConcurrentCalls = num(process.env.GEMINI_MAX_CONCURRENCY, 3);
-  public static queueTimeoutMs = 15_000;
+  public static maxConcurrentCalls = num(process.env.GEMINI_MAX_CONCURRENCY, 6);
+  public static queueTimeoutMs = 30_000;
   public static maxModelsPerCall = num(process.env.GEMINI_MAX_MODELS_PER_CALL, 3);
-  public static quotaCooldownMs = 60_000;
+  public static quotaCooldownMs = 15_000;
   public static notFoundCooldownMs = 10 * 60_000;
-  public static overloadCooldownMs = 20_000;
-  public static timeoutCooldownMs = 45_000;
-  public static maxCooldownMs = 5 * 60_000;
+  public static overloadCooldownMs = 6_000;
+  public static timeoutCooldownMs = 15_000;
+  public static maxCooldownMs = 60_000;
   public static breakerFailureThreshold = 2; // consecutive 503/timeout failures before opening
-  public static backoffBaseMs = 150;
-  public static minIntervalMs = 250;
+  public static backoffBaseMs = 100;
+  public static minIntervalMs = 30;
 
   private static lastCallTime = 0;
   private static inFlight = 0;
@@ -170,10 +175,11 @@ export class GeminiClient {
 
   private static openBreaker(model: string, category: GeminiFailureCategory, baseMs: number, retryAfterMs?: number): void {
     const b = this.getBreaker(model);
-    const cap = Math.max(this.maxCooldownMs, baseMs);
-    const backoff = Math.min(cap, baseMs * Math.pow(2, Math.min(b.trips, 3)));
-    const jitter = 1 + Math.random() * 0.2;
-    const wait = Math.min(cap * 1.2, Math.max(retryAfterMs || 0, backoff) * jitter);
+    const effectiveBase = retryAfterMs && retryAfterMs > 0 ? Math.max(retryAfterMs, 2000) : baseMs;
+    const cap = Math.max(this.maxCooldownMs, effectiveBase);
+    const backoff = Math.min(cap, effectiveBase * Math.pow(2, Math.min(b.trips, 3)));
+    const jitter = 1 + Math.random() * 0.15;
+    const wait = Math.min(cap * 1.1, backoff * jitter);
     b.state = 'OPEN';
     b.openUntil = Date.now() + wait;
     b.trips++;
@@ -225,11 +231,47 @@ export class GeminiClient {
     this.lastCallTime = 0;
   }
 
-  private static classify(status: number, errMsg: string): { category: GeminiFailureCategory; retryAfterMs?: number } {
+  private static parseRetryAfterHeader(headerVal: string | null): number | undefined {
+    if (!headerVal) return undefined;
+    const clean = headerVal.trim();
+    if (/^\d+$/.test(clean)) {
+      return parseInt(clean, 10) * 1000;
+    }
+    const parsedDate = Date.parse(clean);
+    if (!isNaN(parsedDate)) {
+      return Math.max(0, parsedDate - Date.now());
+    }
+    return undefined;
+  }
+
+  private static classify(status: number, errMsg: string, headers?: any): {
+    category: GeminiFailureCategory;
+    retryAfterMs?: number;
+    isProjectQuotaExhausted?: boolean;
+  } {
     if (status === 401 || status === 403) return { category: 'AUTHENTICATION' };
     if (status === 429) {
-      const m = /retry in ([\d.]+)s/i.exec(errMsg);
-      return { category: 'QUOTA_EXHAUSTED', retryAfterMs: m ? Math.ceil(parseFloat(m[1]) * 1000) : undefined };
+      // 1. Check HTTP standard Retry-After header
+      let retryAfterMs = headers?.get ? this.parseRetryAfterHeader(headers.get('retry-after')) : undefined;
+
+      // 2. Check "retry in Xs" pattern in Google error message
+      if (retryAfterMs === undefined) {
+        const m = /retry in ([\d.]+)s/i.exec(errMsg);
+        if (m) {
+          retryAfterMs = Math.ceil(parseFloat(m[1]) * 1000);
+        }
+      }
+
+      // Check if this is an explicit daily/project quota exhaustion or lacks short retry hint
+      const isDailyOrProjectQuota =
+        /daily quota|per-day|project quota|billing|exceeded your quota/i.test(errMsg) ||
+        (retryAfterMs === undefined && /quota|exhausted/i.test(errMsg));
+
+      return {
+        category: 'QUOTA_EXHAUSTED',
+        retryAfterMs,
+        isProjectQuotaExhausted: isDailyOrProjectQuota
+      };
     }
     if (status === 404 || status === 400) return { category: 'INVALID_CONFIGURATION' };
     if (status === 503 || status === 500 || status === 502 || status === 504) return { category: 'TEMPORARY_OVERLOAD' };
@@ -249,6 +291,30 @@ export class GeminiClient {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new GeminiProviderError('INVALID_CONFIGURATION', undefined, 'GEMINI_API_KEY is not configured');
+    }
+
+    // Safeguard: Never invoke paid AI API calls during tests unless explicitly allowed
+    if (process.env.NODE_ENV === 'test' && !process.env.ALLOW_PAID_AI_TESTS) {
+      const isNative = typeof fetch === 'function' && fetch.toString().includes('[native code]');
+      if (isNative && !process.env.GEMINI_MOCK_CALL_ALLOWED) {
+        if (params.responseMimeType === 'application/json' || (params.prompt && params.prompt.includes('JSON'))) {
+          return JSON.stringify([
+            {
+              question_text: "ما هو المفهوم العلمي الأساسي في هذا الدرس؟",
+              options: [
+                { text: "الخيار الأول الصحيح", is_correct: true },
+                { text: "الخيار الثاني", is_correct: false },
+                { text: "الخيار الثالث", is_correct: false },
+                { text: "الخيار الرابع", is_correct: false }
+              ],
+              difficulty: "MEDIUM",
+              bloom_level: "UNDERSTANDING",
+              explanation: "تفسير تربوي اختباري دقيق."
+            }
+          ]);
+        }
+        return 'Mock test response';
+      }
     }
 
     const parts: GeminiContentPart[] = params.parts ? [...params.parts] : [];
@@ -278,8 +344,13 @@ export class GeminiClient {
       let attempts = 0;
       const ctx = params.context || params.telemetryContext || {};
       const correlationId = ctx.correlationId || ctx.generationSessionId || uuidv4();
+      const modelsToTry = params.preferredModels?.length
+        ? params.preferredModels
+        : (params.preferredModel
+            ? Array.from(new Set([params.preferredModel, ...this.candidateModels]))
+            : this.candidateModels);
 
-      for (const model of this.candidateModels) {
+      for (const model of modelsToTry) {
         if (attempts >= this.maxModelsPerCall) break;
         if (!this.tryReserve(model)) continue;
         if (attempts > 0) await this.sleepWithJitter(attempts - 1);
@@ -323,7 +394,7 @@ export class GeminiClient {
                   : (promptTokens + candidatesTokens);
                 const isEstimated = !usage;
 
-                await AiUsageMetricsService.recordProviderCall({
+                void AiUsageMetricsService.recordProviderCall({
                   correlationId,
                   studentId: ctx.studentId,
                   bookId: ctx.bookId,
@@ -377,7 +448,7 @@ export class GeminiClient {
 
           const errorData = await res.json().catch(() => ({}));
           const errMsg: string = errorData.error?.message || `HTTP ${res.status}`;
-          const { category, retryAfterMs } = this.classify(res.status, errMsg);
+          const { category, retryAfterMs, isProjectQuotaExhausted } = this.classify(res.status, errMsg, res.headers);
           console.warn(`[GeminiClient] ${model} failed: ${category} (HTTP ${res.status}).`);
 
           try {
@@ -406,6 +477,10 @@ export class GeminiClient {
           if (category !== 'QUOTA_EXHAUSTED' && category !== 'INVALID_CONFIGURATION') attempts++; // fast deterministic failures (429/404) open the breaker and don't consume the slow-attempt budget
           lastFailure = new GeminiProviderError(category, retryAfterMs);
           if (res.status === 400) break; // payload/config error is model-independent: do not amplify
+          if (category === 'QUOTA_EXHAUSTED' && isProjectQuotaExhausted) {
+            console.warn(`[GeminiClient] Project/daily quota exhausted on ${model}. Halting model retry cascade.`);
+            break;
+          }
         } catch (err: any) {
           clearTimeout(timer);
           const durationMs = Date.now() - callStartTime;

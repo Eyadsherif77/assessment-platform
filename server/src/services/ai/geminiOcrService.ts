@@ -13,7 +13,8 @@ export interface PageOcrResult {
 }
 
 export class GeminiOcrService {
-  private static readonly LOW_TEXT_THRESHOLD_CHARS = 35;
+  public static readonly LOW_TEXT_THRESHOLD_CHARS = 100;
+  public static readonly MIN_EDUCATIONAL_WORDS = 10;
 
   /**
    * Determine whether a page requires OCR fallback based on extracted character count
@@ -23,13 +24,46 @@ export class GeminiOcrService {
   }
 
   /**
+   * Comprehensive policy: Determine whether page text is unusable, missing,
+   * vector-outlined, or too sparse to represent meaningful curriculum content.
+   */
+  public static isUnusableOrLowTextPage(page: { text: string; charCount?: number }): boolean {
+    const text = (page.text || '').trim();
+    if (text.length < this.LOW_TEXT_THRESHOLD_CHARS) {
+      return true;
+    }
+
+    // Check if the extracted text consists only of repetitive page headers, footers, numbers, or punctuation
+    const words = text
+      .split(/[\s\d\-–—_.,:;!?'"()\[\]{}«»/\\+=\*&%$#@~<>|]+/)
+      .filter(w => w.length > 1);
+
+    if (words.length < this.MIN_EDUCATIONAL_WORDS) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private static cachedDoc: { buffer: Buffer; doc: PDFDocument } | null = null;
+
+  public static async getPdfDoc(fullPdfBuffer: Buffer): Promise<PDFDocument> {
+    if (this.cachedDoc && this.cachedDoc.buffer === fullPdfBuffer) {
+      return this.cachedDoc.doc;
+    }
+    const doc = await PDFDocument.load(fullPdfBuffer);
+    this.cachedDoc = { buffer: fullPdfBuffer, doc };
+    return doc;
+  }
+
+  /**
    * Slice a single page from a full PDF buffer into a standalone, isolated 1-page PDF document
    */
   public static async extractSinglePagePdf(
     fullPdfBuffer: Buffer,
     pageNumber: number
   ): Promise<Buffer> {
-    const srcDoc = await PDFDocument.load(fullPdfBuffer);
+    const srcDoc = await this.getPdfDoc(fullPdfBuffer);
     const totalPages = srcDoc.getPageCount();
 
     if (pageNumber < 1 || pageNumber > totalPages) {
@@ -54,19 +88,22 @@ export class GeminiOcrService {
     fullPdfBuffer: Buffer;
     timeoutMs?: number;
   }): Promise<PageOcrResult> {
-    const { bookId, pageNumber, fullPdfBuffer, timeoutMs = 25000 } = params;
+    const { bookId, pageNumber, fullPdfBuffer, timeoutMs = 60000 } = params;
 
     try {
       const singlePageBuffer = await this.extractSinglePagePdf(fullPdfBuffer, pageNumber);
       const base64Data = singlePageBuffer.toString('base64');
 
-      const systemInstruction = `أنت محرك التعرف الضوئي على النصوص (OCR) الأكاديمي المتخصص في المناهج التعليمية والكتب المدرسية.
-مهمتك استخراج كامل النص التعليمي المقروء، العناوين، المفاهيم، القوانين، المعادلات الرياضية والكيميائية، والأسئلة الموجودة في صفحة الكتاب بدقة متناهية.
-- حافظ على النص العربي الأصلي والتنسيق وعلامات الترقيم والمصطلحات الإنجليزية بدقة.
-- استخرج محتوى الجداول والمخططات التوضيحية بصيغة نصية واضحة.
-- لا تضف أي مقدمات أو شروحات أو عبارات مثل "إليك النص المستخرج". أخرج المحتوى التعليمي المستخرج مباشرة.`;
+      const systemInstruction = `أنت محرك التعرف الضوئي على النصوص (OCR) الأكاديمي المتخصص في المناهج التعليمية والكتب المدرسية العربية واللغات.
+مهمتك استخراج كامل المحتوى التعليمي المقروء في الصفحة بدقة متناهية:
+1. استخرج جميع العناوين الرئيسية والفرعية، أسماء الوحدات، أرقام الصفحات الأصلية المطبوعة، وشرح الدروس.
+2. استخرج جميع المفاهيم، التعريفات، القوانين، المسائل والتمارين، والمعادلات الرياضية والعلمية بدقة.
+3. إذا كانت الصفحة تحتوي على نصوص مرسومة كمنحنيات موجهة (Vector Outlines) أو نصوص داخل جداول أو رسوم توضيحية، اقرأها واستخرجها كاملة.
+4. حافظ على المصطلحات الإنجليزية والعربية كما هي تماماً في مدارس اللغات والحكومية (Bilingual / Language Schools).
+5. إذا كانت الصفحة فارغة تماماً أو مجرد غلاف بدون نصوص تعليمية، اكتب نصاً موجزاً يوضح ذلك دون اختلاق محتوى.
+6. لا تضف أي مقدمات أو هوامش مثل "إليك النص". أخرج المحتوى التعليمي المستخرج مباشرة.`;
 
-      const prompt = `استخرج كامل النص التعليمي الموجود في الصفحة رقم ${pageNumber} من هذا الكتاب المدرسي بدقة تامة.`;
+      const prompt = `استخرج كامل النص والمحتوى التعليمي الموجود في الصفحة رقم ${pageNumber} من هذا الكتاب المدرسي بدقة تامة.`;
 
       const rawResponse = await GeminiClient.generateContent({
         systemInstruction,

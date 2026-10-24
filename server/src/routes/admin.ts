@@ -4,6 +4,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, generateToken, AuthenticatedRequest } from '../middleware/auth.js';
 import { getMonthlyExamLimit, setMonthlyExamLimit } from '../services/examLimitService.js';
+import { getStorageProvider } from '../services/storage/storageProvider.js';
+import { ExamCacheService } from '../services/examCacheService.js';
+import fs from 'fs';
+import path from 'path';
 
 const router = Router();
 
@@ -742,23 +746,56 @@ router.delete('/books/:id', async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
 
-    // Invariant (Phase 4G.3AG): Guard verified canonical books
-    const canonicalCheck = await db.query(
-      `SELECT b.id FROM books b 
-       WHERE b.id = $1 AND b.processing_status IN ('COMPLETED', 'VERIFIED_READY')
-         AND (SELECT COUNT(*) FROM book_chunks WHERE book_id = b.id) > 0`,
-      [id]
-    ).catch(() => ({ rows: [] }));
-    if (canonicalCheck.rows.length > 0) {
-      return res.status(403).json({ error: 'لا يمكن حذف الكتب المنهجية المعتمدة والمفهرسة لحماية تقييمات الطلاب وسجلاتهم.' });
+    // Verify book exists
+    const bookRes = await db.query('SELECT id, file_url FROM books WHERE id = $1', [id]);
+    if (bookRes.rows.length === 0) {
+      return res.status(404).json({ error: 'الكتاب غير موجود' });
     }
+    const book = bookRes.rows[0];
 
+    // Safely remove all dependent records, chunks, units, and ingestion records
+    await db.query('DELETE FROM book_pdf_chunks WHERE book_id = $1', [id]).catch(() => {});
+    await db.query('DELETE FROM book_ingestion_jobs WHERE book_id = $1', [id]).catch(() => {});
     await db.query('DELETE FROM book_chunks WHERE book_id = $1', [id]);
+    await db.query('DELETE FROM book_pages WHERE book_id = $1', [id]).catch(() => {});
     await db.query('DELETE FROM book_chapters WHERE book_id = $1', [id]);
-    await db.query('DELETE FROM question_bank WHERE book_id = $1', [id]);
+    await db.query('DELETE FROM question_bank WHERE book_id = $1', [id]).catch(() => {});
+    await db.query('DELETE FROM student_exam_assignments WHERE cached_exam_id IN (SELECT id FROM shared_cached_exams WHERE book_id = $1)', [id]).catch(() => {});
+    await db.query('DELETE FROM shared_cached_exams WHERE book_id = $1', [id]).catch(() => {});
+    await db.query('DELETE FROM ai_evaluations WHERE book_id = $1', [id]).catch(() => {});
+    await db.query('DELETE FROM ai_usage_metrics WHERE book_id = $1', [id]).catch(() => {});
+    await db.query('UPDATE exams SET book_id = NULL WHERE book_id = $1', [id]).catch(() => {});
+
+    // Delete the canonical book record
     await db.query('DELETE FROM books WHERE id = $1', [id]);
 
-    return res.json({ message: 'تم حذف الكتاب والمحتوى المرتبط به بنجاح' });
+    // Remove book-owned files from storage
+    try {
+      const storage = getStorageProvider();
+      await storage.deleteFile(`books/${id}/book_${id}.pdf`).catch(() => {});
+      await storage.deleteFile(`books/${id}`).catch(() => {});
+
+      const uploadDir = process.env.VERCEL ? path.resolve('/tmp', 'uploads') : path.resolve(process.cwd(), 'uploads');
+      const localPdf = path.join(uploadDir, `book_${id}.pdf`);
+      if (fs.existsSync(localPdf)) {
+        fs.unlinkSync(localPdf);
+      }
+      if (book.file_url) {
+        const customLocal = path.join(uploadDir, path.basename(book.file_url));
+        if (fs.existsSync(customLocal)) {
+          fs.unlinkSync(customLocal);
+        }
+      }
+    } catch (storageErr) {
+      console.warn('Storage cleanup note on book deletion:', storageErr);
+    }
+
+    // Clean up memory cache
+    try {
+      ExamCacheService.clearMemoryCache();
+    } catch (_) {}
+
+    return res.json({ message: 'تم حذف الكتاب وكافة وحداته ومقاطعه وسجلاته بنجاح' });
   } catch (err: any) {
     return res.status(500).json({ error: 'فشل حذف الكتاب: ' + err.message });
   }

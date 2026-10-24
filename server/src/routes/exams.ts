@@ -49,13 +49,14 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
 
     // Students only see published exams matching their stage, grade & school_type
     if (req.user?.role === 'STUDENT' && req.studentProfile) {
-      params.push(req.studentProfile.academicStageId);
-      conditions.push(`e.academic_stage_id = $${params.length}`);
+      if (req.studentProfile.academicStageId) {
+        params.push(req.studentProfile.academicStageId);
+        conditions.push(`e.academic_stage_id = $${params.length}`);
+      }
 
       if (req.studentProfile.gradeId) {
         params.push(req.studentProfile.gradeId);
-        params.push(req.studentProfile.academicStageId);
-        conditions.push(`(e.grade_id = $${params.length - 1} OR e.grade_id IS NULL OR e.academic_stage_id = $${params.length})`);
+        conditions.push(`e.grade_id = $${params.length}`);
       }
 
       conditions.push(`e.is_published = 1`);
@@ -412,9 +413,12 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
 
     const exam = examRes.rows[0];
 
-    // Enforce student access
+    // Enforce student access: strictly require matching grade and stage
     if (req.user?.role === 'STUDENT' && req.studentProfile) {
-      if (exam.academic_stage_id !== req.studentProfile.academicStageId && exam.grade_id !== req.studentProfile.gradeId) {
+      if (
+        (req.studentProfile.academicStageId && exam.academic_stage_id !== req.studentProfile.academicStageId) ||
+        (req.studentProfile.gradeId && exam.grade_id !== req.studentProfile.gradeId)
+      ) {
         return res.status(403).json({ error: 'هذا الاختبار غير مخصص لمرحلتك أو صفك الدراسي' });
       }
       if (!exam.is_published) {
@@ -479,7 +483,10 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
     }
 
     const exam = examRes.rows[0];
-    if (exam.academic_stage_id !== req.studentProfile?.academicStageId && exam.grade_id !== req.studentProfile?.gradeId) {
+    if (
+      (req.studentProfile?.academicStageId && exam.academic_stage_id !== req.studentProfile.academicStageId) ||
+      (req.studentProfile?.gradeId && exam.grade_id !== req.studentProfile.gradeId)
+    ) {
       return res.status(403).json({ error: 'الاختبار غير مخصص لمرحلتك أو صفك الدراسي' });
     }
     const studentSchoolType = (req.studentProfile?.schoolType || 'عربي').trim().replace('ى', 'ي');
@@ -583,9 +590,24 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
 });
 
 // View attempts for an exam
-router.get('/:id/attempts', authenticateToken, async (req: AuthenticatedRequest, res) => {
+router.get('/:id/attempts', authenticateToken, enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
+
+    if (req.user?.role === 'STUDENT' && req.studentProfile) {
+      const examCheck = await db.query('SELECT academic_stage_id, grade_id FROM exams WHERE id = $1', [id]);
+      if (examCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'الاختبار غير موجود' });
+      }
+      const exam = examCheck.rows[0];
+      if (
+        (req.studentProfile.academicStageId && exam.academic_stage_id !== req.studentProfile.academicStageId) ||
+        (req.studentProfile.gradeId && exam.grade_id !== req.studentProfile.gradeId)
+      ) {
+        return res.status(403).json({ error: 'هذا الاختبار غير مخصص لمرحلتك أو صفك الدراسي' });
+      }
+    }
+
     let sql = `
       SELECT ea.*, u.full_name as student_name, u.email as student_email
       FROM exam_attempts ea

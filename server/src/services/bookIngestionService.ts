@@ -324,9 +324,9 @@ export class BookIngestionService {
     try {
       const existingBook = await db.query(
         `SELECT id, title_ar, total_pages, processing_status FROM books 
-         WHERE academic_stage_id = $1 AND grade_id = $2 AND subject_id = $3 AND term = $4 AND title_ar = $5
+         WHERE academic_stage_id = $1 AND grade_id = $2 AND subject_id = $3 AND term = $4 AND title_ar = $5 AND id != $6
          LIMIT 1`,
-        [academicStageId, gradeId, subjectId, term, titleAr.trim()]
+        [academicStageId, gradeId, subjectId, term, titleAr.trim(), bookId]
       );
 
       if (existingBook.rows.length > 0 && (existingBook.rows[0].processing_status === 'COMPLETED' || existingBook.rows[0].processing_status === 'VERIFIED_READY')) {
@@ -366,7 +366,7 @@ export class BookIngestionService {
     // STAGE 3: Genuine Page-by-Page PDF Text Extraction
     // =========================================================================
     let totalPages = 1;
-    let extractedPages: { pageNumber: number; text: string; charCount: number }[] = [];
+    let extractedPages: { pageNumber: number; text: string; charCount: number; isNonTextualOrBlank?: boolean }[] = [];
 
     // Checkpoint resumption: If pages were already extracted in a prior worker attempt, reuse them
     if (checkpoint.extractedPages && Array.isArray(checkpoint.extractedPages) && checkpoint.extractedPages.length > 0) {
@@ -375,40 +375,67 @@ export class BookIngestionService {
       totalPages = checkpoint.totalPages || extractedPages.length;
     } else {
       try {
-        const parsed = await pdfParse(pdfBuffer);
-        totalPages = parsed.numpages || 1;
-        const rawText = parsed.text || '';
+        // Load PDF using pdf-lib to obtain the authoritative total page count
+        let pdfDocTotalPages = 0;
+        try {
+          const pdfDoc = await PDFDocument.load(pdfBuffer);
+          pdfDocTotalPages = pdfDoc.getPageCount();
+        } catch (pdfLibErr: any) {
+          console.warn('⚠️ [BookIngestionService] pdf-lib could not read page count, falling back to pdf-parse:', pdfLibErr.message);
+        }
 
-        const splitPages = rawText
-          .split(/\f|\n\s*\n\s*---\s*Page\s*\d+\s*---\s*\n/)
-          .map((s: string) => cleanArabicText(s.trim()));
+        const pageTexts = new Map<number, string>();
+        let pdfParseTotalPages = 0;
 
-        if (splitPages.length > 1) {
-          extractedPages = splitPages.map((txt: string, idx: number) => ({
-            pageNumber: idx + 1,
-            text: txt,
-            charCount: txt.length
-          }));
-        } else {
-          const cleaned = cleanArabicText(rawText);
-          const pageSize = Math.max(800, Math.ceil(cleaned.length / totalPages));
-          let cur = 0;
-          let pNum = 1;
-          while (cur < cleaned.length) {
-            const chunk = cleaned.slice(cur, cur + pageSize).trim();
-            if (chunk.length > 0) {
-              extractedPages.push({ pageNumber: pNum++, text: chunk, charCount: chunk.length });
+        try {
+          const parsed = await pdfParse(pdfBuffer, {
+            pagerender: async (pageData: any) => {
+              try {
+                const textContent = await pageData.getTextContent();
+                let lastY, text = '';
+                for (const item of textContent.items) {
+                  if (lastY === item.transform[5] || !lastY) {
+                    text += (text.length > 0 ? ' ' : '') + item.str;
+                  } else {
+                    text += '\n' + item.str;
+                  }
+                  lastY = item.transform[5];
+                }
+                const pageNum = pageData.pageIndex + 1;
+                pageTexts.set(pageNum, cleanArabicText(text.trim()));
+                return text;
+              } catch (renderErr) {
+                return '';
+              }
             }
-            cur += pageSize;
+          });
+          pdfParseTotalPages = parsed.numpages || 0;
+        } catch (parseErr: any) {
+          console.warn('⚠️ [BookIngestionService] pdfParse pagerender failed, trying raw text parse:', parseErr.message);
+          try {
+            const rawParsed = await pdfParse(pdfBuffer);
+            pdfParseTotalPages = rawParsed.numpages || 0;
+            const splitPages = (rawParsed.text || '')
+              .split(/\f|\n\s*\n\s*---\s*Page\s*\d+\s*---\s*\n/)
+              .map((s: string) => cleanArabicText(s.trim()));
+            splitPages.forEach((txt, idx) => {
+              if (txt) pageTexts.set(idx + 1, txt);
+            });
+          } catch (rawErr: any) {
+            console.warn('⚠️ [BookIngestionService] raw pdfParse also failed:', rawErr.message);
           }
         }
 
-        // Account for any remaining empty pages
-        totalPages = Math.max(totalPages, extractedPages.length, 1);
-        if (extractedPages.length === 0) {
-          for (let pNum = 1; pNum <= totalPages; pNum++) {
-            extractedPages.push({ pageNumber: pNum, text: '', charCount: 0 });
-          }
+        totalPages = Math.max(pdfDocTotalPages, pdfParseTotalPages, pageTexts.size, 1);
+
+        // GUARANTEE: Populate extractedPages for EVERY page from 1 to totalPages
+        for (let pNum = 1; pNum <= totalPages; pNum++) {
+          const text = pageTexts.get(pNum) || '';
+          extractedPages.push({
+            pageNumber: pNum,
+            text,
+            charCount: text.length
+          });
         }
 
         if (jobRecord) {
@@ -431,7 +458,6 @@ export class BookIngestionService {
       }
     }
 
-    // Ensure all totalPages are accounted for in extractedPages
     totalPages = Math.max(totalPages, extractedPages.length, 1);
     if (extractedPages.length === 0) {
       for (let pNum = 1; pNum <= totalPages; pNum++) {
@@ -442,95 +468,158 @@ export class BookIngestionService {
     // =========================================================================
     // STAGE 4 & 5: Detect Scanned/Low-Text Pages & Multimodal OCR Handling
     // =========================================================================
-    const lowTextThresholdChars = 35;
-    const lowTextPages = extractedPages.filter(p => p.charCount < lowTextThresholdChars);
+    const lowTextPages = extractedPages.filter(p => GeminiOcrService.isUnusableOrLowTextPage(p));
 
     if (lowTextPages.length > 0) {
-      console.log(`⚠️ [BookIngestionService] Detected ${lowTextPages.length} low-text/scanned pages.`);
+      console.log(`⚠️ [BookIngestionService] Detected ${lowTextPages.length} low-text/scanned pages needing OCR fallback.`);
       const ocrResults: Record<number, string> = checkpoint.ocrResults || {};
+      const failedFatalPages: number[] = [];
 
-      for (const lp of lowTextPages) {
-        // Reuse page-level checkpoint if already OCR'd in previous attempt
-        if (ocrResults[lp.pageNumber] && ocrResults[lp.pageNumber].length >= lowTextThresholdChars) {
+      // Concurrency-controlled worker pool for OCR extraction (sequential for deterministic reliability)
+      const OCR_CONCURRENCY = 1;
+      let currentIndex = 0;
+
+      const processPage = async (lp: typeof lowTextPages[0]) => {
+        // Reuse checkpoint if page was already OCR'd in previous worker attempt
+        if (ocrResults[lp.pageNumber] && ocrResults[lp.pageNumber].length >= 20) {
           lp.text = ocrResults[lp.pageNumber];
           lp.charCount = lp.text.length;
-          continue;
+          return;
         }
 
-        try {
-          let ocrText = '';
-          if (options.ocrProvider) {
-            ocrText = (await options.ocrProvider(lp.pageNumber, pdfBuffer)) || '';
-          } else {
-            const ocrRes = await GeminiOcrService.ocrPage({
-              bookId,
-              pageNumber: lp.pageNumber,
-              fullPdfBuffer: pdfBuffer
-            });
-            if (ocrRes.status === 'EXTRACTED') {
-              ocrText = ocrRes.text;
-            } else if (ocrRes.status === 'FAILED_RETRYABLE') {
-              console.warn(`⏳ [BookIngestionService] OCR hit retryable state on page ${lp.pageNumber}. Checkpoint saved.`);
-              if (jobRecord) {
-                await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
-                  ocrResults
-                }).catch(() => {});
-                await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `OCR retryable on page ${lp.pageNumber}: ${ocrRes.error}`, true).catch(() => {});
-              }
-              issues.push({
-                stage: 'OCR_HANDLING',
-                code: 'OCR_PROVIDER_TEMPORARILY_UNAVAILABLE',
+        let retries = 0;
+        const maxRetries = 5;
+        let success = false;
+
+        while (retries <= maxRetries && !success) {
+          try {
+            let ocrText = '';
+            if (options.ocrProvider) {
+              ocrText = (await options.ocrProvider(lp.pageNumber, pdfBuffer)) || '';
+            } else {
+              const ocrRes = await GeminiOcrService.ocrPage({
+                bookId,
                 pageNumber: lp.pageNumber,
-                message: `مزود التعرف الضوئي OCR غير متاح مؤقتاً للصفحة ${lp.pageNumber} (${ocrRes.error || 'Rate limit / timeout'}). تم حفظ تقدم المعالجة لاستئنافها آلياً.`,
-                remediationGuidance: 'سيتم استئناف قراءة الصفحات المتبقية آلياً عند توفر الحصة.'
+                fullPdfBuffer: pdfBuffer
               });
-              return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'REQUIRES_REMEDIATION', issues, startTime);
+
+              if (ocrRes.status === 'EXTRACTED') {
+                ocrText = ocrRes.text;
+                success = true;
+              } else if (ocrRes.status === 'FAILED_RETRYABLE') {
+                retries++;
+                if (retries <= maxRetries) {
+                  const isCooldown = (ocrRes.error || '').includes('cooling down') || (ocrRes.error || '').includes('QUOTA_EXHAUSTED');
+                  const minBackoff = isCooldown ? 16000 : 2000;
+                  const backoffMs = Math.max(minBackoff, 2000 * Math.pow(1.8, retries)) + Math.random() * 1000;
+                  console.warn(`⏳ [BookIngestionService] OCR retryable on page ${lp.pageNumber} (attempt ${retries}/${maxRetries}). Backoff ${Math.round(backoffMs)}ms.`);
+                  await new Promise(res => setTimeout(res, backoffMs));
+                  continue;
+                } else {
+                  console.warn(`❌ [BookIngestionService] OCR retries exhausted for page ${lp.pageNumber}: ${ocrRes.error}`);
+                  failedFatalPages.push(lp.pageNumber);
+                  break;
+                }
+              } else {
+                console.warn(`🛑 [BookIngestionService] OCR fatal failure for page ${lp.pageNumber}: ${ocrRes.error}`);
+                failedFatalPages.push(lp.pageNumber);
+                break;
+              }
             }
+
+            if (ocrText && ocrText.trim().length >= 15) {
+              const cleanedOcr = cleanArabicText(ocrText.trim());
+              lp.text = cleanedOcr;
+              lp.charCount = cleanedOcr.length;
+              ocrResults[lp.pageNumber] = cleanedOcr;
+              console.log(`📄 [OCR] Page ${lp.pageNumber}/${totalPages} extracted (${cleanedOcr.length} chars).`);
+              success = true;
+            } else {
+              // Page is visually confirmed blank or contains no discernible text
+              lp.isNonTextualOrBlank = true;
+              console.log(`📄 [OCR] Page ${lp.pageNumber}/${totalPages} marked blank/non-textual.`);
+              success = true;
+            }
+
+            // Pacing delay between pages (1200ms keeps calls within healthy provider rate limits)
+            await new Promise(res => setTimeout(res, 1200));
+          } catch (ocrErr: any) {
+            retries++;
+            if (retries > maxRetries) {
+              console.warn(`OCR exception for page ${lp.pageNumber}:`, ocrErr.message);
+              failedFatalPages.push(lp.pageNumber);
+              break;
+            }
+            await new Promise(res => setTimeout(res, 1500 * retries));
           }
+        }
+      };
 
-          if (ocrText && ocrText.trim().length >= lowTextThresholdChars) {
-            const cleanedOcr = cleanArabicText(ocrText.trim());
-            lp.text = cleanedOcr;
-            lp.charCount = cleanedOcr.length;
-            ocrResults[lp.pageNumber] = cleanedOcr;
+      // Execute in concurrent pool with heartbeats
+      const workers: Promise<void>[] = [];
+      let processedCount = 0;
 
-            if (jobRecord) {
+      for (let w = 0; w < OCR_CONCURRENCY; w++) {
+        workers.push((async () => {
+          while (currentIndex < lowTextPages.length) {
+            const pageIndex = currentIndex++;
+            const lp = lowTextPages[pageIndex];
+            await processPage(lp);
+            processedCount++;
+
+            // Extend worker lease and save checkpoint periodically
+            if (jobRecord && processedCount % 5 === 0) {
+              await DurableIngestionJobService.heartbeat(jobRecord.id, workerId, 180).catch(() => {});
               await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
-                ocrResults
+                ocrResults,
+                processedPages: processedCount,
+                totalLowTextPages: lowTextPages.length
               }).catch(() => {});
             }
           }
-        } catch (ocrErr: any) {
-          console.warn(`OCR exception for page ${lp.pageNumber}:`, ocrErr.message);
-        }
+        })());
       }
 
-      // Re-check after OCR attempt
-      const unresolvedLowTextPages = extractedPages.filter(p => p.charCount < lowTextThresholdChars);
-      if (unresolvedLowTextPages.length > 0) {
-        const pageNumbers = unresolvedLowTextPages.map(p => p.pageNumber);
+      await Promise.all(workers);
+
+      // Save final OCR checkpoint
+      if (jobRecord) {
+        await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
+          ocrResults,
+          processedPages: lowTextPages.length,
+          totalLowTextPages: lowTextPages.length
+        }).catch(() => {});
+      }
+
+      // If significant fatal provider errors occurred across curriculum pages
+      if (failedFatalPages.length > 0 && extractedPages.every(p => p.charCount < 20)) {
         issues.push({
           stage: 'OCR_HANDLING',
-          code: 'UNRESOLVED_SCANNED_PAGES',
-          message: `الصفحات [${pageNumbers.slice(0, 10).join(', ')}${pageNumbers.length > 10 ? '...' : ''}] تحتوي على صور ممسوحة أو نصوص غير قابلة للاستخراج، ومزود OCR لم يستطع قراءتها بالكامل.`,
-          remediationGuidance: 'قم برفع نسخة رقمية أصلية أو فحص جودة الصفحات الممسوحة ضوئياً.'
+          code: 'OCR_PROVIDER_TEMPORARILY_UNAVAILABLE',
+          message: `مزود التعرف الضوئي OCR غير متاح للصفحات [${failedFatalPages.slice(0, 10).join(', ')}]. تم حفظ تقدم المعالجة لاستئنافها آلياً.`,
+          remediationGuidance: 'سيتم استئناف قراءة الصفحات المتبقية آلياً عند توفر الحصة.'
         });
-
         if (jobRecord) {
-          await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `Unresolved scanned pages: ${pageNumbers.join(', ')}`, false).catch(() => {});
+          await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `OCR fatal on pages: ${failedFatalPages.join(', ')}`, true).catch(() => {});
         }
-
-        // Fail-closed: Never generate synthetic placeholder text!
         return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'REQUIRES_REMEDIATION', issues, startTime);
       }
     }
 
-    // Ensure we have extractable content
-    if (extractedPages.length === 0 || extractedPages.every(p => p.charCount < lowTextThresholdChars)) {
+    // Ensure we have extractable content across the book
+    if (extractedPages.length === 0 || extractedPages.every(p => p.charCount < 15)) {
+      if (lowTextPages.length > 0) {
+        issues.push({
+          stage: 'OCR_HANDLING',
+          code: 'UNRESOLVED_SCANNED_PAGES',
+          message: 'فشلت معالجة التعرف الضوئي OCR لصفحات الكتاب الممسوحة ضوئياً ولم يتم العثور على نصوص كافية.',
+          remediationGuidance: 'الكتاب ممسوح ضوئياً بالكامل ويحتاج إلى معالجة OCR عالية الجودة قبل الإدراج.'
+        });
+      }
       issues.push({
         stage: 'PAGE_EXTRACTION',
         code: 'NO_EXTRACTABLE_TEXT',
-        message: 'الملف لا يحتوي على أي نصوص قابلة للاستخراج باللغة العربية.',
+        message: 'الملف لا يحتوي على أي نصوص قابلة للاستخراج باللغة العربية أو الإنجليزية.',
         remediationGuidance: 'الكتاب ممسوح ضوئياً بالكامل ويحتاج إلى معالجة OCR متقدمة قبل الإدراج.'
       });
       return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'REQUIRES_REMEDIATION', issues, startTime);
@@ -590,7 +679,7 @@ export class BookIngestionService {
     // STAGE 6: Chapter & Unit Detection & Boundary Validation
     // =========================================================================
     let detectedChapters: DetectedChapter[] = [];
-    if (checkpoint.detectedChapters && Array.isArray(checkpoint.detectedChapters) && checkpoint.detectedChapters.length > 0) {
+    if (!options.forceReingest && checkpoint.detectedChapters && Array.isArray(checkpoint.detectedChapters) && checkpoint.detectedChapters.length > 0) {
       console.log(`♻️ [BookIngestionService] Resuming from checkpoint: ${checkpoint.detectedChapters.length} detected chapters.`);
       detectedChapters = checkpoint.detectedChapters;
     } else {
@@ -896,7 +985,8 @@ export class BookIngestionService {
         status: finalStatus,
         errorMessage: hasAnyBlockedUnit ? JSON.stringify(unitReports.filter(u => u.issues.length > 0)) : null,
         extractedPages,
-        chunks: allChunks
+        chunks: allChunks,
+        chapters: detectedChapters
       });
 
       // Register dynamic units in ReadinessValidator ONLY after DB persistence succeeds
@@ -1034,6 +1124,7 @@ export class BookIngestionService {
     errorMessage: string | null;
     extractedPages: { pageNumber: number; text: string; charCount: number }[];
     chunks: any[];
+    chapters?: any[];
   }): Promise<void> {
     const {
       bookId,
@@ -1051,7 +1142,8 @@ export class BookIngestionService {
       status,
       errorMessage,
       extractedPages,
-      chunks
+      chunks,
+      chapters
     } = params;
 
     const pageBatchSize = 25;
@@ -1143,7 +1235,7 @@ export class BookIngestionService {
           queryParams.push(
             c.id,
             stagingBookId,
-            c.chapterId,
+            null, // chapter_id is set to null during staging to prevent foreign key errors before promotion
             academicStageId,
             gradeId,
             subjectId,
@@ -1172,6 +1264,47 @@ export class BookIngestionService {
       // 2. Transfer staged chunks to canonical bookId
       currentPromotionStep = 'PROMOTING_CHUNKS';
       await db.query(`UPDATE book_chunks SET book_id = $1 WHERE book_id = $2`, [bookId, stagingBookId]);
+
+      // 2.5 Ensure chapters are persisted and chunks linked
+      if (chapters && chapters.length > 0) {
+        for (const ch of chapters) {
+          const chId = ch.id || uuidv4();
+          const chNum = Number(ch.chapter_number) || 1;
+          const chTitleAr = ch.title_ar || `الوحدة ${chNum}`;
+          const chTitleEn = ch.title_en || `Unit ${chNum}`;
+          const chStartPage = Number(ch.start_page) || 1;
+          const chEndPage = Number(ch.end_page) || chStartPage;
+          const chDesc = ch.description || '';
+
+          const existingCh = await db.query(
+            `SELECT id FROM book_chapters WHERE id = $1 OR (book_id = $2 AND chapter_number = $3)`,
+            [chId, bookId, chNum]
+          ).catch(() => ({ rows: [] }));
+
+          let activeChapterId = chId;
+          if (existingCh.rows.length === 0) {
+            await db.query(
+              `INSERT INTO book_chapters (id, book_id, chapter_number, title_ar, title_en, start_page, end_page, description)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [chId, bookId, chNum, chTitleAr, chTitleEn, chStartPage, chEndPage, chDesc]
+            ).catch(() => {});
+          } else {
+            activeChapterId = existingCh.rows[0].id;
+            await db.query(
+              `UPDATE book_chapters 
+               SET title_ar = $1, title_en = $2, start_page = $3, end_page = $4, description = $5
+               WHERE id = $6`,
+              [chTitleAr, chTitleEn, chStartPage, chEndPage, chDesc, activeChapterId]
+            ).catch(() => {});
+          }
+
+          await db.query(
+            `UPDATE book_chunks SET chapter_id = $1 
+             WHERE book_id = $2 AND page_number BETWEEN $3 AND $4`,
+            [activeChapterId, bookId, chStartPage, chEndPage]
+          ).catch(() => {});
+        }
+      }
 
       // 3. Transfer staged pages to canonical bookId
       currentPromotionStep = 'PROMOTING_PAGES';

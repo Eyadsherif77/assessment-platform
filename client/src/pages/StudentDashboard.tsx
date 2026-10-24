@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePlatformSettings } from '../context/PlatformSettingsContext';
@@ -197,6 +197,9 @@ export const StudentDashboard: React.FC = () => {
   const [aiStep, setAiStep] = useState<number>(1);
   const [selectedAiBook, setSelectedAiBook] = useState<any | null>(null);
   const [selectedAiChapterId, setSelectedAiChapterId] = useState<string>('');
+  const [isLoadingAiUnits, setIsLoadingAiUnits] = useState<boolean>(false);
+  const bookDetailsCacheRef = useRef<Map<string, any>>(new Map());
+  const bookFetchAbortControllerRef = useRef<AbortController | null>(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<any[]>([]);
   const [aiAttemptToken, setAiAttemptToken] = useState<string>('');
@@ -468,7 +471,13 @@ export const StudentDashboard: React.FC = () => {
     })
       .then(r => r.json())
       .then(data => {
-        if (Array.isArray(data)) setExams(data);
+        if (Array.isArray(data)) {
+          const studentGradeId = user?.profile?.grade_id || user?.profile?.gradeId;
+          const filtered = studentGradeId 
+            ? data.filter((e: any) => e.grade_id === studentGradeId)
+            : data;
+          setExams(filtered);
+        }
       })
       .catch(console.error);
   };
@@ -576,19 +585,58 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  // AI Evaluation
+  // AI Evaluation - Fast cached switching with race-condition prevention (Issue 4)
   const handleSelectAiBook = async (book: any) => {
+    // 1. Abort any previous in-flight book request immediately
+    if (bookFetchAbortControllerRef.current) {
+      bookFetchAbortControllerRef.current.abort();
+      bookFetchAbortControllerRef.current = null;
+    }
+
+    // 2. Check if full book data is already cached in memory
+    const cached = bookDetailsCacheRef.current.get(book.id);
+    if (cached) {
+      setSelectedAiBook(cached);
+      if (cached.chapters && cached.chapters.length > 0) {
+        setSelectedAiChapterId(cached.chapters[0].id);
+      } else {
+        setSelectedAiChapterId('');
+      }
+      setIsLoadingAiUnits(false);
+      return;
+    }
+
+    // 3. Immediately switch selectedAiBook stub & clear chapter to prevent showing stale units from previous subject
+    setSelectedAiBook({ ...book, chapters: [] });
+    setSelectedAiChapterId('');
+    setIsLoadingAiUnits(true);
+
+    const controller = new AbortController();
+    bookFetchAbortControllerRef.current = controller;
+
     try {
       const res = await fetch(apiUrl(`/api/books/${book.id}`), {
+        signal: controller.signal,
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!res.ok) throw new Error('Failed to fetch book chapters');
       const fullBook = await res.json();
+      bookDetailsCacheRef.current.set(book.id, fullBook);
       setSelectedAiBook(fullBook);
-      if (fullBook.chapters?.length > 0) {
+      if (fullBook.chapters && fullBook.chapters.length > 0) {
         setSelectedAiChapterId(fullBook.chapters[0].id);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        // Ignored: superseding request took over
+        return;
+      }
+      console.error('Error fetching book units:', e);
+    } finally {
+      if (bookFetchAbortControllerRef.current === controller) {
+        bookFetchAbortControllerRef.current = null;
+        setIsLoadingAiUnits(false);
+      }
     }
   };
 
@@ -1252,7 +1300,14 @@ export const StudentDashboard: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
-                  {selectedAiBook.chapters && selectedAiBook.chapters.length > 0 ? (
+                  {isLoadingAiUnits ? (
+                    <div style={{ gridColumn: '1 / -1', padding: '2.5rem 1rem', textAlign: 'center' }}>
+                      <div style={{ margin: '0 auto 1rem', width: '36px', height: '36px', border: '3px solid #e2e8f0', borderTopColor: 'var(--primary-600, #2563eb)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                      <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                        {isAr ? 'جاري تحميل وحدات الكتاب المعتمد...' : 'Loading verified units...'}
+                      </p>
+                    </div>
+                  ) : selectedAiBook.chapters && selectedAiBook.chapters.length > 0 ? (
                     selectedAiBook.chapters.map((ch: any) => {
                       const isSelected = selectedAiChapterId === ch.id;
                       const isBookEnglish = !/[\u0600-\u06FF]/.test(selectedAiBook.title_ar || '') || 

@@ -732,6 +732,10 @@ export class ExamCacheService {
            SELECT sea.cached_exam_id
            FROM student_exam_assignments sea
            WHERE sea.student_id = $2
+           UNION
+           SELECT ea.exam_id
+           FROM exam_attempts ea
+           WHERE ea.student_id = $2
          )
        ORDER BY sce.version_number ASC, sce.created_at ASC
        LIMIT 1`,
@@ -1178,20 +1182,31 @@ export class ExamCacheService {
    */
   public static async waitForConcurrentGeneration(
     configHash: string,
-    expectedCountOrOptions: number | { expectedCount?: number; maxWaitMs?: number; pollIntervalMs?: number; identity?: AuthoritativeCurriculumIdentity } = 1,
+    expectedCountOrOptions: number | {
+      expectedCount?: number;
+      maxWaitMs?: number;
+      pollIntervalMs?: number;
+      identity?: AuthoritativeCurriculumIdentity;
+      studentId?: string;
+    } = 1,
     maxWaitMs: number = 35000,
-    pollIntervalMs: number = 2000
+    pollIntervalMs: number = 2000,
+    studentIdOption?: string
   ): Promise<CachedExamRecord | null> {
     let expectedCount = 1;
     let actualMaxWaitMs = maxWaitMs;
     let actualPollIntervalMs = pollIntervalMs;
     let expectedIdentity: AuthoritativeCurriculumIdentity | undefined;
+    let studentIdToExclude: string | undefined = studentIdOption;
 
     if (typeof expectedCountOrOptions === 'object' && expectedCountOrOptions !== null) {
       expectedCount = Number(expectedCountOrOptions.expectedCount) || 1;
       actualMaxWaitMs = Number(expectedCountOrOptions.maxWaitMs) || 35000;
       actualPollIntervalMs = Number(expectedCountOrOptions.pollIntervalMs) || 2000;
       expectedIdentity = expectedCountOrOptions.identity;
+      if (expectedCountOrOptions.studentId) {
+        studentIdToExclude = expectedCountOrOptions.studentId;
+      }
     } else if (typeof expectedCountOrOptions === 'number') {
       // Defensive fallback for legacy call site: if 2nd arg > 100, caller passed (configHash, maxWaitMs)
       if (expectedCountOrOptions > 100 && maxWaitMs === 35000) {
@@ -1207,15 +1222,31 @@ export class ExamCacheService {
     const start = Date.now();
     while (Date.now() - start < actualMaxWaitMs) {
       await new Promise(resolve => setTimeout(resolve, actualPollIntervalMs));
-      const res = await db.query(
-        `SELECT sce.* FROM shared_cached_exams sce
-         WHERE sce.config_hash = $1
-           AND sce.provenance_verified = 1
-           AND sce.total_questions >= $2
-         ORDER BY sce.version_number DESC, sce.created_at DESC
-         LIMIT 1`,
-        [configHash, expectedCount]
-      );
+
+      let queryStr = `
+        SELECT sce.* FROM shared_cached_exams sce
+        WHERE sce.config_hash = $1
+          AND sce.provenance_verified = 1
+          AND sce.total_questions >= $2
+      `;
+      const queryParams: any[] = [configHash, expectedCount];
+
+      if (studentIdToExclude) {
+        queryParams.push(studentIdToExclude);
+        queryStr += ` AND sce.id NOT IN (
+          SELECT sea.cached_exam_id
+          FROM student_exam_assignments sea
+          WHERE sea.student_id = $${queryParams.length}
+          UNION
+          SELECT ea.exam_id
+          FROM exam_attempts ea
+          WHERE ea.student_id = $${queryParams.length}
+        )`;
+      }
+
+      queryStr += ` ORDER BY sce.version_number DESC, sce.created_at DESC LIMIT 1`;
+
+      const res = await db.query(queryStr, queryParams);
       if (res.rows.length > 0) {
         const row = res.rows[0];
         let questions: any[] = [];
@@ -1277,13 +1308,18 @@ export class ExamCacheService {
    * If Gemini is unavailable, quota-exhausted (429), or overloaded (503),
    * retrieves the most recent verified exam for the exact canonical configuration
    * (curriculum, book, exact unit selection, language, verified provenance).
-   * Fails closed (returns null) if no verified exam exists, so the caller can return
-   * the honest classified provider error.
+   *
+   * STRICT ISSUE 5 REMEDIATION:
+   * - If studentId is provided, validates student eligibility (stage, grade, school_type).
+   * - Excludes ANY cached exam version that this student has already been assigned or attempted.
+   * - Fails closed (returns null) if no eligible, unattempted verified exam exists,
+   *   preventing an already-completed exam from ever being returned as a new exam upon generation failure/retry.
    */
   public static async getVerifiedFallbackExam(params: {
     bookId: string;
     chapterIds: string | string[];
     examParams: ExamGenerationParameters;
+    studentId?: string;
     clientCandidate?: {
       subjectId?: string;
       gradeId?: string;
@@ -1293,6 +1329,15 @@ export class ExamCacheService {
     };
   }): Promise<CachedExamRecord | null> {
     const identity = await this.resolveCurriculumIdentity(params.bookId);
+
+    // Enforce student eligibility if studentId is provided
+    if (params.studentId) {
+      const eligibility = await this.validateStudentEligibility(params.studentId, identity);
+      if (!eligibility.isEligible) {
+        console.warn(`🛡️ [ExamCacheService.getVerifiedFallbackExam] Ineligible student ${params.studentId}: ${eligibility.reason}`);
+        return null;
+      }
+    }
 
     if (params.clientCandidate) {
       const consistency = this.validateSelectionConsistency(identity, params.clientCandidate);
@@ -1307,16 +1352,32 @@ export class ExamCacheService {
     const requestedCount = Number(normalizedParams.count) || 1;
 
     // Find the latest verified exam for this exact configuration satisfying the full requested count
-    const res = await db.query(
-      `SELECT sce.*
-       FROM shared_cached_exams sce
-       WHERE sce.config_hash = $1
-         AND sce.provenance_verified = 1
-         AND sce.total_questions >= $2
-       ORDER BY sce.version_number DESC, sce.created_at DESC
-       LIMIT 1`,
-      [configHash, requestedCount]
-    );
+    // Exclude any exam already assigned to or attempted by this student!
+    let queryStr = `
+      SELECT sce.*
+      FROM shared_cached_exams sce
+      WHERE sce.config_hash = $1
+        AND sce.provenance_verified = 1
+        AND sce.total_questions >= $2
+    `;
+    const queryParams: any[] = [configHash, requestedCount];
+
+    if (params.studentId) {
+      queryParams.push(params.studentId);
+      queryStr += ` AND sce.id NOT IN (
+        SELECT sea.cached_exam_id
+        FROM student_exam_assignments sea
+        WHERE sea.student_id = $${queryParams.length}
+        UNION
+        SELECT ea.exam_id
+        FROM exam_attempts ea
+        WHERE ea.student_id = $${queryParams.length}
+      )`;
+    }
+
+    queryStr += ` ORDER BY sce.version_number DESC, sce.created_at DESC LIMIT 1`;
+
+    const res = await db.query(queryStr, queryParams);
 
     if (res.rows.length === 0) {
       return null;

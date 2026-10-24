@@ -65,7 +65,18 @@ export class DurableIngestionJobService {
     );
 
     if (existing.rows.length > 0) {
-      return this.mapRow(existing.rows[0]);
+      const existingJob = this.mapRow(existing.rows[0]);
+      if (existingJob.status === 'FAILED' || existingJob.status === 'RETRYING' || existingJob.status === 'IN_PROGRESS') {
+        await db.query(
+          `UPDATE book_ingestion_jobs SET status = 'PENDING', lease_owner = NULL, lease_expires_at = NULL, attempt_count = 0, last_error = NULL WHERE id = $1`,
+          [existingJob.id]
+        );
+        existingJob.status = 'PENDING';
+        existingJob.leaseOwner = null;
+        existingJob.leaseExpiresAt = null;
+        existingJob.attemptCount = 0;
+      }
+      return existingJob;
     }
 
     const jobId = `job_ingest_${uuidv4()}`;
@@ -123,7 +134,7 @@ export class DurableIngestionJobService {
              attempt_count = attempt_count + 1,
              updated_at = NOW()
          WHERE id = $3
-           AND (status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND lease_expires_at < NOW()))`,
+           AND (status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_expires_at IS NULL OR lease_expires_at < NOW() OR lease_owner = $1)))`,
         [workerId, leaseSeconds, jobId]
       );
       return (result as any).rowCount > 0 || (result as any).affectedRows > 0;
@@ -137,7 +148,7 @@ export class DurableIngestionJobService {
              attempt_count = attempt_count + 1,
              updated_at = datetime('now')
          WHERE id = $3
-           AND (status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_expires_at IS NULL OR lease_expires_at < datetime('now'))))`,
+           AND (status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_expires_at IS NULL OR lease_expires_at < datetime('now') OR lease_owner = $1)))`,
         [workerId, leaseSeconds, jobId]
       );
       return (result as any).rowCount > 0;
@@ -197,6 +208,7 @@ export class DurableIngestionJobService {
       `UPDATE book_ingestion_jobs
        SET current_stage = $1,
            checkpoint_data = $2,
+           lease_owner = $4,
            last_error = NULL,
            updated_at = ${nowExpr}
        WHERE id = $3 AND (lease_owner = $4 OR lease_owner IS NULL)`,

@@ -19,6 +19,7 @@ class DatabaseManager {
   private pgPool: pg.Pool | null = null;
   private sqlite: any = null;
   private isInitialized = false;
+  private isSchemaApplied = false;
 
   public async init(): Promise<void> {
     if (this.isInitialized) return;
@@ -36,21 +37,33 @@ class DatabaseManager {
     const tidbHost = process.env.TIDB_HOST || process.env.MYSQL_HOST;
     if (tidbHost && !isTestEnv) {
       console.log('🌐 Connecting to TiDB Cloud Serverless (HTTP) at:', tidbHost);
-      try {
-        this.tidbConn = connect({
-          host: tidbHost,
-          username: process.env.TIDB_USER || 'root',
-          password: process.env.TIDB_PASSWORD || '',
-          database: process.env.TIDB_DATABASE || 'assessment_platform'
-        });
-        await this.tidbConn.execute('SELECT 1');
-        console.log('✅ Connected to TiDB Cloud Serverless (HTTP) successfully.');
-        this.isInitialized = true;
-        await this.applySchema();
-        return;
-      } catch (err) {
-        console.warn('⚠️ TiDB Cloud HTTP connection failed. Falling back to next provider:', err);
-        this.tidbConn = null;
+      let attempts = 0;
+      const maxAttempts = 5;
+      while (attempts < maxAttempts) {
+        try {
+          this.tidbConn = connect({
+            host: tidbHost,
+            username: process.env.TIDB_USER || 'root',
+            password: process.env.TIDB_PASSWORD || '',
+            database: process.env.TIDB_DATABASE || 'assessment_platform'
+          });
+          await this.tidbConn.execute('SELECT 1');
+          console.log('✅ Connected to TiDB Cloud Serverless (HTTP) successfully.');
+          this.isInitialized = true;
+          if (!this.isSchemaApplied) {
+            await this.applySchema();
+            this.isSchemaApplied = true;
+          }
+          return;
+        } catch (err: any) {
+          attempts++;
+          console.warn(`⚠️ TiDB Cloud HTTP connection attempt ${attempts}/${maxAttempts} failed:`, err.message || err);
+          if (attempts >= maxAttempts) {
+            this.tidbConn = null;
+            throw new Error(`CRITICAL: Failed to connect to authoritative TiDB Cloud Serverless after ${maxAttempts} attempts: ${err.message}`);
+          }
+          await new Promise(r => setTimeout(r, 1000 * Math.pow(1.5, attempts)));
+        }
       }
     }
 
@@ -182,17 +195,34 @@ class DatabaseManager {
       });
       tidbSql = tidbSql.replace(/datetime\(['"]now['"]\)/gi, 'NOW()');
       tidbSql = tidbSql.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
+      tidbSql = tidbSql.replace(/CAST\s*\(\s*([^)]+?)\s+AS\s+TEXT\s*\)/gi, 'CAST($1 AS CHAR(50))');
 
       let res: any;
       try {
         res = await this.tidbConn.execute(tidbSql, orderedParams, { fullResult: true });
       } catch (err: any) {
-        if (err.message?.includes('invalid connection') || err.message?.includes('fetch failed')) {
-          console.warn('🔄 Reconnecting to TiDB Cloud Serverless after connection drop...');
+        const isConnErr = err.message?.includes('invalid connection') ||
+          err.message?.includes('fetch failed') ||
+          err.message?.includes('Connect Timeout') ||
+          err.message?.includes('UND_ERR_CONNECT_TIMEOUT');
+        if (isConnErr) {
+          console.warn(`🔄 Reconnecting to TiDB Cloud Serverless after error: ${err.message} [SQL: ${tidbSql.slice(0, 60)}, params size: ${JSON.stringify(orderedParams).length}]`);
           this.isInitialized = false;
           this.tidbConn = null;
-          await this.init();
-          res = await this.tidbConn!.execute(tidbSql, orderedParams, { fullResult: true });
+          let retries = 0;
+          while (retries < 5) {
+            try {
+              await new Promise(r => setTimeout(r, 1000 * Math.pow(1.5, retries)));
+              await this.init();
+              if (this.tidbConn) {
+                res = await (this.tidbConn as any).execute(tidbSql, orderedParams, { fullResult: true });
+                break;
+              }
+            } catch (retryErr: any) {
+              retries++;
+              if (retries >= 5) throw retryErr;
+            }
+          }
         } else {
           throw err;
         }
@@ -481,6 +511,12 @@ class DatabaseManager {
 
         try {
           await this.query(`ALTER TABLE users ADD COLUMN initial_password TEXT`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE question_bank_items ADD COLUMN is_quarantined INTEGER DEFAULT 0`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE question_bank_items ADD COLUMN quarantine_reason TEXT`);
         } catch (_) {}
 
         // Ensure platform_settings table

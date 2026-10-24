@@ -183,6 +183,8 @@ CREATE TABLE IF NOT EXISTS question_bank_items (
     explanation TEXT,
     source_chunk_id TEXT REFERENCES book_chunks(id) ON DELETE SET NULL,
     page_reference INTEGER,
+    is_quarantined INTEGER DEFAULT 0,
+    quarantine_reason TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 

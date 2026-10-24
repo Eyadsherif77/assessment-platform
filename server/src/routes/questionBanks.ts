@@ -125,8 +125,8 @@ router.post('/:id/items', authenticateToken, requireRole(['TEACHER', 'ADMIN']), 
     await db.query(
       `INSERT INTO question_bank_items (
          id, bank_id, chapter_id, question_text, question_type, difficulty,
-         bloom_level, explanation, page_reference
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         bloom_level, explanation, page_reference, is_quarantined, quarantine_reason
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, 'PENDING_VERIFICATION')`,
       [
         itemId,
         id,

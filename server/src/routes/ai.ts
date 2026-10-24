@@ -186,13 +186,19 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
       }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheMiss error:', e?.message || e));
 
       // Multi-instance concurrency coordination: only 1 Vercel instance generates for this configHash at a time
-      const lock = await ExamCacheService.acquireGenerationLock(configHash, 45000);
+      const lock = await ExamCacheService.acquireGenerationLock(configHash, 30000);
       let generationLockAcquired = lock.acquired;
       let activeLockId = lock.lockId;
 
       if (!generationLockAcquired) {
         console.log(`⏳ [Multi-Instance Coordination] Another instance generating for config ${configHash.slice(0, 8)}. Awaiting concurrent result...`);
-        const awaitedExam = await ExamCacheService.waitForConcurrentGeneration(configHash, parsedCount, 35000);
+        const awaitedExam = await ExamCacheService.waitForConcurrentGeneration(configHash, {
+          expectedCount: parsedCount,
+          maxWaitMs: 20000,
+          pollIntervalMs: 1000,
+          identity,
+          studentId: req.user!.id
+        });
         if (awaitedExam) {
           console.log(`⚡ [Multi-Instance Coordination] Reused exam generated concurrently!`);
           questions = awaitedExam.questions;
@@ -210,17 +216,18 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
           }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheHit error:', e?.message || e));
         } else {
           // Awaited exam not available. Attempt to acquire the lock before launching generation
-          const retryLock = await ExamCacheService.acquireGenerationLock(configHash, 45000);
+          const retryLock = await ExamCacheService.acquireGenerationLock(configHash, 30000);
           if (retryLock.acquired) {
             generationLockAcquired = true;
             activeLockId = retryLock.lockId;
           } else {
             // Lock is STILL actively held by another instance.
-            // Check if a verified fallback exam satisfying the count exists
+            // Check if a verified fallback exam satisfying the count exists for this student
             const fallback = await ExamCacheService.getVerifiedFallbackExam({
               bookId: book_id,
               chapterIds: chapter_id,
-              examParams: { count: parsedCount, difficulty: normalizedDifficulty }
+              examParams: { count: parsedCount, difficulty: normalizedDifficulty },
+              studentId: req.user!.id
             });
             if (fallback && fallback.questions && fallback.questions.length >= parsedCount) {
               console.log(`🛡️ [Verified Cache Fallback] Coordination timeout; serving verified exam version ${fallback.versionNumber} for student ${req.user!.id}`);
@@ -290,7 +297,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
           if (questions && questions.length >= parsedCount) {
             throw genErr;
           }
-          // Verified Cache Fallback: If Gemini hits 429 quota exhaustion or 503 overload, check if a verified cached exam exists
+          // Verified Cache Fallback: If Gemini hits 429 quota exhaustion or 503 overload, check if a verified cached exam exists for this student
           const fallback = await ExamCacheService.getVerifiedFallbackExam({
             bookId: book_id,
             chapterIds: chapter_id,
@@ -298,7 +305,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
               count: parsedCount,
               difficulty: normalizedDifficulty,
               styleReferenceId: style_reference_id ? String(style_reference_id).trim() : null
-            }
+            },
+            studentId: req.user!.id
           });
 
           if (fallback && fallback.questions && fallback.questions.length >= parsedCount) {
@@ -449,7 +457,10 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
       });
     }
 
-    if (err.message?.includes('EXAM_GENERATION_FAILED')) {
+    if (
+      err.message?.includes('EXAM_GENERATION_FAILED') ||
+      err.message?.includes('INCOMPLETE_EXAM_GENERATED')
+    ) {
       return res.status(503).json({
         error: 'تعذر استخراج العدد الكافي من الأسئلة المطابقة لمعايير الجودة والتحقق لهذه الوحدة حالياً. يرجى المحاولة مرة أخرى.',
         code: 'EXAM_GENERATION_FAILED',
@@ -730,6 +741,14 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
         });
       }
       throw evalErr;
+    }
+
+    // Mark student exam assignment as COMPLETED
+    if (payload.cached_exam_id) {
+      await db.query(
+        `UPDATE student_exam_assignments SET status = 'COMPLETED' WHERE student_id = $1 AND cached_exam_id = $2`,
+        [req.user!.id, payload.cached_exam_id]
+      ).catch(() => {});
     }
 
     return res.json({

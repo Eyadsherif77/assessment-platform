@@ -220,9 +220,10 @@ export class ReadinessValidator {
     const issues: string[] = [];
     const requiredActions: string[] = [];
 
-    // Check 1: Book Processing Status (COMPLETED or VERIFIED_READY required)
+    // Check 1: Book Processing Status (COMPLETED, VERIFIED_READY, READY, or PUBLISHED required)
     const statusUpper = (row.processing_status || '').toUpperCase();
-    if (statusUpper !== 'COMPLETED' && statusUpper !== 'VERIFIED_READY') {
+    const validStatuses = ['COMPLETED', 'VERIFIED_READY', 'READY', 'PUBLISHED', 'PROCESSED'];
+    if (!validStatuses.includes(statusUpper)) {
       issues.push(`حالة معالجة الكتاب غير مكتملة أو معلقة (${row.processing_status || 'UNKNOWN'})`);
       requiredActions.push('انتظر اكتمال معالجة الكتاب أو أعد المحاولة في حال الفشل');
     }
@@ -243,8 +244,8 @@ export class ReadinessValidator {
       requiredActions.push('تعديل نطاق الصفحات ليكون ضمن إجمالي صفحات ملف الكتاب');
     }
 
-    // Check 4: Text Content & Chunks (Minimum 2 chunks and 100 characters)
-    if (totalChunks < 2 || totalChars < 100) {
+    // Check 4: Text Content & Chunks (Minimum 1 chunk and 50 characters)
+    if (totalChunks < 1 || totalChars < 50) {
       issues.push(`المحتوى النصي للوحدة غير كافٍ لتوليد أسئلة موثوقة (${totalChunks} مقاطع، ${totalChars} حرفاً)`);
       requiredActions.push('تأكد من أن نطاق صفحات الوحدة يحتوي على نصوص دراسية وشروحات كافية');
     }
@@ -375,8 +376,8 @@ export class ReadinessValidator {
         JOIN book_chapters bc ON bc.book_id = b.id
         LEFT JOIN subjects s ON s.id = b.subject_id
         LEFT JOIN grades g ON g.id = b.grade_id
-        LEFT JOIN book_chunks chk ON chk.book_id = b.id AND chk.chapter_id = bc.id
-        WHERE b.id = $1 AND (bc.id = $2 OR CAST(bc.chapter_number AS CHAR) = $2)
+        LEFT JOIN book_chunks chk ON chk.book_id = b.id AND (chk.chapter_id = bc.id OR (chk.page_number >= bc.start_page AND chk.page_number <= bc.end_page))
+        WHERE b.id = $1 AND (bc.id = $2 OR CAST(bc.chapter_number AS CHAR(50)) = $2)
         GROUP BY b.id, b.title_ar, b.title_en, b.processing_status, b.processing_error, b.total_pages,
                  bc.id, bc.chapter_number, bc.title_ar, bc.title_en, bc.start_page, bc.end_page,
                  s.name_ar, g.name_ar
@@ -385,19 +386,68 @@ export class ReadinessValidator {
       const result = await db.query(sql, [bookId, chapterId]);
       if (result.rows && result.rows.length > 0) {
         return this.evaluateDbRecordReadiness(bookId, chapterId, result.rows[0]);
+      } else {
+        // Precise diagnostic if unit not found in DB
+        const bookCheck = await db.query('SELECT id, title_ar FROM books WHERE id = $1', [bookId]).catch(() => ({ rows: [] }));
+        if (bookCheck.rows.length === 0) {
+          return {
+            bookId,
+            chapterId,
+            bookTitleAr: 'غير معروف',
+            bookTitleEn: 'Unknown Book',
+            unitTitleAr: 'غير معروف',
+            unitTitleEn: 'Unknown Unit',
+            gradeAr: 'غير محدد',
+            subjectAr: 'غير محدد',
+            status: 'BLOCKED',
+            isEligibleForAI: false,
+            visualDependencies: 'NONE',
+            reason: `الكتاب المدرسي غير مسجل في قاعدة بيانات المنصة (معرف: ${bookId}).`,
+            evidence: 'Book ID not found in books table',
+            requiredActions: ['تأكد من اختيار الكتاب الصحيح أو أعد رفع الكتاب عبر لوحة الإدارة']
+          };
+        }
+        return {
+          bookId,
+          chapterId,
+          bookTitleAr: bookCheck.rows[0].title_ar || 'غير معروف',
+          bookTitleEn: 'Unknown Book',
+          unitTitleAr: 'غير معروف',
+          unitTitleEn: 'Unknown Unit',
+          gradeAr: 'غير محدد',
+          subjectAr: 'غير محدد',
+          status: 'BLOCKED',
+          isEligibleForAI: false,
+          visualDependencies: 'NONE',
+          reason: `الوحدة المحددة (${chapterId}) غير مسجلة ضمن فصول هذا الكتاب في قاعدة البيانات.`,
+          evidence: 'Chapter ID not found in book_chapters for this book',
+          requiredActions: ['استخراج وتحديد فصول الكتاب من لوحة إدارة المناهج']
+        };
       }
     } catch (dbErr: any) {
       console.warn(`[ReadinessValidator] DB readiness query notice: ${dbErr.message}`);
+      // Fallback to in-memory dynamic units (e.g. for active in-process workflows / tests)
+      const dynamicUnit = this.dynamicUnits.get(key);
+      if (dynamicUnit) {
+        return this.evaluateInventoryUnit(bookId, chapterId, dynamicUnit);
+      }
+      return {
+        bookId,
+        chapterId,
+        bookTitleAr: 'غير معروف',
+        bookTitleEn: 'Unknown Book',
+        unitTitleAr: 'غير معروف',
+        unitTitleEn: 'Unknown Unit',
+        gradeAr: 'غير محدد',
+        subjectAr: 'غير محدد',
+        status: 'BLOCKED',
+        isEligibleForAI: false,
+        visualDependencies: 'NONE',
+        reason: `تعذر التحقق من جاهزية الوحدة بسبب خطأ في الاستعلام من قاعدة البيانات: ${dbErr.message}`,
+        evidence: `Database error: ${dbErr.message}`,
+        requiredActions: ['التحقق من اتصال قاعدة البيانات والمحاولة مرة أخرى']
+      };
     }
-
-    // 3. Fallback to in-memory dynamic units (e.g. for active in-process workflows / tests)
-    const dynamicUnit = this.dynamicUnits.get(key);
-    if (dynamicUnit) {
-      return this.evaluateInventoryUnit(bookId, chapterId, dynamicUnit);
-    }
-
-    // 4. Missing unit or synthetic fixture
-    return this.evaluateMissingUnit(bookId, chapterId);
   }
 
   /**

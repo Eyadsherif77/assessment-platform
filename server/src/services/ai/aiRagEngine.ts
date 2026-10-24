@@ -813,6 +813,13 @@ export interface BlindSolverInput {
   options: Array<{ id: string; text: string }>;
   diagram_url?: string;
   diagram_asset_id?: string;
+  evidence?: {
+    book_id?: string;
+    chapter_id?: string;
+    page_number?: number;
+    chunk_id?: string;
+    passage_text?: string;
+  };
 }
 
 export interface BlindSolverOutput {
@@ -888,7 +895,8 @@ export function sanitizeBlindSolverInput(candidate: CandidateQuestionPayload): B
   const result: BlindSolverInput = {
     passage_text: String(candidate.evidence?.passage_text || '').trim(),
     question_text: qSeed,
-    options: permutedOptions
+    options: permutedOptions,
+    evidence: candidate.evidence
   };
 
   if (candidate.diagram_url) {
@@ -1362,11 +1370,33 @@ function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
+export function computeQuestionVerificationHash(q: {
+  question_text: string;
+  options: Array<{ text?: string; option_text?: string; is_correct?: boolean }>;
+  source_chunk_id?: string;
+  chunk_id?: string;
+}): string {
+  const cleanText = (q.question_text || '').trim();
+  const cleanChunk = (q.source_chunk_id || q.chunk_id || '').trim();
+  const sortedOpts = [...(q.options || [])]
+    .map(o => `${(o.text || o.option_text || '').trim()}::${Boolean(o.is_correct)}`)
+    .sort()
+    .join('||');
+  return crypto
+    .createHash('sha256')
+    .update(`${cleanText}::${cleanChunk}::${sortedOpts}::v2026.10_rules`)
+    .digest('hex');
+}
+
 class AIRagEngine {
   // In-memory cache for sanitized educational chunks per chapter (15 min TTL)
   private static chunksMemoryCache = new Map<string, { chunks: RetrievedChunk[]; timestamp: number }>();
   // In-memory cache for validated Question Bank items per chapter & grade (10 min TTL)
   private static bankMemoryCache = new Map<string, { questions: GroundedQuestion[]; timestamp: number }>();
+  // Process-level set of question IDs that have successfully passed blind solver verification (backward compat)
+  public static solverVerifiedQuestionIds = new Set<string>();
+  // Process-level cryptographic content hashes of verified questions: questionId -> sha256_content_hash
+  public static solverVerifiedHashes = new Map<string, string>();
 
   // Plug-and-play blind solver override for isolated offline testing
   private static blindSolverOverride: BlindSolverFunction | null = null;
@@ -1378,16 +1408,29 @@ class AIRagEngine {
   public static clearMemoryCache(): void {
     this.chunksMemoryCache.clear();
     this.bankMemoryCache.clear();
+    this.solverVerifiedQuestionIds.clear();
+    this.solverVerifiedHashes.clear();
   }
 
   /**
    * Retrieves or constructs the bounded blind solver adapter.
    * Wraps GeminiClient with strict per-attempt timeouts, budgets, schema checks, and fail-closed handling.
    */
-  public getBlindSolver(generationSessionId?: string): BlindSolverFunction {
+  public getBlindSolver(attribution?: {
+    generationSessionId?: string;
+    bookId?: string;
+    chapterId?: string;
+    gradeId?: string;
+    subjectId?: string;
+    studentId?: string;
+  } | string): BlindSolverFunction {
     if (AIRagEngine.blindSolverOverride) {
       return AIRagEngine.blindSolverOverride;
     }
+    const attr = typeof attribution === 'string'
+      ? { generationSessionId: attribution }
+      : (attribution || {});
+
     const rawInvoker: RawSolverInvoker = async (input: BlindSolverInput, signal?: AbortSignal) => {
       const optionsText = input.options.map(o => `(${o.id}) ${o.text}`).join('\n');
       const prompt = `Solve this multiple-choice question using ONLY the provided passage and any attached visual figure.
@@ -1435,15 +1478,21 @@ Return valid JSON with exact keys:
       parts.push({ text: prompt });
 
       const text = await GeminiClient.generateContent({
+        preferredModel: 'gemini-3.1-flash-lite-preview',
         parts,
         responseMimeType: 'application/json',
         temperature: 0.1,
-        timeoutMs: 10000,
+        timeoutMs: 8000,
         context: {
           workflow: 'EXAM_BLIND_SOLVER',
           callPurpose: 'BLIND_SOLVER_VERIFICATION',
-          correlationId: generationSessionId,
-          generationSessionId
+          correlationId: attr.generationSessionId,
+          generationSessionId: attr.generationSessionId,
+          bookId: attr.bookId || input.evidence?.book_id,
+          chapterId: attr.chapterId || input.evidence?.chapter_id,
+          gradeId: attr.gradeId,
+          subjectId: attr.subjectId,
+          studentId: attr.studentId
         }
       });
       const cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
@@ -1452,8 +1501,8 @@ Return valid JSON with exact keys:
 
     return createBoundedSolverAdapter(rawInvoker, {
       maxAttempts: 2,
-      perAttemptTimeoutMs: 10000,
-      totalBudgetTimeoutMs: 22000
+      perAttemptTimeoutMs: 7000,
+      totalBudgetTimeoutMs: 15000
     });
   }
 
@@ -1754,15 +1803,18 @@ Return valid JSON with exact keys:
       }
 
       // 3. Single-query fast join from TiDB (retrieves items + options in 1 query strictly matching book of current term)
+      // Strictly enforces durable verification: only un-quarantined questions with verified hash signature are eligible
       const rowsRes = await db.query(
         `SELECT 
            qi.id, qi.question_text, qi.difficulty, qi.bloom_level, qi.explanation, qi.page_reference, qi.source_chunk_id,
+           qi.is_quarantined, qi.quarantine_reason,
            qo.id as opt_id, qo.option_text, qo.is_correct
          FROM question_bank_items qi
          JOIN question_bank_options qo ON qi.id = qo.question_item_id
          JOIN book_chapters bc ON qi.chapter_id = bc.id
          WHERE qi.chapter_id = $1 AND bc.book_id = $2
-           AND (qi.is_quarantined = 0 OR qi.is_quarantined IS NULL)
+           AND qi.is_quarantined = 0
+           AND qi.quarantine_reason LIKE 'VERIFIED:%'
          ORDER BY qi.id ASC`,
         [chapterId, bookId]
       );
@@ -1781,6 +1833,8 @@ Return valid JSON with exact keys:
             explanation: row.explanation,
             page_reference: row.page_reference,
             source_chunk_id: row.source_chunk_id,
+            is_quarantined: row.is_quarantined,
+            quarantine_reason: row.quarantine_reason,
             options: []
           });
         }
@@ -1795,6 +1849,12 @@ Return valid JSON with exact keys:
       const candidateQuestions: GroundedQuestion[] = [];
 
       for (const item of allItems) {
+        // Stop early if we already have enough unseen questions for the requested count
+        const currentUnseenCount = candidateQuestions.filter(isUnseenForStudent).length;
+        if (currentUnseenCount >= count) {
+          break;
+        }
+
         const qText = item.question_text || '';
         const arCount = (qText.match(/[\u0600-\u06FF]/g) || []).length;
         const enCount = (qText.match(/[a-zA-Z]/g) || []).length;
@@ -1817,68 +1877,68 @@ Return valid JSON with exact keys:
           explanation: item.explanation || ''
         };
 
+        // If already seen by student, skip immediately without wasting solver or quality checks
+        if (!isUnseenForStudent(groundedQ)) continue;
+
         const quality = evaluateQuestionQuality(groundedQ, candidateQuestions);
         if (quality.isValid) {
           const prov = await verifyQuestionProvenance(groundedQ, bookId);
           if (prov.isVerified) {
             const val = AnswerValidationService.validateQuestion(groundedQ);
             if (val.answerKeyStatus !== 'REJECTED') {
-              // Objective 2: Enforce blind solver verification on bank questions
-              // Legacy items lacking blind solver verification against supporting chunks cannot enter approved exams
               if (!groundedQ.chunk_id) {
                 console.warn(`[Bank Isolation] Skipping legacy bank question lacking supporting chunk_id: "${groundedQ.question_text}"`);
+                await db.query(
+                  `UPDATE question_bank_items SET is_quarantined = 1, quarantine_reason = $1 WHERE id = $2`,
+                  ['FAILED:MISSING_CHUNK_ID', groundedQ.id]
+                ).catch(() => {});
                 continue;
               }
 
-              const chunkRes = await db.query(
-                `SELECT content FROM book_chunks WHERE id = $1`,
-                [groundedQ.chunk_id]
-              );
+              const currentHash = computeQuestionVerificationHash(groundedQ);
 
-              if (chunkRes.rows.length === 0 || !chunkRes.rows[0].content || chunkRes.rows[0].content.trim().length < 20) {
-                console.warn(`[Bank Isolation] Skipping legacy bank question with missing or empty supporting chunk: "${groundedQ.question_text}"`);
+              // Fast path: L1 in-memory hash match or L2 durable database status with matching hash
+              const isL1Verified = AIRagEngine.solverVerifiedHashes.get(groundedQ.id) === currentHash;
+              const isL2Verified = item.quarantine_reason === `VERIFIED:${currentHash}`;
+
+              if (isL1Verified || isL2Verified) {
+                AIRagEngine.solverVerifiedQuestionIds.add(groundedQ.id);
+                AIRagEngine.solverVerifiedHashes.set(groundedQ.id, currentHash);
+                groundedQ.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
+                candidateQuestions.push(groundedQ);
                 continue;
               }
 
-              const correctOpt = groundedQ.options.find(o => o.is_correct);
-              if (!correctOpt) {
-                console.warn(`[Bank Isolation] Skipping legacy bank question without identified correct option: "${groundedQ.question_text}"`);
-                continue;
-              }
-
-              const candidatePayload: CandidateQuestionPayload = {
-                id: groundedQ.id,
-                question_text: groundedQ.question_text,
-                options: groundedQ.options.map(o => ({ id: o.id, text: o.text })),
-                proposed_correct_option_id: correctOpt.id,
-                evidence: {
-                  book_id: bookId,
-                  chapter_id: chapterId,
-                  page_number: groundedQ.page_reference || 1,
-                  chunk_id: groundedQ.chunk_id,
-                  passage_text: chunkRes.rows[0].content
-                },
-                diagram_url: groundedQ.diagram_url,
-                diagram_asset_id: groundedQ.diagram_asset_id,
-                has_visual_dependency: groundedQ.has_visual_dependency
-              };
-
-              const solver = this.getBlindSolver();
-              const verification = await verifyCandidateQuestionWithBlindSolver(candidatePayload, solver);
-
-              if (!verification.is_verified) {
-                console.warn(`[Bank Isolation] Skipping legacy unverified bank question failing blind solver: "${groundedQ.question_text}" [${verification.rejection_code}] (${verification.rejection_reason})`);
-                continue;
-              }
-
-              groundedQ.validation_status = { isValid: true, reason: 'VERIFIED_BY_BLIND_SOLVER' };
-              candidateQuestions.push(groundedQ);
+              // If item's quarantine_reason does not match the computed hash of the current question content,
+              // prior verification is invalidated (content was edited/mutated or legacy unverified).
+              console.warn(`[Bank Isolation] Skipping and quarantining question with hash mismatch / unverified state: "${groundedQ.question_text}"`);
+              await db.query(
+                `UPDATE question_bank_items SET is_quarantined = 1, quarantine_reason = $1 WHERE id = $2`,
+                ['FAILED:HASH_MISMATCH', groundedQ.id]
+              ).catch(() => {});
+              AIRagEngine.solverVerifiedQuestionIds.delete(groundedQ.id);
+              AIRagEngine.solverVerifiedHashes.delete(groundedQ.id);
+              continue;
             } else {
               console.warn(`[Bank Cache Filter] Skipping bank question with rejected answer key: "${groundedQ.question_text}" (${val.reason})`);
+              await db.query(
+                `UPDATE question_bank_items SET is_quarantined = 1, quarantine_reason = $1 WHERE id = $2`,
+                [`FAILED:${val.reason || 'ANSWER_KEY_REJECTED'}`, groundedQ.id]
+              ).catch(() => {});
             }
           } else {
             console.warn(`[Bank Cache Filter] Skipping unverified bank question: "${groundedQ.question_text}" (${prov.reason})`);
+            await db.query(
+              `UPDATE question_bank_items SET is_quarantined = 1, quarantine_reason = $1 WHERE id = $2`,
+              [`FAILED:${prov.reason || 'PROVENANCE_FAILED'}`, groundedQ.id]
+            ).catch(() => {});
           }
+        } else {
+          console.warn(`[Bank Cache Filter] Skipping low-quality bank question: "${groundedQ.question_text}" (${quality.reason})`);
+          await db.query(
+            `UPDATE question_bank_items SET is_quarantined = 1, quarantine_reason = $1 WHERE id = $2`,
+            [`FAILED:${quality.reason || 'LOW_QUALITY'}`, groundedQ.id]
+          ).catch(() => {});
         }
       }
 
@@ -1939,9 +1999,12 @@ Return valid JSON with exact keys:
 
       for (const q of questions) {
         const quality = evaluateQuestionQuality(q);
-        if (!quality.isValid || q.validation_status?.reason !== 'VERIFIED_BY_BLIND_SOLVER') {
-          // Do not persist unverified questions into the question bank
-          continue;
+        const isVerified = quality.isValid && q.validation_status?.reason === 'VERIFIED_BY_BLIND_SOLVER';
+        const currentHash = computeQuestionVerificationHash(q);
+
+        if (isVerified) {
+          AIRagEngine.solverVerifiedQuestionIds.add(q.id);
+          AIRagEngine.solverVerifiedHashes.set(q.id, currentHash);
         }
 
         const dupCheck = await db.query(
@@ -1952,8 +2015,9 @@ Return valid JSON with exact keys:
           await db.query(
             `INSERT INTO question_bank_items (
                id, bank_id, chapter_id, question_text, question_type, difficulty, 
-               bloom_level, explanation, source_chunk_id, page_reference
-             ) VALUES ($1, $2, $3, $4, 'MULTIPLE_CHOICE', $5, $6, $7, $8, $9)`,
+               bloom_level, explanation, source_chunk_id, page_reference,
+               is_quarantined, quarantine_reason
+             ) VALUES ($1, $2, $3, $4, 'MULTIPLE_CHOICE', $5, $6, $7, $8, $9, $10, $11)`,
             [
               q.id,
               bankId,
@@ -1963,7 +2027,9 @@ Return valid JSON with exact keys:
               q.bloom_level,
               q.explanation,
               q.chunk_id || null,
-              q.page_reference
+              q.page_reference,
+              isVerified ? 0 : 1,
+              isVerified ? `VERIFIED:${currentHash}` : 'PENDING_VERIFICATION'
             ]
           );
 
@@ -2112,9 +2178,9 @@ Return valid JSON with exact keys:
     const verifyStats = { solverExecFailures: 0 };
     if (geminiKey) {
       try {
-        // Over-generate candidate questions to guarantee requiredCount is comfortably achieved
-        // after strict quality, provenance, and blind solver validation
-        const candidateBuffer = Math.min(5, Math.max(4, Math.ceil(requiredCount * 0.8)));
+        // Over-generate candidate questions with a lean buffer to guarantee requiredCount is comfortably achieved
+        // after strict quality, provenance, and blind solver validation without wasteful calls
+        const candidateBuffer = Math.min(3, Math.max(2, Math.ceil(requiredCount * 0.5)));
         const requestCount = Math.min(10, requiredCount + candidateBuffer);
         const rawAiQuestions = await this.callGeminiForQuestions(
           chunks,
@@ -2150,6 +2216,7 @@ Return valid JSON with exact keys:
             contextWords,
             needed: requiredCount - validQuestions.length,
             isSeenByStudent,
+            concurrency: Math.min(4, Math.max(2, rawAiQuestions.length)),
             stats: verifyStats,
             generationSessionId: params.generationSessionId,
             label: 'Pass 1'
@@ -2306,7 +2373,7 @@ Return valid JSON with exact keys:
     }
 
     // Stage B (expensive, bounded-parallel): strict provenance + independent blind solver
-    const solver = this.getBlindSolver(generationSessionId);
+    const solver = this.getBlindSolver({ generationSessionId, bookId, chapterId });
     const verdicts: boolean[] = new Array(prefiltered.length).fill(false);
     let verifiedSoFar = 0;
     let cursor = 0;

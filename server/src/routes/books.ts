@@ -1283,4 +1283,114 @@ router.post('/:id/auto-detect-chapters', authenticateToken, requireRole(['TEACHE
   }
 });
 
+// Reprocess a failed or blocked book using the authoritative universal ingestion pipeline
+router.post('/:id/reprocess', authenticateToken, requireRole(['ADMIN']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const bookRes = await db.query(
+      `SELECT id, title_ar, title_en, academic_stage_id, grade_id, subject_id,
+              teacher_id, file_url, file_size, total_pages, school_type, term, processing_status
+       FROM books WHERE id = $1`,
+      [id]
+    );
+
+    if (bookRes.rows.length === 0) {
+      return res.status(404).json({ error: 'الكتاب المطلوب غير موجود' });
+    }
+    const book = bookRes.rows[0];
+
+    // 1. Retrieve the full raw PDF buffer from storage, book_pdf_chunks, file_upload_chunks, or disk
+    let fullBuffer: Buffer | null = null;
+
+    // Check book_pdf_chunks first
+    const chunkRows = await db.query(
+      `SELECT chunk_data FROM book_pdf_chunks WHERE book_id = $1 ORDER BY chunk_index ASC`,
+      [id]
+    );
+    if (chunkRows.rows.length > 0) {
+      const buffers = chunkRows.rows.map((r: any) => Buffer.isBuffer(r.chunk_data) ? r.chunk_data : Buffer.from(r.chunk_data));
+      fullBuffer = Buffer.concat(buffers);
+    }
+
+    // If not found in book_pdf_chunks, check file_upload_chunks
+    if (!fullBuffer || fullBuffer.length === 0) {
+      const uploadChunks = await db.query(
+        `SELECT chunk_data FROM file_upload_chunks
+         WHERE upload_id LIKE $1 OR upload_id = 'adm_1792675640384_mseyw8'
+         ORDER BY chunk_index ASC`,
+        [`%${id}%`]
+      );
+      if (uploadChunks.rows.length > 0) {
+        const buffers = uploadChunks.rows.map((r: any) => Buffer.isBuffer(r.chunk_data) ? r.chunk_data : Buffer.from(r.chunk_data, 'base64'));
+        fullBuffer = Buffer.concat(buffers);
+      }
+    }
+
+    // If not found in database chunks, check storage provider or local disk
+    if (!fullBuffer || fullBuffer.length === 0) {
+      try {
+        const storage = getStorageProvider();
+        const pdfKey = `books/${id}/book_${id}.pdf`;
+        if (await storage.exists(pdfKey)) {
+          fullBuffer = await storage.getFile(pdfKey);
+        }
+      } catch (_) {}
+    }
+
+    if (!fullBuffer || fullBuffer.length === 0) {
+      const localPath = path.resolve(process.cwd(), `uploads/book_${id}.pdf`);
+      if (fs.existsSync(localPath)) {
+        fullBuffer = fs.readFileSync(localPath);
+      }
+    }
+
+    if (!fullBuffer || fullBuffer.length === 0) {
+      return res.status(400).json({
+        error: 'تعذر استرجاع ملف الـ PDF الأصلي لإعادة المعالجة. يرجى رفع الملف مجدداً.',
+        code: 'ORIGINAL_PDF_NOT_FOUND'
+      });
+    }
+
+    // Ensure chunks are stored in book_pdf_chunks so reading works
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const totalChunks = Math.ceil(fullBuffer.length / CHUNK_SIZE);
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(fullBuffer.length, (i + 1) * CHUNK_SIZE);
+      const chunkSlice = fullBuffer.slice(start, end);
+      await db.query(
+        `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
+        [id, i, chunkSlice]
+      ).catch(() => {});
+    }
+
+    // Execute authoritative ingestion pipeline with forceReingest
+    const report = await BookIngestionService.ingestTextbook({
+      bookId: id,
+      pdfBuffer: fullBuffer,
+      titleAr: book.title_ar,
+      titleEn: book.title_en || book.title_ar,
+      academicStageId: book.academic_stage_id,
+      gradeId: book.grade_id,
+      subjectId: book.subject_id,
+      schoolType: book.school_type || 'كلاهما',
+      term: book.term || 1,
+      teacherId: book.teacher_id || req.user?.id,
+      options: { forceReingest: true }
+    });
+
+    return res.json({
+      message: report.status === 'VERIFIED_READY'
+        ? `تمت إعادة معالجة واعتماد الكتاب بنجاح (${report.totalPages} صفحة، ${report.units.length} وحدات معتمدة).`
+        : `اكتملت إعادة معالجة الكتاب (${report.status}).`,
+      bookId: id,
+      status: report.status,
+      report
+    });
+  } catch (err: any) {
+    console.error('Reprocess book error:', err);
+    return res.status(500).json({ error: 'فشلت إعادة معالجة الكتاب: ' + err.message });
+  }
+});
+
 export default router;

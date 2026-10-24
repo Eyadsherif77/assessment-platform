@@ -385,14 +385,23 @@ export class DatabaseChunkStorageProvider implements IStorageProvider {
     const CHUNK_SIZE = 2 * 1024 * 1024;
     const totalChunks = Math.ceil(buffer.length / CHUNK_SIZE);
 
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(buffer.length, (i + 1) * CHUNK_SIZE);
-      const chunkSlice = buffer.slice(start, end);
-      await db.query(
-        `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
-        [bookId, i, chunkSlice]
-      );
+    // If all chunks already exist in DB, skip redundant re-upload
+    const countCheck = await db.query(
+      `SELECT COUNT(*) as cnt FROM book_pdf_chunks WHERE book_id = $1`,
+      [bookId]
+    ).catch(() => ({ rows: [] }));
+    const existingCount = parseInt(countCheck.rows[0]?.cnt || '0', 10);
+
+    if (existingCount < totalChunks) {
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(buffer.length, (i + 1) * CHUNK_SIZE);
+        const chunkSlice = buffer.slice(start, end);
+        await db.query(
+          `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
+          [bookId, i, chunkSlice]
+        );
+      }
     }
 
     // Mirror to local disk if running in non-serverless dev
