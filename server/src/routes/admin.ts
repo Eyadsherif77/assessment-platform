@@ -1055,7 +1055,11 @@ router.post('/references/import-excel', excelUpload.single('file'), async (req: 
       stage_id,
       term,
       school_type,
-      create_fixed_exam
+      create_fixed_exam,
+      duration_minutes,
+      exam_title,
+      is_published,
+      is_style_reference
     } = req.body;
 
     const summary = await ReferenceImportService.importReferenceWorkbook(
@@ -1070,7 +1074,11 @@ router.post('/references/import-excel', excelUpload.single('file'), async (req: 
         overrideStageId: stage_id || undefined,
         overrideTerm: term ? parseInt(String(term), 10) : undefined,
         overrideSchoolType: school_type || undefined,
-        createFixedExam: create_fixed_exam !== 'false' && create_fixed_exam !== false
+        createFixedExam: create_fixed_exam !== 'false' && create_fixed_exam !== false,
+        durationMinutes: duration_minutes ? parseInt(String(duration_minutes), 10) : undefined,
+        examTitle: exam_title || undefined,
+        isPublished: is_published !== undefined ? (is_published === 'true' || is_published === true) : undefined,
+        isStyleReference: is_style_reference !== undefined ? (is_style_reference === 'true' || is_style_reference === true) : undefined
       }
     );
 
@@ -1080,6 +1088,52 @@ router.post('/references/import-excel', excelUpload.single('file'), async (req: 
     return res.status(400).json({
       success: false,
       error: err.message || 'حدث خطأ أثناء استيراد ومعالجة ملف المراجع'
+    });
+  }
+});
+
+/**
+ * 9.1 Preview Excel Reference Workbook (Without committing to DB)
+ * POST /api/admin/references/preview-excel
+ */
+router.post('/references/preview-excel', excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
+    }
+
+    const {
+      subject_id,
+      grade_id,
+      chapter_id,
+      stage_id,
+      term,
+      school_type,
+      duration_minutes
+    } = req.body;
+
+    const preview = await ReferenceImportService.previewReferenceWorkbook(
+      req.file.buffer,
+      {
+        operatorId: req.user!.id,
+        operatorRole: req.user!.role,
+        workbookName: req.file.originalname,
+        overrideSubjectId: subject_id || undefined,
+        overrideGradeId: grade_id || undefined,
+        overrideChapterId: chapter_id || undefined,
+        overrideStageId: stage_id || undefined,
+        overrideTerm: term ? parseInt(String(term), 10) : undefined,
+        overrideSchoolType: school_type || undefined,
+        durationMinutes: duration_minutes ? parseInt(String(duration_minutes), 10) : 30
+      }
+    );
+
+    return res.json(preview);
+  } catch (err: any) {
+    console.error('Reference workbook preview error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'حدث خطأ أثناء معاينة ملف المراجع'
     });
   }
 });

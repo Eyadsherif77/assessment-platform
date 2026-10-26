@@ -65,6 +65,45 @@ export interface ImportOptions {
   overrideTerm?: number;
   overrideSchoolType?: 'كلاهما' | 'عربي' | 'لغات';
   createFixedExam?: boolean;
+  durationMinutes?: number;
+  examTitle?: string;
+  isStyleReference?: boolean;
+  isPublished?: boolean;
+}
+
+export interface PreviewSummary {
+  success: boolean;
+  workbookName: string;
+  sheetName: string;
+  totalRows: number;
+  validCount: number;
+  invalidCount: number;
+  duplicatesCount: number;
+  durationMinutes: number;
+  resolvedCurriculum: {
+    stageId?: string;
+    gradeId?: string;
+    gradeNameAr?: string;
+    subjectId?: string;
+    subjectNameAr?: string;
+    bookId?: string;
+    bookTitleAr?: string;
+    chapterId?: string;
+    chapterTitleAr?: string;
+    chapterNumber?: number;
+  };
+  questions: Array<{
+    question_text: string;
+    page_reference: string;
+    explanation?: string;
+    points: number;
+    options: Array<{ option_text: string; is_correct: boolean }>;
+  }>;
+  invalidRows: Array<{
+    rowNumber: number;
+    questionText: string;
+    reason: string;
+  }>;
 }
 
 export interface ImportSummary {
@@ -258,9 +297,9 @@ export class ReferenceImportService {
     options: ImportOptions
   ): Promise<ImportSummary> {
     // 1. Authorization check
-    const allowedRoles = ['ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN'];
+    const allowedRoles = ['ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN', 'TEACHER'];
     if (!allowedRoles.includes(options.operatorRole)) {
-      throw new Error('غير مصرح لك باستيراد المراجع المنهجية (يتطلب صلاحيات مدير نظام)');
+      throw new Error('غير مصرح لك باستيراد المراجع المنهجية');
     }
 
     // 2. Parse workbook
@@ -303,6 +342,24 @@ export class ReferenceImportService {
           subjectId = fallbackSubj.rows[0].id;
         } else {
           throw new Error(`تعذر العثور على مادة دراسية مطابقة للاسم: "${targetSubjectName}"`);
+        }
+      }
+    }
+
+    // Teacher subject authorization check
+    if (options.operatorRole === 'TEACHER') {
+      const teacherRes = await db.query(
+        `SELECT u.id, u.subject_id, tp.subject_id as profile_subject_id, tp.specialization
+         FROM users u
+         LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+         WHERE u.id = $1`,
+        [options.operatorId]
+      );
+      if (teacherRes.rows.length > 0) {
+        const t = teacherRes.rows[0];
+        const teacherSubj = t.subject_id || t.profile_subject_id;
+        if (teacherSubj && subjectId && teacherSubj !== subjectId) {
+          throw new Error('غير مصرح للمعلم باستيراد أسئلة لمادة مختلفة عن تخصصه المعتمد');
         }
       }
     }
@@ -562,18 +619,37 @@ export class ReferenceImportService {
     if (options.createFixedExam !== false && validatedExamQuestions.length > 0) {
       const fixedExamId = uuidv4();
       const unitNumStr = resolvedChapter?.chapter_number ? `الوحدة ${resolvedChapter.chapter_number}` : 'الوحدة المنهجية';
-      const examTitleAr = `امتحان ${subjectInfo.name_ar} - ${unitNumStr}: ${resolvedChapter?.title_ar || targetUnitName} (نموذج معتمد)`;
-      const examTitleEn = `${subjectInfo.name_en || 'Subject'} - Unit ${resolvedChapter?.chapter_number || 1} Fixed Exam`;
+      const defaultTitleAr = `امتحان ${subjectInfo.name_ar} - ${unitNumStr}: ${resolvedChapter?.title_ar || targetUnitName} (نموذج معتمد)`;
+      const defaultTitleEn = `${subjectInfo.name_en || 'Subject'} - Unit ${resolvedChapter?.chapter_number || 1} Fixed Exam`;
 
-      // Check if fixed exam for this chapter already exists
-      const existingExamRes = await db.query(
-        `SELECT id, title_ar FROM exams WHERE chapter_id = $1 AND is_style_reference = 1 LIMIT 1`,
-        [chapterId]
-      );
+      const examTitleAr = options.examTitle?.trim() || defaultTitleAr;
+      const examTitleEn = options.examTitle?.trim() || defaultTitleEn;
+      const durationMin = options.durationMinutes && options.durationMinutes >= 5 ? options.durationMinutes : 30;
+      const isPub = options.isPublished !== undefined ? (options.isPublished ? 1 : 0) : (options.operatorRole === 'TEACHER' ? 0 : 1);
+      const isStyleRef = options.isStyleReference !== undefined ? (options.isStyleReference ? 1 : 0) : 1;
+
+      // Check if exam for this chapter/teacher already exists
+      let existingExamRes;
+      if (options.operatorRole === 'TEACHER') {
+        existingExamRes = await db.query(
+          `SELECT id, title_ar FROM exams WHERE teacher_id = $1 AND (chapter_id = $2 OR title_ar = $3) LIMIT 1`,
+          [options.operatorId, chapterId, examTitleAr]
+        );
+      } else {
+        existingExamRes = await db.query(
+          `SELECT id, title_ar FROM exams WHERE chapter_id = $1 AND is_style_reference = 1 LIMIT 1`,
+          [chapterId]
+        );
+      }
 
       let targetExamId: string;
       if (existingExamRes.rows.length > 0) {
         targetExamId = existingExamRes.rows[0].id;
+        // Update exam settings and duration
+        await db.query(
+          `UPDATE exams SET duration_minutes = $2, is_style_reference = $3, is_published = $4 WHERE id = $1`,
+          [targetExamId, durationMin, isStyleRef, isPub]
+        );
         // Clean old questions to refresh with updated verified questions
         await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [targetExamId]);
       } else {
@@ -590,7 +666,7 @@ export class ReferenceImportService {
              id, title_ar, title_en, teacher_id, academic_stage_id, grade_id,
              subject_id, book_id, chapter_id, duration_minutes, is_published,
              is_style_reference, school_type, term
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 30, 1, 1, $10, $11)`,
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
           [
             targetExamId,
             examTitleAr,
@@ -601,6 +677,9 @@ export class ReferenceImportService {
             subjectId,
             book.id,
             chapterId,
+            durationMin,
+            isPub,
+            isStyleRef,
             schoolType,
             term
           ]
@@ -669,4 +748,213 @@ export class ReferenceImportService {
       fixedExam: fixedExamResult
     };
   }
+
+  /**
+   * Preview and validate an Excel workbook without committing changes.
+   * Gives teachers and supervisors instant feedback, row validity, duplicate counts, and parsed questions.
+   */
+  public static async previewReferenceWorkbook(
+    buffer: Buffer,
+    options: ImportOptions
+  ): Promise<PreviewSummary> {
+    const allowedRoles = ['ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN', 'TEACHER'];
+    if (!allowedRoles.includes(options.operatorRole)) {
+      throw new Error('غير مصرح لك بمعاينة أو استيراد ملفات الأسئلة');
+    }
+
+    const { sheetName, parsedRows } = this.parseWorkbook(buffer, options.workbookName);
+
+    if (parsedRows.length === 0) {
+      throw new Error('لم يتم العثور على أي أسئلة صالحة في ملف Excel');
+    }
+
+    const representativeRow = parsedRows[0];
+    const targetSubjectName = representativeRow.subjectName;
+    const targetUnitName = representativeRow.unitName;
+
+    let subjectId = options.overrideSubjectId;
+    if (!subjectId) {
+      const subjectQuery = `
+        SELECT s.id, s.name_ar, s.name_en, s.code, s.grade_id, g.stage_id as academic_stage_id, g.name_ar as grade_name_ar
+        FROM subjects s
+        JOIN grades g ON s.grade_id = g.id
+        WHERE LOWER(s.name_en) = LOWER($1)
+           OR s.name_ar LIKE $2
+           OR LOWER(s.code) = LOWER($1)
+        LIMIT 1
+      `;
+      const subjRes = await db.query(subjectQuery, [
+        targetSubjectName || 'Science',
+        `%${targetSubjectName || 'علوم'}%`
+      ]);
+
+      if (subjRes.rows.length > 0) {
+        subjectId = subjRes.rows[0].id;
+      } else {
+        const fallbackSubj = await db.query(
+          `SELECT id, name_ar, name_en, grade_id FROM subjects WHERE code = 'SCIENCE' LIMIT 1`
+        );
+        if (fallbackSubj.rows.length > 0) {
+          subjectId = fallbackSubj.rows[0].id;
+        } else {
+          throw new Error(`تعذر العثور على مادة دراسية مطابقة للاسم: "${targetSubjectName}"`);
+        }
+      }
+    }
+
+    if (options.operatorRole === 'TEACHER') {
+      const teacherRes = await db.query(
+        `SELECT u.id, u.subject_id, tp.subject_id as profile_subject_id, tp.specialization
+         FROM users u
+         LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+         WHERE u.id = $1`,
+        [options.operatorId]
+      );
+      if (teacherRes.rows.length > 0) {
+        const t = teacherRes.rows[0];
+        const teacherSubj = t.subject_id || t.profile_subject_id;
+        if (teacherSubj && subjectId && teacherSubj !== subjectId) {
+          throw new Error('غير مصرح للمعلم باستيراد أسئلة لمادة مختلفة عن تخصصه المعتمد');
+        }
+      }
+    }
+
+    const subjectInfoRes = await db.query(
+      `SELECT s.id, s.name_ar, s.name_en, s.code, s.grade_id, g.stage_id as academic_stage_id, g.name_ar as grade_name_ar
+       FROM subjects s
+       JOIN grades g ON s.grade_id = g.id
+       WHERE s.id = $1`,
+      [subjectId]
+    );
+
+    const subjectInfo = subjectInfoRes.rows[0] || { grade_name_ar: 'Prep 3' };
+    const gradeId = options.overrideGradeId || subjectInfo.grade_id;
+    const stageId = options.overrideStageId || subjectInfo.academic_stage_id;
+    const term = options.overrideTerm || 1;
+
+    const bookRes = await db.query(
+      `SELECT id, title_ar, total_pages, school_type
+       FROM books
+       WHERE subject_id = $1 AND grade_id = $2 AND term = $3
+       ORDER BY created_at DESC LIMIT 1`,
+      [subjectId, gradeId, term]
+    );
+    const book = bookRes.rows[0];
+
+    let chapterId = options.overrideChapterId;
+    let resolvedChapter: any = null;
+
+    if (book) {
+      if (!chapterId) {
+        let detectedUnitNum = 2;
+        const match = targetUnitName.match(/\d+/);
+        if (match) detectedUnitNum = parseInt(match[0], 10);
+        else if (targetUnitName.includes('ثاني') || targetUnitName.includes('الثانية')) detectedUnitNum = 2;
+        else if (targetUnitName.includes('أول') || targetUnitName.includes('الأولى')) detectedUnitNum = 1;
+        else if (targetUnitName.includes('ثالث') || targetUnitName.includes('الثالثة')) detectedUnitNum = 3;
+        else if (targetUnitName.includes('رابع') || targetUnitName.includes('الرابعة')) detectedUnitNum = 4;
+
+        const chapterRes = await db.query(
+          `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
+           FROM book_chapters
+           WHERE book_id = $1 AND chapter_number = $2 LIMIT 1`,
+          [book.id, detectedUnitNum]
+        );
+        if (chapterRes.rows.length > 0) {
+          resolvedChapter = chapterRes.rows[0];
+          chapterId = resolvedChapter.id;
+        }
+      } else {
+        const chRes = await db.query(
+          `SELECT id, chapter_number, title_ar, title_en, start_page, end_page FROM book_chapters WHERE id = $1`,
+          [chapterId]
+        );
+        if (chRes.rows.length > 0) resolvedChapter = chRes.rows[0];
+      }
+    }
+
+    const questions: Array<{
+      question_text: string;
+      page_reference: string;
+      explanation?: string;
+      points: number;
+      options: Array<{ option_text: string; is_correct: boolean }>;
+    }> = [];
+    const invalidRows: Array<{ rowNumber: number; questionText: string; reason: string }> = [];
+    let duplicatesCount = 0;
+
+    for (const q of parsedRows) {
+      if (!q.isValid) {
+        invalidRows.push({
+          rowNumber: q.rowNumber,
+          questionText: q.questionText,
+          reason: q.validationError || 'السؤال يفتقد إلى الإجابة الصحيحة أو الخيارات الكافية'
+        });
+        continue;
+      }
+
+      // Check duplicate hash
+      const candidate: GroundedQuestion = {
+        id: uuidv4(),
+        chunk_id: 'preview_chunk',
+        book_id: 'preview_book',
+        chapter_id: 'preview_chapter',
+        question_text: q.questionText,
+        options: q.options.map(o => ({ id: o.id, text: o.text, is_correct: o.is_correct })),
+        difficulty: 'MEDIUM',
+        bloom_level: 'UNDERSTANDING',
+        page_reference: q.pageReference,
+        source_excerpt: '',
+        explanation: q.explanation || ''
+      };
+
+      const verificationHash = computeQuestionVerificationHash(candidate);
+
+      const dupRes = await db.query(
+        `SELECT id FROM question_bank_items WHERE quarantine_reason = $1 LIMIT 1`,
+        [`VERIFIED:${verificationHash}`]
+      );
+
+      if (dupRes.rows.length > 0) {
+        duplicatesCount++;
+      }
+
+      questions.push({
+        question_text: q.questionText,
+        page_reference: String(q.pageReference || 1),
+        explanation: q.explanation || '',
+        points: 1,
+        options: q.options.map(opt => ({
+          option_text: opt.text,
+          is_correct: opt.is_correct
+        }))
+      });
+    }
+
+    return {
+      success: true,
+      workbookName: options.workbookName,
+      sheetName,
+      totalRows: parsedRows.length,
+      validCount: questions.length,
+      invalidCount: invalidRows.length,
+      duplicatesCount,
+      durationMinutes: options.durationMinutes && options.durationMinutes >= 5 ? options.durationMinutes : 30,
+      resolvedCurriculum: {
+        stageId,
+        gradeId,
+        gradeNameAr: subjectInfo.grade_name_ar,
+        subjectId,
+        subjectNameAr: subjectInfo.name_ar,
+        bookId: book?.id,
+        bookTitleAr: book?.title_ar,
+        chapterId: resolvedChapter?.id,
+        chapterTitleAr: resolvedChapter?.title_ar,
+        chapterNumber: resolvedChapter?.chapter_number
+      },
+      questions,
+      invalidRows
+    };
+  }
 }
+

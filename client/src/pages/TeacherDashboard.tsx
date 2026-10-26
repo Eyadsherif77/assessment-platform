@@ -196,6 +196,31 @@ export const TeacherDashboard: React.FC = () => {
   // Student search query for أداء الطلاب section
   const [studentSearchQuery, setStudentSearchQuery] = useState<string>('');
 
+  // Fixed Exams View Mode State
+  const [examViewMode, setExamViewMode] = useState<'all' | 'hierarchy'>('all');
+  const [fixedHierarchy, setFixedHierarchy] = useState<any[]>([]);
+  const [selectedFixedSubjId, setSelectedFixedSubjId] = useState<string>('');
+
+  useEffect(() => {
+    if (activeTab === 'exams' && token) {
+      const q = selectedGradeId ? `?grade_id=${selectedGradeId}` : '';
+      fetch(apiUrl(`/api/exams/fixed/hierarchy${q}`), {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setFixedHierarchy(data);
+            if (data.length > 0 && !selectedFixedSubjId) {
+              const withExams = data.find((s: any) => s.total_exams > 0);
+              setSelectedFixedSubjId(withExams ? withExams.id : data[0].id);
+            }
+          }
+        })
+        .catch(console.error);
+    }
+  }, [activeTab, selectedGradeId, token]);
+
   // Submissions & Exam Review States
   const [isSubmissionsModalOpen, setIsSubmissionsModalOpen] = useState(false);
   const [examForSubmissions, setExamForSubmissions] = useState<any | null>(null);
@@ -1082,74 +1107,258 @@ export const TeacherDashboard: React.FC = () => {
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0 }}>
                   {isAr ? 'بنك الاختبارات والامتحانات' : 'Exam & Quiz Bank'}
                 </h2>
-              </div>
-              <button className="btn btn-primary" onClick={() => setActiveTab('builder')}>
-                <PlusCircle size={16} />
-                <span>{isAr ? 'تصميم امتحان جديد' : 'Build New Exam'}</span>
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
-              {exams.map(exam => (
-                <div key={exam.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <span className="badge badge-primary">
-                          {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
-                        </span>
-                        {(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1') && (
-                          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontWeight: 800, border: '1px solid #c7d2fe' }}>
-                            🏛️ {isAr ? 'امتحان وزاري ثابت / مرجع أسلوب' : 'Fixed Ministerial Exam'}
-                          </span>
-                        )}
-                      </div>
-                      <span className={`badge ${exam.is_published ? 'badge-success' : 'badge-warning'}`}>
-                        {exam.is_published ? (isAr ? 'منشور' : 'Published') : (isAr ? 'مسودة' : 'Draft')}
-                      </span>
-                    </div>
-                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.4rem' }}>{exam.title}</h3>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      ⏱️ {isAr ? 'المدة:' : 'Duration:'} {exam.duration_minutes} {isAr ? 'دقيقة' : 'min'} • 📝 {isAr ? 'الأسئلة:' : 'Questions:'} {exam.questions_count}
-                    </div>
-                  </div>
-
-                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => handleOpenSubmissionsModal(exam)}
-                        style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                      >
-                        <Eye size={15} />
-                        <span>{isAr ? `إجابات وتسليمات الطلاب (${exam.submissions_count || 0})` : `Submissions (${exam.submissions_count || 0})`}</span>
-                      </button>
-                      <button
-                        className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-secondary'}`}
-                        onClick={() => handleTogglePublish(exam.id, exam.is_published)}
-                      >
-                        {exam.is_published 
-                          ? (isAr ? 'إلغاء النشر' : 'Unpublish') 
-                          : (isAr ? 'نشر الاختبار للطلاب' : 'Publish to Students')}
-                      </button>
-                    </div>
-                    <button
-                      className={`btn btn-sm ${(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1') ? 'btn-outline' : 'btn-secondary'}`}
-                      onClick={() => handleToggleStyleReference(exam.id, exam.is_style_reference)}
-                      title={isAr ? 'تحديد أو إلغاء اعتماد هذا الامتحان كمرجع أسلوبي لتوليد الأسئلة' : 'Toggle style reference status for AI generation'}
-                      style={{ fontWeight: 700, fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                    >
-                      <span>🎨</span>
-                      <span>
-                        {(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1')
-                          ? (isAr ? 'إلغاء كمرجع أسلوب' : 'Remove Style Ref')
-                          : (isAr ? '«استخدم كمرجع لأسلوب الأسئلة»' : 'Use as Style Reference')}
-                      </span>
-                    </button>
-                  </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  {isAr ? 'تصفح الاختبارات الجاهزة والمخصصة لصفوفك الدراسية' : 'Browse fixed and custom assessments for your grades'}
                 </div>
-              ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '0.25rem', borderRadius: 'var(--radius-lg)', gap: '0.25rem', border: '1px solid var(--border-light)' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${examViewMode === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setExamViewMode('all')}
+                    style={{ fontWeight: 800, padding: '0.35rem 0.85rem' }}
+                  >
+                    {isAr ? `جميع الامتحانات (${exams.length})` : `All Exams (${exams.length})`}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${examViewMode === 'hierarchy' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setExamViewMode('hierarchy')}
+                    style={{ fontWeight: 800, padding: '0.35rem 0.85rem' }}
+                  >
+                    🏛️ {isAr ? 'الامتحانات الثابتة (حسب المواد والوحدات)' : 'Fixed Exams (Subject & Units)'}
+                  </button>
+                </div>
+                <button className="btn btn-primary" onClick={() => setActiveTab('builder')}>
+                  <PlusCircle size={16} />
+                  <span>{isAr ? 'تصميم امتحان جديد' : 'Build New Exam'}</span>
+                </button>
+              </div>
             </div>
+
+            {examViewMode === 'hierarchy' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {/* Subject Cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
+                  {fixedHierarchy.map(subj => {
+                    const isSelected = (selectedFixedSubjId || fixedHierarchy[0]?.id) === subj.id;
+                    return (
+                      <div
+                        key={subj.id}
+                        onClick={() => setSelectedFixedSubjId(subj.id)}
+                        className="card"
+                        style={{
+                          padding: '1.25rem',
+                          cursor: 'pointer',
+                          borderRadius: 'var(--radius-xl)',
+                          border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-light)',
+                          background: isSelected ? 'var(--primary-light, #EEF2FF)' : 'var(--bg-card)',
+                          boxShadow: isSelected ? '0 4px 14px rgba(79, 70, 229, 0.15)' : 'none',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '1.75rem' }}>{subj.icon || '📚'}</span>
+                          <span className={`badge ${subj.total_exams > 0 ? 'badge-primary' : 'badge-secondary'}`}>
+                            {subj.total_exams} {isAr ? 'امتحان ثابت' : 'Fixed Exams'}
+                          </span>
+                        </div>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 900, marginTop: '0.75rem', marginBottom: '0.25rem' }}>
+                          {isAr ? subj.name_ar : (subj.name_en || subj.name_ar)}
+                        </h3>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {subj.units?.length || 0} {isAr ? 'وحدات دراسية' : 'Units'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Selected Subject's Units & Exams */}
+                {(() => {
+                  const currentSubj = fixedHierarchy.find(s => s.id === (selectedFixedSubjId || fixedHierarchy[0]?.id));
+                  if (!currentSubj) return null;
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span>{currentSubj.icon || '📚'}</span>
+                          <span>{isAr ? `وحدات مادة ${currentSubj.name_ar}` : `Units of ${currentSubj.name_en || currentSubj.name_ar}`}</span>
+                        </h3>
+                        <span className="badge badge-primary">
+                          {currentSubj.total_exams} {isAr ? 'امتحانات جاهزة' : 'Ready Exams'}
+                        </span>
+                      </div>
+
+                      {currentSubj.units && currentSubj.units.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                          {currentSubj.units.map((unit: any) => (
+                            <div key={unit.id} className="card" style={{ padding: '1.5rem', borderRadius: 'var(--radius-xl)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span className="badge badge-secondary" style={{ fontWeight: 800 }}>
+                                      {isAr ? `الوحدة ${unit.unit_number}` : `Unit ${unit.unit_number}`}
+                                    </span>
+                                    <h4 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
+                                      {unit.title}
+                                    </h4>
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                    📖 {isAr ? `صفحات الكتاب: ${unit.start_page} إلى ${unit.end_page}` : `Book pages: ${unit.start_page} to ${unit.end_page}`}
+                                  </div>
+                                </div>
+                                <span className="badge badge-success">
+                                  {unit.exams?.length || 0} {isAr ? 'امتحان متاح' : 'Exams Available'}
+                                </span>
+                              </div>
+
+                              {unit.exams && unit.exams.length > 0 ? (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                                  {unit.exams.map((ex: any) => (
+                                    <div
+                                      key={ex.id}
+                                      style={{
+                                        border: '1px solid var(--border-light)',
+                                        borderRadius: 'var(--radius-lg)',
+                                        padding: '1.25rem',
+                                        background: 'var(--bg-subtle)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        gap: '0.75rem'
+                                      }}
+                                    >
+                                      <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontWeight: 800, fontSize: '0.75rem' }}>
+                                            🏛️ {isAr ? 'امتحان وزاري ثابت' : 'Fixed Exam'}
+                                          </span>
+                                          <span className={`badge ${ex.is_published ? 'badge-success' : 'badge-warning'}`}>
+                                            {ex.is_published ? (isAr ? 'منشور' : 'Published') : (isAr ? 'مسودة' : 'Draft')}
+                                          </span>
+                                        </div>
+                                        <h5 style={{ fontSize: '1rem', fontWeight: 800, margin: '0 0 0.4rem' }}>
+                                          {ex.title}
+                                        </h5>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                          ⏱️ {ex.duration_minutes} {isAr ? 'دقيقة' : 'min'} • 📝 {ex.questions_count} {isAr ? 'سؤال' : 'questions'}
+                                        </div>
+                                      </div>
+
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem' }}>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                          <button
+                                            className="btn btn-primary btn-sm"
+                                            onClick={() => handleOpenSubmissionsModal(ex)}
+                                            style={{ flex: 1, fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+                                          >
+                                            <Eye size={14} />
+                                            <span>{isAr ? `إجابات الطلاب (${ex.submissions_count || 0})` : `Submissions (${ex.submissions_count || 0})`}</span>
+                                          </button>
+                                          <button
+                                            className={`btn btn-sm ${ex.is_published ? 'btn-outline' : 'btn-secondary'}`}
+                                            onClick={() => handleTogglePublish(ex.id, ex.is_published)}
+                                            style={{ fontSize: '0.8rem' }}
+                                          >
+                                            {ex.is_published ? (isAr ? 'إلغاء' : 'Unpublish') : (isAr ? 'نشر' : 'Publish')}
+                                          </button>
+                                        </div>
+                                        <button
+                                          className={`btn btn-sm ${(ex.is_style_reference === 1 || ex.is_style_reference === true || ex.is_style_reference === '1') ? 'btn-outline' : 'btn-secondary'}`}
+                                          onClick={() => handleToggleStyleReference(ex.id, ex.is_style_reference)}
+                                          style={{ fontWeight: 700, fontSize: '0.75rem', width: '100%' }}
+                                        >
+                                          🎨 {(ex.is_style_reference === 1 || ex.is_style_reference === true || ex.is_style_reference === '1')
+                                            ? (isAr ? 'إلغاء كمرجع أسلوب' : 'Remove Style Ref')
+                                            : (isAr ? '«استخدم كمرجع لأسلوب الأسئلة»' : 'Use as Style Reference')}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                  {isAr ? 'لا توجد امتحانات ثابتة مخصصة لهذه الوحدة حتى الآن.' : 'No fixed exams assigned to this unit yet.'}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                          {isAr ? 'لم يتم العثور على وحدات دراسية مسجلة لهذه المادة.' : 'No units found for this subject.'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
+                {exams.map(exam => (
+                  <div key={exam.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span className="badge badge-primary">
+                            {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
+                          </span>
+                          {(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1') && (
+                            <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontWeight: 800, border: '1px solid #c7d2fe' }}>
+                              🏛️ {isAr ? 'امتحان وزاري ثابت / مرجع أسلوب' : 'Fixed Ministerial Exam'}
+                            </span>
+                          )}
+                        </div>
+                        <span className={`badge ${exam.is_published ? 'badge-success' : 'badge-warning'}`}>
+                          {exam.is_published ? (isAr ? 'منشور' : 'Published') : (isAr ? 'مسودة' : 'Draft')}
+                        </span>
+                      </div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.4rem' }}>{exam.title}</h3>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        ⏱️ {isAr ? 'المدة:' : 'Duration:'} {exam.duration_minutes} {isAr ? 'دقيقة' : 'min'} • 📝 {isAr ? 'الأسئلة:' : 'Questions:'} {exam.questions_count}
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleOpenSubmissionsModal(exam)}
+                          style={{ fontWeight: 800, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                        >
+                          <Eye size={15} />
+                          <span>{isAr ? `إجابات وتسليمات الطلاب (${exam.submissions_count || 0})` : `Submissions (${exam.submissions_count || 0})`}</span>
+                        </button>
+                        <button
+                          className={`btn btn-sm ${exam.is_published ? 'btn-outline' : 'btn-secondary'}`}
+                          onClick={() => handleTogglePublish(exam.id, exam.is_published)}
+                        >
+                          {exam.is_published 
+                            ? (isAr ? 'إلغاء النشر' : 'Unpublish') 
+                            : (isAr ? 'نشر الاختبار للطلاب' : 'Publish to Students')}
+                        </button>
+                      </div>
+                      <button
+                        className={`btn btn-sm ${(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1') ? 'btn-outline' : 'btn-secondary'}`}
+                        onClick={() => handleToggleStyleReference(exam.id, exam.is_style_reference)}
+                        title={isAr ? 'تحديد أو إلغاء اعتماد هذا الامتحان كمرجع أسلوبي لتوليد الأسئلة' : 'Toggle style reference status for AI generation'}
+                        style={{ fontWeight: 700, fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                      >
+                        <span>🎨</span>
+                        <span>
+                          {(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1')
+                            ? (isAr ? 'إلغاء كمرجع أسلوب' : 'Remove Style Ref')
+                            : (isAr ? '«استخدم كمرجع لأسلوب الأسئلة»' : 'Use as Style Reference')}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
