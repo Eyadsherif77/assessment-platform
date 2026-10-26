@@ -244,8 +244,8 @@ export class ReadinessValidator {
       requiredActions.push('تعديل نطاق الصفحات ليكون ضمن إجمالي صفحات ملف الكتاب');
     }
 
-    // Check 4: Text Content & Chunks (Minimum 1 chunk and 50 characters)
-    if (totalChunks < 1 || totalChars < 50) {
+    // Check 4: Text Content & Chunks (Minimum 2 chunks and 100 characters)
+    if (totalChunks < 2 || totalChars < 100) {
       issues.push(`المحتوى النصي للوحدة غير كافٍ لتوليد أسئلة موثوقة (${totalChunks} مقاطع، ${totalChars} حرفاً)`);
       requiredActions.push('تأكد من أن نطاق صفحات الوحدة يحتوي على نصوص دراسية وشروحات كافية');
     }
@@ -342,6 +342,11 @@ export class ReadinessValidator {
    */
   public static async getUnitReadinessAsync(bookId: string, chapterId: string): Promise<UnitReadinessResult> {
     const key = `${bookId}::${chapterId}`;
+    const dynamicUnit = this.dynamicUnits.get(key);
+    if (dynamicUnit) {
+      return this.evaluateInventoryUnit(bookId, chapterId, dynamicUnit);
+    }
+
     const inv = this.loadInventory();
     const staticUnit = inv.get(key);
 

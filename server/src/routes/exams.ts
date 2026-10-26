@@ -27,6 +27,156 @@ router.get('/monthly-limit-status', authenticateToken, async (req: Authenticated
   }
 });
 
+/**
+ * Hierarchical Fixed Exams Browser: Subject Card -> Units -> Ready-to-use Exams
+ * GET /api/exams/fixed/hierarchy
+ */
+router.get('/fixed/hierarchy', authenticateToken, enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
+  try {
+    const isStaff = ['ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN', 'TEACHER'].includes(req.user?.role || '');
+
+    // Resolve target grade
+    let targetGradeId = (req.query.grade_id as string) || '';
+    if (!targetGradeId) {
+      if (req.user?.role === 'STUDENT' && req.studentProfile?.gradeId) {
+        targetGradeId = req.studentProfile.gradeId;
+      } else if (req.user?.role === 'TEACHER' && ((req.teacherProfile as any)?.gradeId || (req.teacherProfile as any)?.grade_id)) {
+        targetGradeId = (req.teacherProfile as any)?.gradeId || (req.teacherProfile as any)?.grade_id;
+      } else {
+        // Default to Prep 3 (authoritative baseline)
+        const defaultGrade = await db.query(`SELECT id FROM grades WHERE code = 'PREP_3' OR name_ar LIKE '%الثالث الإعدادي%' LIMIT 1`);
+        targetGradeId = defaultGrade.rows[0]?.id || '2f0f4f5a-7c5c-4136-a935-33c79effca3d';
+      }
+    }
+
+    const term = req.query.term ? parseInt(String(req.query.term), 10) : 1;
+
+    // Get subjects for this grade
+    const subjectsRes = await db.query(
+      `SELECT s.id, s.name_ar, s.name_en, s.code, s.icon, s.sort_order
+       FROM subjects s
+       WHERE s.grade_id = $1
+       ORDER BY s.sort_order ASC, s.name_ar ASC`,
+      [targetGradeId]
+    );
+
+    const resultSubjects: any[] = [];
+
+    for (const subj of subjectsRes.rows) {
+      // Find active textbook for this subject & grade
+      const bookRes = await db.query(
+        `SELECT id, title_ar, total_pages
+         FROM books
+         WHERE subject_id = $1 AND grade_id = $2 AND term = $3
+         ORDER BY created_at DESC LIMIT 1`,
+        [subj.id, targetGradeId, term]
+      );
+
+      const book = bookRes.rows[0] || null;
+
+      // Get chapters of this book
+      let chapters: any[] = [];
+      if (book) {
+        const chaptersRes = await db.query(
+          `SELECT bc.id, bc.chapter_number, bc.title_ar, bc.title_en, bc.start_page, bc.end_page,
+                  (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id) as chunks_count
+           FROM book_chapters bc
+           WHERE bc.book_id = $1
+           ORDER BY bc.chapter_number ASC`,
+          [book.id]
+        );
+        chapters = chaptersRes.rows;
+      }
+
+      // Query fixed exams for this subject & grade
+      let examConditions = [`e.subject_id = $1`, `e.grade_id = $2`, `e.term = $3`];
+      const examParams: any[] = [subj.id, targetGradeId, term];
+
+      if (!isStaff) {
+        examConditions.push(`e.is_published = 1`);
+        if (req.studentProfile) {
+          const studentSchoolType = (req.studentProfile.schoolType || 'عربي').trim().replace('ى', 'ي');
+          examParams.push(studentSchoolType);
+          examConditions.push(`(
+            COALESCE(e.school_type, 'كلاهما') IN ('كلاهما', 'both', 'عربي ولغات', 'عام ولغات')
+            OR COALESCE(e.school_type, '') = $${examParams.length}
+            OR REPLACE(COALESCE(e.school_type, ''), 'ى', 'ي') = $${examParams.length}
+          )`);
+        }
+      }
+
+      const examsRes = await db.query(
+        `SELECT e.id, e.title_ar as title, e.title_en, e.duration_minutes, e.chapter_id,
+                e.is_style_reference, e.is_published, e.school_type, e.created_at,
+                (SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id) as questions_count,
+                (SELECT COUNT(*) FROM exam_attempts ea WHERE ea.exam_id = e.id) as submissions_count
+         FROM exams e
+         WHERE ${examConditions.join(' AND ')}
+         ORDER BY e.created_at DESC`,
+        examParams
+      );
+
+      const allExams = examsRes.rows;
+
+      // Map exams to chapters/units
+      const unitList: any[] = [];
+      const assignedExamIds = new Set<string>();
+
+      for (const ch of chapters) {
+        const chapterExams = allExams.filter(e => e.chapter_id === ch.id);
+        chapterExams.forEach(e => assignedExamIds.add(e.id));
+
+        unitList.push({
+          unit_id: ch.id,
+          chapter_number: ch.chapter_number,
+          title_ar: ch.title_ar,
+          title_en: ch.title_en,
+          start_page: ch.start_page,
+          end_page: ch.end_page,
+          chunks_count: ch.chunks_count,
+          exams: chapterExams
+        });
+      }
+
+      // Any exams not tied to a specific chapter, place in General Units
+      const generalExams = allExams.filter(e => !assignedExamIds.has(e.id));
+      if (generalExams.length > 0 || unitList.length === 0) {
+        unitList.push({
+          unit_id: 'general',
+          chapter_number: 0,
+          title_ar: 'اختبارات منهجية شاملة',
+          title_en: 'Comprehensive Unit Assessments',
+          start_page: 1,
+          end_page: book?.total_pages || 100,
+          chunks_count: 0,
+          exams: generalExams
+        });
+      }
+
+      resultSubjects.push({
+        id: subj.id,
+        name_ar: subj.name_ar,
+        name_en: subj.name_en,
+        code: subj.code,
+        icon: subj.icon,
+        book_id: book?.id || null,
+        book_title_ar: book?.title_ar || null,
+        total_exams: allExams.length,
+        units: unitList
+      });
+    }
+
+    return res.json({
+      grade_id: targetGradeId,
+      term,
+      subjects: resultSubjects
+    });
+  } catch (err: any) {
+    console.error('Error fetching fixed exams hierarchy:', err);
+    return res.status(500).json({ error: 'خطأ في جلب الهيكل التنظيمي للامتحانات الثابتة: ' + err.message });
+  }
+});
+
 // List exams
 router.get('/', authenticateToken, enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
@@ -76,7 +226,7 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       // Teachers see their own exams or all
       if (req.query.my_only === 'true') {
         params.push(req.user.id);
-        conditions.push(`e.teacher_id = $${params.length}`);
+        conditions.push(`(e.teacher_id = $${params.length} OR e.is_style_reference = 1)`);
       }
       if (req.query.stage_id) {
         params.push(req.query.stage_id);

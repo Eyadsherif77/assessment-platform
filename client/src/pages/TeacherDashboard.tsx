@@ -1099,8 +1099,8 @@ export const TeacherDashboard: React.FC = () => {
                           {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
                         </span>
                         {(exam.is_style_reference === 1 || exam.is_style_reference === true || exam.is_style_reference === '1') && (
-                          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontWeight: 700, border: '1px solid #c7d2fe' }}>
-                            🎨 {isAr ? 'مرجع أسلوب' : 'Style Reference'}
+                          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontWeight: 800, border: '1px solid #c7d2fe' }}>
+                            🏛️ {isAr ? 'امتحان وزاري ثابت / مرجع أسلوب' : 'Fixed Ministerial Exam'}
                           </span>
                         )}
                       </div>
@@ -2109,7 +2109,7 @@ export const TeacherDashboard: React.FC = () => {
                             📖 {isAr ? `الصفحات: ${ch.start_page} - ${ch.end_page}` : `Pages: ${ch.start_page} - ${ch.end_page}`}
                           </span>
                           <span className="badge" style={{ background: '#F1F5F9', color: '#475569', fontSize: '0.7rem' }}>
-                            {isAr ? `${ch.chunks_count || 0} فقرات مفهرسة` : `${ch.chunks_count || 0} Chunks`}
+                            {isAr ? `${ch.chunks_count || 0} مقطع منهجي مفهرس` : `${ch.chunks_count || 0} Indexed Sections`}
                           </span>
                         </div>
                         <h4 style={{ fontWeight: 800, fontSize: '0.95rem', margin: 0, color: 'var(--text-title)' }}>

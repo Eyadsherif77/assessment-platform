@@ -41,7 +41,9 @@ const mockState = {
   studentExamAssignments: [] as any[],
   aiEvaluations: new Map<string, any>(),
   studentLearningHistory: [] as any[],
-  studentTopicMastery: new Map<string, any>()
+  studentTopicMastery: new Map<string, any>(),
+  platformSettings: new Map<string, any>(),
+  aiUsageMetrics: [] as any[]
 };
 
 // Fixture Users
@@ -148,8 +150,47 @@ db.query = async (sql: string, params: any[] = []): Promise<any> => {
     normalizedSql.startsWith(cmd) || normalizedSql.includes(` ${cmd} `)
   );
 
+  // Allow harmless schema readiness checks
+  if (normalizedSql.startsWith('CREATE TABLE')) {
+    return { rows: [], rowCount: 0 };
+  }
+
   if (isWrite) {
     interceptedWritesCount++;
+
+    // 0. AI Usage Metrics INSERT / UPDATE
+    if (normalizedSql.includes('AI_USAGE_METRICS')) {
+      mockState.aiUsageMetrics.push({ sql: normalizedSql, params });
+      return { rows: [], rowCount: 1 };
+    }
+
+    // 0.5 Platform Settings (Locks & Global Config)
+    if (normalizedSql.includes('PLATFORM_SETTINGS')) {
+      if (normalizedSql.startsWith('INSERT')) {
+        const key = params[0];
+        mockState.platformSettings.set(key, {
+          setting_key: key,
+          setting_value: params[1],
+          updated_at: new Date().toISOString(),
+          updated_by: params[2]
+        });
+        return { rows: [], rowCount: 1 };
+      } else if (normalizedSql.startsWith('UPDATE')) {
+        const key = params[1];
+        mockState.platformSettings.set(key, {
+          setting_key: key,
+          setting_value: params[0],
+          updated_at: new Date().toISOString(),
+          updated_by: params[3]
+        });
+        return { rows: [], rowCount: 1 };
+      } else if (normalizedSql.startsWith('DELETE')) {
+        const key = params[0];
+        mockState.platformSettings.delete(key);
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    }
 
     // 1. Shared Cached Exams INSERT / REPLACE
     if (normalizedSql.includes('SHARED_CACHED_EXAMS')) {
@@ -290,6 +331,13 @@ db.query = async (sql: string, params: any[] = []): Promise<any> => {
 
   // Platform Settings
   if (normalizedSql.includes('FROM PLATFORM_SETTINGS WHERE SETTING_KEY =')) {
+    const key = params[0];
+    if (mockState.platformSettings.has(key)) {
+      return { rows: [mockState.platformSettings.get(key)], rowCount: 1 };
+    }
+    if (key && String(key).startsWith('lock:')) {
+      return { rows: [], rowCount: 0 };
+    }
     return { rows: [{ setting_value: '10' }], rowCount: 1 };
   }
 
@@ -461,6 +509,17 @@ async function runStudentWorkflowVerification() {
     console.log(`   ✅ 2A. Unit 1 is VERIFIED_READY and eligible for exam generation.`);
 
     // 2B. Blocked unit negative test (Prep 1 Math Geometry Proofs)
+    ReadinessValidator.registerDynamicUnit({
+      book_id: BOOK_MATH_ID,
+      chapter_id: CHAPTER_MATH_BLOCKED_ID,
+      book_title_ar: 'الرياضيات (لغات)',
+      book_title_en: 'Mathematics',
+      unit_title_ar: 'الوحدة الرابعة: الهندسة والقياس (معطلة للاختبار)',
+      unit_title_en: 'Unit 4: Geometry & Measurement (Blocked Test)',
+      readiness_status: 'BLOCKED',
+      status_reason: 'وحدة محجوبة لأغراض فحص بوابة الأمان التعليمي'
+    });
+
     const blockedRes = await fetch(`${baseUrl}/api/ai/generate-quiz`, {
       method: 'POST',
       headers: {
@@ -478,6 +537,7 @@ async function runStudentWorkflowVerification() {
     const blockedBody = await blockedRes.json();
     assert.strictEqual(blockedBody.code, 'UNIT_READINESS_BLOCKED', 'Must return UNIT_READINESS_BLOCKED');
     console.log(`   ✅ 2B. Safety Gate Verified: Blocked unit was rejected with 403 (${blockedBody.code})`);
+    ReadinessValidator.clearDynamicUnits();
 
     // -----------------------------------------------------------------------
     // STEP 3: Generate Exam & Audit Answer-Key Privacy

@@ -300,7 +300,10 @@ export class AiUsageMetricsService {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      const isSqlite = Boolean(typeof (db as any).isSqlite === 'function' && (db as any).isSqlite());
+      const isSqlite = Boolean(
+        (typeof (db as any).isSqlite === 'function' && (db as any).isSqlite()) ||
+        Boolean((db as any).sqlite)
+      );
       if (isSqlite) {
         await db.query(`CREATE INDEX IF NOT EXISTS idx_metric_event ON ai_usage_metrics (event_type)`);
         await db.query(`CREATE INDEX IF NOT EXISTS idx_metric_created ON ai_usage_metrics (created_at)`);

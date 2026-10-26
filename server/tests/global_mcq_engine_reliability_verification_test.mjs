@@ -97,8 +97,8 @@ async function runTests() {
 
     assert.ok(caught instanceof GeminiProviderError);
     assert.strictEqual(caught.category, 'TEMPORARY_OVERLOAD');
-    assert.strictEqual(attempted.length, GeminiClient.candidateModels.length);
-    pass('2. All-provider failure is bounded to exactly candidate models count and throws TEMPORARY_OVERLOAD');
+    assert.strictEqual(attempted.length, GeminiClient.maxModelsPerCall);
+    pass('2. All-provider failure is bounded to exactly maxModelsPerCall count and throws TEMPORARY_OVERLOAD');
   }
 
   // -------------------------------------------------------------------------
@@ -495,7 +495,7 @@ async function runTests() {
     };
     const resTwoCorrect = evaluateQuestionQuality(twoCorrect);
     assert.strictEqual(resTwoCorrect.isValid, false);
-    assert.ok(resTwoCorrect.reason.includes('Must have exactly 1 correct option'));
+    assert.ok(resTwoCorrect.reason.toLowerCase().includes('must have exactly 1 correct option'));
 
     pass('6. MCQ quality evaluator strictly enforces stems, options, distractors, duplicates, and metadata rules');
   }

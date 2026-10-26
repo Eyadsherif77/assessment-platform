@@ -8,6 +8,15 @@ import { getStorageProvider } from '../services/storage/storageProvider.js';
 import { ExamCacheService } from '../services/examCacheService.js';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
+import * as xlsx from 'xlsx';
+import { ReferenceImportService } from '../services/referenceImportService.js';
+
+const XLSX = (xlsx as any).default || xlsx;
+const excelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 } // 15 MB limit
+});
 
 const router = Router();
 
@@ -1026,6 +1035,67 @@ router.delete('/students/:userId/devices', async (req: AuthenticatedRequest, res
     return res.json({ message: 'تمت إعادة ضبط وحذف جميع الأجهزة المسجلة للطالب بنجاح' });
   } catch (err: any) {
     return res.status(500).json({ error: 'فشل تصفير أجهزة الطالب' });
+  }
+});
+
+/**
+ * 9. One-Click Excel Reference Importer
+ * POST /api/admin/references/import-excel
+ */
+router.post('/references/import-excel', excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
+    }
+
+    const {
+      subject_id,
+      grade_id,
+      chapter_id,
+      stage_id,
+      term,
+      school_type,
+      create_fixed_exam
+    } = req.body;
+
+    const summary = await ReferenceImportService.importReferenceWorkbook(
+      req.file.buffer,
+      {
+        operatorId: req.user!.id,
+        operatorRole: req.user!.role,
+        workbookName: req.file.originalname,
+        overrideSubjectId: subject_id || undefined,
+        overrideGradeId: grade_id || undefined,
+        overrideChapterId: chapter_id || undefined,
+        overrideStageId: stage_id || undefined,
+        overrideTerm: term ? parseInt(String(term), 10) : undefined,
+        overrideSchoolType: school_type || undefined,
+        createFixedExam: create_fixed_exam !== 'false' && create_fixed_exam !== false
+      }
+    );
+
+    return res.json(summary);
+  } catch (err: any) {
+    console.error('Reference workbook import error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'حدث خطأ أثناء استيراد ومعالجة ملف المراجع'
+    });
+  }
+});
+
+/**
+ * 10. Download Sample Excel Reference Template
+ * GET /api/admin/references/template
+ */
+router.get('/references/template', (req: AuthenticatedRequest, res) => {
+  try {
+    const buffer = ReferenceImportService.generateTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Farabi_Reference_Workbook_Template.xlsx"');
+    return res.send(buffer);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل إنشاء قالب Excel: ' + err.message });
   }
 });
 

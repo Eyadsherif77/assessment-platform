@@ -179,6 +179,8 @@ export const StudentDashboard: React.FC = () => {
 
   // Exams Data
   const [exams, setExams] = useState<any[]>([]);
+  const [fixedExamsHierarchy, setFixedExamsHierarchy] = useState<any[]>([]);
+  const [selectedFixedSubjectId, setSelectedFixedSubjectId] = useState<string>('');
   const [activeExam, setActiveExam] = useState<any | null>(null);
   const [examAnswers, setExamAnswers] = useState<Record<string, string>>({});
   const [examResult, setExamResult] = useState<any | null>(null);
@@ -477,6 +479,24 @@ export const StudentDashboard: React.FC = () => {
             ? data.filter((e: any) => e.grade_id === studentGradeId)
             : data;
           setExams(filtered);
+        }
+      })
+      .catch(console.error);
+
+    fetch(apiUrl(`/api/exams/fixed/hierarchy?term=${t}`), {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && Array.isArray(data.subjects)) {
+          setFixedExamsHierarchy(data.subjects);
+          if (data.subjects.length > 0) {
+            setSelectedFixedSubjectId(prev => {
+              if (prev && data.subjects.some((s: any) => s.id === prev)) return prev;
+              const firstWithExams = data.subjects.find((s: any) => s.total_exams > 0) || data.subjects[0];
+              return firstWithExams.id;
+            });
+          }
         }
       })
       .catch(console.error);
@@ -1343,7 +1363,7 @@ export const StudentDashboard: React.FC = () => {
                                 {isBookEnglish || !isAr ? `Unit #${ch.chapter_number}` : `الوحدة #${ch.chapter_number}`}
                               </span>
                               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {isBookEnglish || !isAr ? `${ch.chunks_count ?? 3} Paragraphs` : `${ch.chunks_count ?? 3} فقرات مفهرسة`}
+                                {isBookEnglish || !isAr ? `${ch.chunks_count ?? 3} Indexed Sections` : `${ch.chunks_count ?? 3} مقطع منهجي مفهرس`}
                               </span>
                             </div>
                             <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.4rem' }}>
@@ -2568,7 +2588,7 @@ export const StudentDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
-            ) : exams.length === 0 ? (
+            ) : fixedExamsHierarchy.length === 0 && exams.length === 0 ? (
               <div className="card" style={{ padding: '3rem 2rem', textAlign: 'center', borderRadius: 'var(--radius-xl)' }}>
                 <Clock size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '0.5rem' }}>
@@ -2581,55 +2601,276 @@ export const StudentDashboard: React.FC = () => {
                 </p>
               </div>
             ) : (
-              /* Exams List Grid */
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
-                {exams.map(exam => (
-                  <div key={exam.id} className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+                {/* Header Banner */}
+                <div style={{
+                  background: 'linear-gradient(135deg, #1E1B4B 0%, #1E3A8A 100%)',
+                  padding: '1.5rem',
+                  borderRadius: 'var(--radius-lg)',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  boxShadow: '0 4px 20px rgba(30, 58, 138, 0.15)'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                      <span style={{ fontSize: '1.5rem' }}>🎯</span>
+                      <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900, color: '#FFFFFF' }}>
+                        {isAr ? 'الامتحانات الثابتة المعتمدة' : 'Official Fixed Assessments'}
+                      </h3>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#CBD5E1' }}>
+                      {isAr 
+                        ? 'تصفح الامتحانات الدورية المقسمة حسب المواد والوحدات المنهجية المعتمدة' 
+                        : 'Browse certified periodic exams organized by subject and unit'}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span className="badge" style={{ background: 'rgba(255,255,255,0.18)', color: '#FFFFFF', fontSize: '0.8rem', padding: '0.4rem 0.85rem', fontWeight: 800 }}>
+                      {isAr ? `إجمالي المتاح: ${exams.length} امتحان` : `${exams.length} Total Exams`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Level 1: Subject Cards Grid */}
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-title)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span>📚</span>
+                    <span>{isAr ? 'المواد الدراسية المتاحة (اختر المادة):' : 'Available Subjects (Select Subject):'}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                    {fixedExamsHierarchy.map(subj => {
+                      const isSelected = selectedFixedSubjectId === subj.id;
+                      const hasExams = (subj.total_exams || 0) > 0;
+                      return (
+                        <div
+                          key={subj.id}
+                          onClick={() => setSelectedFixedSubjectId(subj.id)}
+                          className="card"
+                          style={{
+                            padding: '1.25rem',
+                            cursor: 'pointer',
+                            borderRadius: 'var(--radius-lg)',
+                            border: isSelected ? '2px solid var(--primary-600)' : '1px solid var(--border-light)',
+                            background: isSelected ? 'linear-gradient(135deg, rgba(37,99,235,0.06), rgba(30,58,138,0.1))' : '#FFFFFF',
+                            boxShadow: isSelected ? '0 8px 24px rgba(37,99,235,0.15)' : 'var(--shadow-sm)',
+                            transform: isSelected ? 'translateY(-2px)' : 'none',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            gap: '0.75rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{
+                              width: '42px',
+                              height: '42px',
+                              borderRadius: '10px',
+                              background: isSelected ? 'var(--primary-600)' : 'var(--bg-subtle)',
+                              color: isSelected ? '#FFFFFF' : 'var(--primary-700)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '1.3rem',
+                              fontWeight: 900
+                            }}>
+                              {subj.code === 'SCIENCE' ? '⚡' : subj.code === 'MATH' ? '📐' : subj.code === 'ENGLISH' ? '🌐' : subj.code === 'ARABIC' ? '📖' : '🌍'}
+                            </div>
+                            <span className="badge" style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              background: hasExams ? '#DCFCE7' : '#F1F5F9',
+                              color: hasExams ? '#15803D' : '#64748B',
+                              border: `1px solid ${hasExams ? '#86EFAC' : '#E2E8F0'}`
+                            }}>
+                              {hasExams ? (isAr ? `${subj.total_exams} امتحان جاهز` : `${subj.total_exams} Exams`) : (isAr ? 'قريباً' : 'Coming soon')}
+                            </span>
+                          </div>
+
+                          <div>
+                            <h4 style={{ margin: '0 0 0.25rem', fontSize: '1.05rem', fontWeight: 900, color: isSelected ? 'var(--primary-800)' : 'var(--text-title)' }}>
+                              {isAr ? subj.name_ar : (subj.name_en || subj.name_ar)}
+                            </h4>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {subj.units ? `${subj.units.length} ${isAr ? 'وحدات دراسية' : 'Units'}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Level 2 & 3: Units and Ready-to-use Exams under the Selected Subject */}
+                {(() => {
+                  const activeSubj = fixedExamsHierarchy.find(s => s.id === selectedFixedSubjectId) || fixedExamsHierarchy[0];
+                  if (!activeSubj) return null;
+
+                  return (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div style={{
+                        paddingBottom: '0.75rem',
+                        marginBottom: '1.25rem',
+                        borderBottom: '2px solid var(--border-light)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '1.25rem' }}>📁</span>
+                          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900 }}>
+                            {isAr ? `وحدات مادة: ${activeSubj.name_ar}` : `Units of: ${activeSubj.name_en || activeSubj.name_ar}`}
+                          </h3>
+                        </div>
                         <span className="badge badge-primary">
-                          {isAr ? exam.subject_name_ar : (exam.subject_name_en || exam.subject_name_ar)}
-                        </span>
-                        <span className="badge" style={{
-                          fontSize: '0.72rem',
-                          background: exam.term === 2 ? '#FEF3C7' : '#E0E7FF',
-                          color: exam.term === 2 ? '#B45309' : '#3730A3',
-                          border: `1px solid ${exam.term === 2 ? '#FDE68A' : '#C7D2FE'}`,
-                          fontWeight: 800
-                        }}>
-                          {exam.term === 2 ? (isAr ? '📙 الترم الثاني' : 'Term 2') : (isAr ? '📘 الترم الأول' : 'Term 1')}
-                        </span>
-                        <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
-                          {isAr ? exam.grade_name_ar : (exam.grade_name_en || exam.grade_name_ar)}
-                        </span>
-                        <span className="badge" style={{ 
-                          fontSize: '0.72rem', 
-                          background: exam.effective_school_type === 'لغات' ? '#EFF6FF' : exam.effective_school_type === 'عربي' ? '#F0FDF4' : '#F5F3FF',
-                          color: exam.effective_school_type === 'لغات' ? '#1D4ED8' : exam.effective_school_type === 'عربي' ? '#15803D' : '#6D28D9',
-                          border: `1px solid ${exam.effective_school_type === 'لغات' ? '#BFDBFE' : exam.effective_school_type === 'عربي' ? '#BBF7D0' : '#DDD6FE'}`
-                        }}>
-                          {exam.effective_school_type === 'عربي' 
-                            ? (isAr ? '🏫 مدارس عربي' : 'Arabic')
-                            : exam.effective_school_type === 'لغات'
-                            ? (isAr ? '🌐 مدارس لغات' : 'Language')
-                            : (isAr ? '🤝 عام ولغات' : 'Common')}
+                          {isAr ? `${activeSubj.total_exams || 0} امتحان معتمد` : `${activeSubj.total_exams || 0} Total Exams`}
                         </span>
                       </div>
-                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 0.4rem' }}>{exam.title}</h3>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        ⏱️ {isAr ? `المدة: ${exam.duration_minutes} دقيقة` : `Duration: ${exam.duration_minutes} mins`} • 📝 {isAr ? `الأسئلة: ${exam.questions_count}` : `Questions: ${exam.questions_count}`}
+
+                      {/* Units Container */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        {(activeSubj.units || []).map((unit: any) => {
+                          const unitExams: any[] = unit.exams || [];
+                          return (
+                            <div
+                              key={unit.unit_id}
+                              style={{
+                                background: '#FFFFFF',
+                                border: '1.5px solid var(--border-light)',
+                                borderRadius: 'var(--radius-lg)',
+                                padding: '1.25rem 1.5rem',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                              }}
+                            >
+                              {/* Unit Header */}
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                flexWrap: 'wrap',
+                                gap: '0.5rem',
+                                paddingBottom: '0.85rem',
+                                marginBottom: '1rem',
+                                borderBottom: '1px solid var(--border-light)'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                  <span className="badge badge-primary" style={{ fontWeight: 800 }}>
+                                    {unit.chapter_number ? (isAr ? `الوحدة ${unit.chapter_number}` : `Unit ${unit.chapter_number}`) : (isAr ? 'شامل' : 'General')}
+                                  </span>
+                                  <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                                    {isAr ? unit.title_ar : (unit.title_en || unit.title_ar)}
+                                  </h4>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {unit.start_page && unit.end_page && (
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                                      📖 {isAr ? `الصفحات ${unit.start_page} - ${unit.end_page}` : `Pages ${unit.start_page} - ${unit.end_page}`}
+                                    </span>
+                                  )}
+                                  <span className="badge" style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    background: unitExams.length > 0 ? '#EFF6FF' : '#F8FAFC',
+                                    color: unitExams.length > 0 ? '#1D4ED8' : '#94A3B8',
+                                    border: `1px solid ${unitExams.length > 0 ? '#BFDBFE' : '#E2E8F0'}`
+                                  }}>
+                                    {unitExams.length > 0 ? (isAr ? `${unitExams.length} امتحان متاح` : `${unitExams.length} Available`) : (isAr ? 'لا توجد امتحانات' : 'No Exams')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Ready-to-use Exams under this unit */}
+                              {unitExams.length === 0 ? (
+                                <div style={{
+                                  background: 'var(--bg-subtle)',
+                                  padding: '1.25rem',
+                                  borderRadius: 'var(--radius-md)',
+                                  textAlign: 'center',
+                                  color: 'var(--text-muted)',
+                                  fontSize: '0.85rem'
+                                }}>
+                                  <span>ℹ️</span> {isAr 
+                                    ? 'لا توجد امتحانات منشورة لهذه الوحدة حتى الآن. سيتم توفيرها قريباً من معلمي المادة المعتمدين.' 
+                                    : 'No fixed exams published for this unit yet.'}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                                  {unitExams.map(exam => (
+                                    <div
+                                      key={exam.id}
+                                      style={{
+                                        background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+                                        border: '1.5px solid #E2E8F0',
+                                        borderRadius: 'var(--radius-md)',
+                                        padding: '1.25rem',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
+                                      }}
+                                    >
+                                      <div>
+                                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                                          <span className="badge" style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 800,
+                                            background: '#FEF3C7',
+                                            color: '#B45309',
+                                            border: '1px solid #FDE68A'
+                                          }}>
+                                            ⏱️ {exam.duration_minutes || 30} {isAr ? 'دقيقة' : 'mins'}
+                                          </span>
+                                          <span className="badge" style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 800,
+                                            background: '#E0E7FF',
+                                            color: '#3730A3',
+                                            border: '1px solid #C7D2FE'
+                                          }}>
+                                            📝 {exam.questions_count || 10} {isAr ? 'أسئلة' : 'Questions'}
+                                          </span>
+                                          {exam.is_style_reference === 1 && (
+                                            <span className="badge" style={{
+                                              fontSize: '0.7rem',
+                                              fontWeight: 800,
+                                              background: '#F0FDF4',
+                                              color: '#15803D',
+                                              border: '1px solid #BBF7D0'
+                                            }}>
+                                              ✓ {isAr ? 'نموذج معتمد' : 'Certified Model'}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <h4 style={{ fontSize: '0.98rem', fontWeight: 800, margin: '0 0 0.5rem', color: 'var(--text-title)', lineHeight: 1.4 }}>
+                                          {exam.title}
+                                        </h4>
+                                      </div>
+
+                                      <button
+                                        className="btn btn-primary"
+                                        onClick={() => handleStartExam(exam.id)}
+                                        style={{ fontWeight: 800, marginTop: '1rem', width: '100%', fontSize: '0.85rem' }}
+                                      >
+                                        {isAr ? 'بدء الامتحان الآن ⏱️' : 'Start Exam Now ⏱️'}
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => handleStartExam(exam.id)}
-                      style={{ fontWeight: 800, marginTop: '1.25rem' }}
-                    >
-                      {isAr ? 'بدء الامتحان الآن ⏱️' : 'Start Exam Now ⏱️'}
-                    </button>
-                  </div>
-                ))}
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -3727,7 +3968,7 @@ export const StudentDashboard: React.FC = () => {
                   {/* Grounding IDs & Similarity Score Grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
                     <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>CHUNK ID (معرف الفقرة)</div>
+                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, marginBottom: '4px' }}>CHUNK ID (معرف المقطع الداخلي)</div>
                       <code style={{ fontSize: '0.8rem', color: '#38BDF8', wordBreak: 'break-all' }}>{chunkId}</code>
                     </div>
                     <div style={{ background: '#1E293B', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #334155' }}>
@@ -3754,7 +3995,7 @@ export const StudentDashboard: React.FC = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#38BDF8', fontWeight: 800, fontSize: '0.85rem' }}>
                         <span>📖</span>
-                        <span>الفقرة التعليمية المسترجعة من الكتاب المدرسي التي استلمها Gemini (Retrieved Chunk):</span>
+                        <span>المقطع التعليمي المسترجع من الكتاب المدرسي (Retrieved Chunk):</span>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
                         {chunkText.length} حرف

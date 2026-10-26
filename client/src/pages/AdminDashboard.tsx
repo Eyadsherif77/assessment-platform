@@ -26,7 +26,9 @@ import {
   Layers,
   Key,
   Smartphone,
-  Edit3
+  Edit3,
+  FileSpreadsheet,
+  Download
 } from 'lucide-react';
 import { HierarchyDashboard } from './HierarchyDashboard';
 
@@ -129,6 +131,85 @@ export const AdminDashboard: React.FC = () => {
   // Logo upload preview
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isSavingLogo, setIsSavingLogo] = useState(false);
+
+  // Excel Reference Import State (Phase 3 Reusable Importer)
+  const [refFile, setRefFile] = useState<File | null>(null);
+  const [refSubjectId, setRefSubjectId] = useState<string>('');
+  const [refGradeId, setRefGradeId] = useState<string>('');
+  const [refCreateFixedExam, setRefCreateFixedExam] = useState<boolean>(true);
+  const [refSubjects, setRefSubjects] = useState<any[]>([]);
+  const [isImportingRef, setIsImportingRef] = useState<boolean>(false);
+  const [refImportSummary, setRefImportSummary] = useState<any | null>(null);
+  const [showRefSummaryModal, setShowRefSummaryModal] = useState<boolean>(false);
+  const [refImportError, setRefImportError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (refGradeId) {
+      fetch(apiUrl(`/api/meta/grades/${refGradeId}/subjects`))
+        .then(r => r.json())
+        .then(data => { if (Array.isArray(data)) setRefSubjects(data); })
+        .catch(console.error);
+    } else {
+      setRefSubjects([]);
+      setRefSubjectId('');
+    }
+  }, [refGradeId]);
+
+  const handleDownloadRefTemplate = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/admin/references/template'), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('فشل تحميل القالب');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Farabi_Reference_Workbook_Template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء تحميل القالب');
+    }
+  };
+
+  const handleImportReferences = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refFile) {
+      alert(language === 'ar' ? 'الرجاء اختيار ملف Excel أولاً' : 'Please select an Excel workbook file');
+      return;
+    }
+    setRefImportError(null);
+    setIsImportingRef(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', refFile);
+      if (refSubjectId) formData.append('subject_id', refSubjectId);
+      if (refGradeId) formData.append('grade_id', refGradeId);
+      formData.append('create_fixed_exam', String(refCreateFixedExam));
+
+      const res = await fetch(apiUrl('/api/admin/references/import-excel'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'فشل استيراد المراجع من ملف Excel');
+      }
+
+      setRefImportSummary(data);
+      setShowRefSummaryModal(true);
+      setRefFile(null);
+    } catch (err: any) {
+      setRefImportError(err.message || 'حدث خطأ أثناء استيراد المراجع');
+    } finally {
+      setIsImportingRef(false);
+    }
+  };
 
   // Overview stats
   const [stats, setStats] = useState<any>({
@@ -1707,6 +1788,136 @@ export const AdminDashboard: React.FC = () => {
                 {isUploadingBook 
                   ? (language === 'ar' ? 'جاري رفع الكتاب...' : 'Uploading...') 
                   : (language === 'ar' ? '🚀 رفع كتاب' : '🚀 Upload Book')}
+              </button>
+            </form>
+          </div>
+
+          {/* Excel Reference & Fixed Exams Importer (Phase 3 Reusable Administrative Tool) */}
+          <div className="card" style={{ padding: '1.75rem', borderRadius: '1rem', border: '1.5px solid #CBD5E1', background: '#FFFFFF' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#1E1B4B' }}>
+                  <FileSpreadsheet size={22} color="#059669" />
+                  <span>{language === 'ar' ? 'استيراد المراجع المنهجية وبنوك الأسئلة من Excel' : 'Import Curriculum References & Fixed Exams from Excel'}</span>
+                </h3>
+                <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '750px', lineHeight: 1.5 }}>
+                  {language === 'ar'
+                    ? 'أداة مركزية معتمدة لاستيراد أسئلة ومراجع الامتحانات لأي مادة دراسية مباشرة من ملفات Excel (.xlsx, .xls). تدعم الاكتشاف التلقائي للمادة والصف والوحدة، فحص جودة الأسئلة والصفحات المنهجية، منع التكرار، وتوليد امتحانات وزارية ثابتة جاهزة للطلاب والمعلمين فوراً دون استهلاك رصيد الذكاء الاصطناعي.'
+                    : 'Universal administrative tool to import verified exam references and question banks from Excel (.xlsx, .xls) for any subject. Validates textbook page bounds, enforces deduplication, and creates instant fixed exams with zero live AI usage.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadRefTemplate}
+                className="btn btn-outline"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, fontSize: '0.85rem', borderColor: '#059669', color: '#059669' }}
+              >
+                <Download size={16} />
+                <span>{language === 'ar' ? 'تحميل نموذج Excel المعتمد' : 'Download Excel Template'}</span>
+              </button>
+            </div>
+
+            {refImportError && (
+              <div style={{ background: '#FEF2F2', border: '1.5px solid #F87171', color: '#991B1B', padding: '0.85rem 1.25rem', borderRadius: '0.75rem', marginBottom: '1.25rem', fontSize: '0.875rem', fontWeight: 700 }}>
+                ⚠️ {refImportError}
+              </div>
+            )}
+
+            <form onSubmit={handleImportReferences}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                {/* 1. File Picker */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 800, marginBottom: '0.35rem', color: '#1E1B4B' }}>
+                    {language === 'ar' ? 'ملف المصنف (.xlsx, .xls): *' : 'Workbook File (.xlsx, .xls): *'}
+                  </label>
+                  <input
+                    type="file"
+                    required
+                    accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setRefFile(e.target.files[0]);
+                      }
+                    }}
+                    style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.85rem' }}
+                  />
+                  {refFile && (
+                    <div style={{ fontSize: '0.75rem', color: '#059669', marginTop: '0.35rem', fontWeight: 700 }}>
+                      ✓ {refFile.name} ({(refFile.size / 1024).toFixed(1)} KB)
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Optional Grade Filter */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 800, marginBottom: '0.35rem', color: '#1E1B4B' }}>
+                    {language === 'ar' ? 'الصف الدراسي (اختياري / يُكتشف تلقائياً):' : 'Grade (Optional / Auto-detected):'}
+                  </label>
+                  <select
+                    value={refGradeId}
+                    onChange={(e) => setRefGradeId(e.target.value)}
+                    style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.85rem' }}
+                  >
+                    <option value="">{language === 'ar' ? '🔍 اكتشاف تلقائي من الملف' : '🔍 Auto-detect from file'}</option>
+                    {grades.map(g => (
+                      <option key={g.id} value={g.id}>{g.name_ar}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Optional Subject Filter */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 800, marginBottom: '0.35rem', color: '#1E1B4B' }}>
+                    {language === 'ar' ? 'المادة الدراسية (اختياري / تُكتشف تلقائياً):' : 'Subject (Optional / Auto-detected):'}
+                  </label>
+                  <select
+                    value={refSubjectId}
+                    onChange={(e) => setRefSubjectId(e.target.value)}
+                    style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.85rem' }}
+                  >
+                    <option value="">{language === 'ar' ? '🔍 اكتشاف تلقائي من الملف' : '🔍 Auto-detect from file'}</option>
+                    {refSubjects.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name_ar}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Checkbox: Create Fixed Exam */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem', background: '#F8FAFC', padding: '0.75rem 1rem', borderRadius: '0.6rem', border: '1px solid #E2E8F0' }}>
+                <input
+                  type="checkbox"
+                  id="createFixedExamCheck"
+                  checked={refCreateFixedExam}
+                  onChange={(e) => setRefCreateFixedExam(e.target.checked)}
+                  style={{ width: '18px', height: '18px', accentColor: '#059669', cursor: 'pointer' }}
+                />
+                <label htmlFor="createFixedExamCheck" style={{ fontSize: '0.875rem', fontWeight: 800, color: '#1E293B', cursor: 'pointer' }}>
+                  {language === 'ar'
+                    ? 'إنشاء امتحان موحد جاهز وثابت تلقائياً في بنك الامتحانات (Fixed Exam) متاح للطلاب والمعلمين'
+                    : 'Automatically generate a ready-to-use Fixed Exam for students & teachers'}
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isImportingRef || !refFile}
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '0.85rem',
+                  fontSize: '0.95rem',
+                  fontWeight: 900,
+                  background: isImportingRef ? '#94A3B8' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  border: 'none',
+                  boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+                  cursor: isImportingRef || !refFile ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isImportingRef 
+                  ? (language === 'ar' ? '⏳ جاري فحص واستيراد المراجع...' : 'Processing Excel Import...') 
+                  : (language === 'ar' ? '📥 بدء الفحص والاستيراد الآمن' : '📥 Start Secure Verification & Import')}
               </button>
             </form>
           </div>
@@ -3883,6 +4094,160 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => setEditBookModalOpen(false)}
               >
                 {language === 'ar' ? 'إغلاق النافذة' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reference Import Summary Modal */}
+      {showRefSummaryModal && refImportSummary && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '1.25rem',
+            width: '100%',
+            maxWidth: '560px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1.5px solid #E2E8F0',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #065F46 0%, #047857 100%)',
+              color: '#FFFFFF',
+              padding: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <CheckCircle2 size={26} color="#A7F3D0" />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#FFFFFF' }}>
+                    {language === 'ar' ? 'اكتمال عملية استيراد المراجع المنهجية' : 'Curriculum Reference Import Complete'}
+                  </h3>
+                  <div style={{ fontSize: '0.8rem', color: '#D1FAE5', marginTop: '0.2rem' }}>
+                    {refImportSummary.message || (language === 'ar' ? 'تمت معالجة المصنف بنجاح' : 'Workbook processed successfully')}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRefSummaryModal(false)}
+                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '0.25rem' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Context metadata badge */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '0.75rem', padding: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>
+                    {language === 'ar' ? 'المادة الدراسية:' : 'Subject:'}
+                  </span>
+                  <strong style={{ fontSize: '0.9rem', color: '#1E293B' }}>
+                    {refImportSummary.context?.subject_name || '—'}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>
+                    {language === 'ar' ? 'الصف الدراسي:' : 'Grade:'}
+                  </span>
+                  <strong style={{ fontSize: '0.9rem', color: '#1E293B' }}>
+                    {refImportSummary.context?.grade_name || '—'}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>
+                    {language === 'ar' ? 'الوحدة التعليمية:' : 'Unit / Chapter:'}
+                  </span>
+                  <strong style={{ fontSize: '0.9rem', color: '#1E293B' }}>
+                    {refImportSummary.context?.chapter_title || '—'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Metric Counters */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', borderRadius: '0.75rem', padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#065F46' }}>
+                    {refImportSummary.summary?.imported_references || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#047857', marginTop: '0.2rem' }}>
+                    {language === 'ar' ? 'أسئلة معتمدة جديدة' : 'New References'}
+                  </div>
+                </div>
+
+                <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: '0.75rem', padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#1E40AF' }}>
+                    {refImportSummary.summary?.duplicate_skipped || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1D4ED8', marginTop: '0.2rem' }}>
+                    {language === 'ar' ? 'مكررات تم تخطيها' : 'Duplicates Skipped'}
+                  </div>
+                </div>
+
+                <div style={{ background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: '0.75rem', padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#991B1B' }}>
+                    {refImportSummary.summary?.quarantined || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#B91C1C', marginTop: '0.2rem' }}>
+                    {language === 'ar' ? 'مستبعد للفحص' : 'Quarantined'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Fixed Exam Banner */}
+              {refImportSummary.fixed_exam ? (
+                <div style={{ background: '#F0FDF4', border: '1.5px solid #86EFAC', borderRadius: '0.75rem', padding: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>🏆</span>
+                    <strong style={{ fontSize: '0.9rem', color: '#166534' }}>
+                      {language === 'ar' ? 'تم إنشاء الامتحان الثابت بنجاح:' : 'Fixed Exam Created:'}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#14532D' }}>
+                    {refImportSummary.fixed_exam.title_ar}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#15803D', marginTop: '0.35rem' }}>
+                    {language === 'ar'
+                      ? `جاهز ومتاح الآن للطلاب والمعلمين • عدد الأسئلة: ${refImportSummary.fixed_exam.questions_count}`
+                      : `Live and ready for students & teachers • ${refImportSummary.fixed_exam.questions_count} questions`}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '0.75rem', padding: '0.85rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  ℹ️ {language === 'ar' ? 'تم تحديث مراجع الأسئلة المنهجية فقط دون إنشاء امتحان ثابت جديد.' : 'Updated reference bank only without fixed exam creation.'}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ background: '#F8FAFC', borderTop: '1px solid #E2E8F0', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowRefSummaryModal(false)}
+                style={{ padding: '0.55rem 1.5rem', fontWeight: 800, background: '#059669', borderColor: '#059669' }}
+              >
+                {language === 'ar' ? 'إغلاق ومتابعة' : 'Close & Done'}
               </button>
             </div>
           </div>
