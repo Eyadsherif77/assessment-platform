@@ -567,7 +567,11 @@ export const StudentDashboard: React.FC = () => {
       setExamResult(null);
 
       const durationMin = parseInt(data.exam?.duration_minutes, 10) || 15;
-      setExamTimeLeft(durationMin * 60);
+      if (typeof data.attempt?.remaining_seconds === 'number') {
+        setExamTimeLeft(data.attempt.remaining_seconds);
+      } else {
+        setExamTimeLeft(durationMin * 60);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -589,7 +593,10 @@ export const StudentDashboard: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ answers: answersPayload })
+        body: JSON.stringify({
+          attempt_id: activeExam.attempt?.id,
+          answers: answersPayload
+        })
       });
       const data = await res.json();
       if (!res.ok) {

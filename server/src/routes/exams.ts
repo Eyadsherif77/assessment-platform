@@ -15,6 +15,25 @@ const excelUpload = multer({
 
 const router = Router();
 
+/**
+ * Safely parses database timestamp into epoch milliseconds UTC.
+ * Handles Date objects (mysql2), ISO strings with timezone, and raw SQL DATETIME strings ('YYYY-MM-DD HH:MM:SS')
+ * consistently across any host system timezone or database engine.
+ */
+export function parseDbTimestamp(val: any): number {
+  if (!val) return Date.now();
+  if (val instanceof Date) return val.getTime();
+  if (typeof val === 'number') return val;
+  const str = String(val).trim();
+  if (str.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(str)) {
+    const ms = new Date(str).getTime();
+    return isNaN(ms) ? Date.now() : ms;
+  }
+  // If string has no timezone (e.g. standard SQL 'YYYY-MM-DD HH:MM:SS'), force UTC interpretation
+  const ms = new Date(str.replace(' ', 'T') + 'Z').getTime();
+  return isNaN(ms) ? Date.now() : ms;
+}
+
 // Get Monthly Exam Limit Status for current student
 router.get('/monthly-limit-status', authenticateToken, async (req: AuthenticatedRequest, res) => {
   try {
@@ -794,20 +813,209 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
       })
     );
 
+    // Server-enforced student attempt initialization & authoritative timing tracking
+    let studentAttempt: any = null;
+    if (req.user?.role === 'STUDENT') {
+      const durationMinutes = Math.max(1, parseInt(exam.duration_minutes, 10) || 15);
+      const durationSeconds = durationMinutes * 60;
+
+      // Check for active IN_PROGRESS attempt
+      const attemptRes = await db.query(
+        `SELECT id, exam_id, student_id, score, total_points, status, started_at, completed_at
+         FROM exam_attempts
+         WHERE exam_id = $1 AND student_id = $2 AND status = 'IN_PROGRESS'
+         ORDER BY started_at DESC LIMIT 1`,
+        [id, req.user.id]
+      );
+
+      if (attemptRes.rows.length > 0) {
+        const att = attemptRes.rows[0];
+        const startedAtMs = parseDbTimestamp(att.started_at);
+        const nowMs = Date.now();
+        const elapsedSec = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
+        const remainingSec = Math.max(0, durationSeconds - elapsedSec);
+        const deadline = new Date(startedAtMs + durationSeconds * 1000).toISOString();
+
+        if (elapsedSec > (durationSeconds + 90)) {
+          await db.query(
+            `UPDATE exam_attempts SET status = 'ABANDONED', completed_at = datetime('now') WHERE id = $1`,
+            [att.id]
+          );
+          att.status = 'ABANDONED';
+        }
+
+        studentAttempt = {
+          id: att.id,
+          status: att.status,
+          started_at: att.started_at,
+          deadline,
+          duration_minutes: durationMinutes,
+          remaining_seconds: remainingSec,
+          is_expired: remainingSec <= 0
+        };
+      } else {
+        // Check for completed attempt
+        const completedRes = await db.query(
+          `SELECT id, exam_id, student_id, score, total_points, status, started_at, completed_at
+           FROM exam_attempts
+           WHERE exam_id = $1 AND student_id = $2 AND status = 'COMPLETED'
+           ORDER BY completed_at DESC LIMIT 1`,
+          [id, req.user.id]
+        );
+
+        if (completedRes.rows.length > 0) {
+          const comp = completedRes.rows[0];
+          studentAttempt = {
+            id: comp.id,
+            status: 'COMPLETED',
+            started_at: comp.started_at,
+            completed_at: comp.completed_at,
+            score: comp.score,
+            total_points: comp.total_points,
+            is_expired: true,
+            remaining_seconds: 0
+          };
+        } else {
+          // Initialize a new IN_PROGRESS attempt with authoritative server timestamp
+          const newAttemptId = uuidv4();
+          const nowIso = new Date().toISOString();
+          await db.query(
+            `INSERT INTO exam_attempts (id, exam_id, student_id, score, total_points, status, started_at, completed_at)
+             VALUES ($1, $2, $3, 0, 0, 'IN_PROGRESS', $4, NULL)`,
+            [newAttemptId, id, req.user.id, nowIso]
+          );
+
+          const startedAtMs = new Date(nowIso).getTime();
+          const deadline = new Date(startedAtMs + durationSeconds * 1000).toISOString();
+
+          studentAttempt = {
+            id: newAttemptId,
+            status: 'IN_PROGRESS',
+            started_at: nowIso,
+            deadline,
+            duration_minutes: durationMinutes,
+            remaining_seconds: durationSeconds,
+            is_expired: false
+          };
+        }
+      }
+    }
+
     return res.json({
       exam,
-      questions: questionsWithOptions
+      questions: questionsWithOptions,
+      ...(studentAttempt ? { attempt: studentAttempt } : {})
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'خطأ في جلب بيانات الاختبار' });
   }
 });
 
-// Submit Exam Answers (Student only)
+// Mutate/save single student answer during active attempt (Server-deadline protected)
+router.post('/:id/answers', authenticateToken, requireRole(['STUDENT']), enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { attempt_id, question_id, selected_option_id } = req.body;
+
+    if (!question_id) {
+      return res.status(400).json({ error: 'معرف السؤال مطلوب' });
+    }
+
+    const examRes = await db.query('SELECT duration_minutes FROM exams WHERE id = $1', [id]);
+    if (examRes.rows.length === 0) {
+      return res.status(404).json({ error: 'الاختبار غير موجود' });
+    }
+    const exam = examRes.rows[0];
+
+    // Find student attempt
+    let attemptRecord: any = null;
+    if (attempt_id) {
+      const attRes = await db.query(
+        `SELECT * FROM exam_attempts WHERE id = $1 AND exam_id = $2 AND student_id = $3`,
+        [attempt_id, id, req.user!.id]
+      );
+      if (attRes.rows.length > 0) attemptRecord = attRes.rows[0];
+    }
+    if (!attemptRecord) {
+      const attRes = await db.query(
+        `SELECT * FROM exam_attempts WHERE exam_id = $1 AND student_id = $2 ORDER BY started_at DESC LIMIT 1`,
+        [id, req.user!.id]
+      );
+      if (attRes.rows.length > 0) attemptRecord = attRes.rows[0];
+    }
+
+    if (!attemptRecord || attemptRecord.status !== 'IN_PROGRESS') {
+      return res.status(400).json({ error: 'لا توجد محاولة نشطة جارية لهذا الاختبار' });
+    }
+
+    // Validate question belongs to this exam
+    const questionCheck = await db.query(
+      `SELECT id FROM exam_questions WHERE id = $1 AND exam_id = $2`,
+      [question_id, id]
+    );
+    if (questionCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'هذا السؤال غير تابع لهذا الاختبار' });
+    }
+
+    // If selected_option_id provided, validate it belongs to this question
+    if (selected_option_id) {
+      const optCheck = await db.query(
+        `SELECT id FROM exam_question_options WHERE id = $1 AND question_id = $2`,
+        [selected_option_id, question_id]
+      );
+      if (optCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'الخيار المحدد غير تابع لهذا السؤال' });
+      }
+    }
+
+    // Verify deadline
+    const durationMinutes = Math.max(1, parseInt(exam.duration_minutes, 10) || 15);
+    const durationSeconds = durationMinutes * 60;
+    const startedAtMs = parseDbTimestamp(attemptRecord.started_at);
+    const elapsedSeconds = (Date.now() - startedAtMs) / 1000;
+
+    if (elapsedSeconds > (durationSeconds + 90)) {
+      await db.query(
+        `UPDATE exam_attempts SET status = 'ABANDONED', completed_at = datetime('now') WHERE id = $1`,
+        [attemptRecord.id]
+      );
+      return res.status(403).json({
+        error: 'انتهت المهلة الزمنية المحددة للاختبار ولا يمكن تعديل الإجابات بعد انتهاء الوقت',
+        code: 'EXAM_TIME_EXPIRED',
+        expired: true
+      });
+    }
+
+    // Upsert answer
+    const existingAns = await db.query(
+      `SELECT id FROM student_answers WHERE attempt_id = $1 AND question_id = $2`,
+      [attemptRecord.id, question_id]
+    );
+
+    if (existingAns.rows.length > 0) {
+      await db.query(
+        `UPDATE student_answers SET selected_option_id = $1 WHERE id = $2`,
+        [selected_option_id || null, existingAns.rows[0].id]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO student_answers (id, attempt_id, question_id, selected_option_id, is_correct, points_awarded)
+         VALUES ($1, $2, $3, $4, 0, 0)`,
+        [uuidv4(), attemptRecord.id, question_id, selected_option_id || null]
+      );
+    }
+
+    return res.json({ success: true, saved: true, attempt_id: attemptRecord.id });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في حفظ إجابة السؤال' });
+  }
+});
+
+// Submit Exam Answers (Student only) - Authoritative Deadline Enforced
 router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceStudentGrade, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { answers } = req.body; // Array of { question_id, selected_option_id }
+    const { answers, attempt_id } = req.body; // Array of { question_id, selected_option_id }
 
     const examRes = await db.query('SELECT * FROM exams WHERE id = $1', [id]);
     if (examRes.rows.length === 0) {
@@ -828,6 +1036,89 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
       return res.status(403).json({ error: 'الاختبار غير مخصص لنوع مدرستك' });
     }
 
+    // Resolve attempt
+    let attemptRecord: any = null;
+    let targetAttemptId = attempt_id;
+
+    if (targetAttemptId) {
+      const attRes = await db.query(
+        `SELECT * FROM exam_attempts WHERE id = $1 AND exam_id = $2 AND student_id = $3`,
+        [targetAttemptId, id, req.user!.id]
+      );
+      if (attRes.rows.length > 0) {
+        attemptRecord = attRes.rows[0];
+      }
+    }
+
+    if (!attemptRecord) {
+      const attRes = await db.query(
+        `SELECT * FROM exam_attempts
+         WHERE exam_id = $1 AND student_id = $2
+         ORDER BY started_at DESC LIMIT 1`,
+        [id, req.user!.id]
+      );
+      if (attRes.rows.length > 0) {
+        attemptRecord = attRes.rows[0];
+        targetAttemptId = attemptRecord.id;
+      }
+    }
+
+    // Duplicate submission protection: Return existing result idempotently without duplicate records
+    if (attemptRecord && attemptRecord.status === 'COMPLETED') {
+      const percentage = attemptRecord.total_points > 0
+        ? Number(((attemptRecord.score / attemptRecord.total_points) * 100).toFixed(1))
+        : 0;
+
+      const existingAnswersRes = await db.query(
+        `SELECT sa.*, eq.question_text, eq.explanation, eq.page_reference, eq.points as max_points,
+                eqo.option_text as selected_text,
+                (SELECT eqo2.id FROM exam_question_options eqo2 WHERE eqo2.question_id = eq.id AND eqo2.is_correct = 1 LIMIT 1) as correct_option_id,
+                (SELECT eqo2.option_text FROM exam_question_options eqo2 WHERE eqo2.question_id = eq.id AND eqo2.is_correct = 1 LIMIT 1) as correct_text
+         FROM student_answers sa
+         JOIN exam_questions eq ON sa.question_id = eq.id
+         LEFT JOIN exam_question_options eqo ON sa.selected_option_id = eqo.id
+         WHERE sa.attempt_id = $1`,
+        [attemptRecord.id]
+      );
+
+      return res.json({
+        message: 'تم تسليم هذا الاختبار مسبقاً وتأكيد النتيجة',
+        attempt_id: attemptRecord.id,
+        score: attemptRecord.score,
+        total_points: attemptRecord.total_points,
+        percentage,
+        passed: percentage >= 50,
+        already_submitted: true,
+        breakdown: existingAnswersRes.rows
+      });
+    }
+
+    // Server-enforced deadline check
+    const durationMinutes = Math.max(1, parseInt(exam.duration_minutes, 10) || 15);
+    const durationSeconds = durationMinutes * 60;
+    const GRACE_PERIOD_SECONDS = 90; // Grace period for network transit
+
+    if (attemptRecord && attemptRecord.started_at) {
+      const startedAtMs = parseDbTimestamp(attemptRecord.started_at);
+      const nowMs = Date.now();
+      const elapsedSeconds = (nowMs - startedAtMs) / 1000;
+
+      if (elapsedSeconds > (durationSeconds + GRACE_PERIOD_SECONDS)) {
+        await db.query(
+          `UPDATE exam_attempts SET status = 'ABANDONED', completed_at = datetime('now') WHERE id = $1`,
+          [attemptRecord.id]
+        );
+        return res.status(403).json({
+          error: 'انتهت المهلة الزمنية المحددة للاختبار ولا يمكن قبول الإجابات بعد انتهاء الوقت',
+          code: 'EXAM_TIME_EXPIRED',
+          expired: true,
+          started_at: attemptRecord.started_at,
+          duration_minutes: durationMinutes,
+          elapsed_seconds: Math.floor(elapsedSeconds)
+        });
+      }
+    }
+
     // Fetch all questions and their correct options
     const questionsRes = await db.query(
       `SELECT eq.id, eq.points, eq.explanation, eq.question_text, eq.page_reference,
@@ -841,14 +1132,20 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
     let totalScore = 0;
     let totalPoints = 0;
     const itemResults: any[] = [];
-    const attemptId = uuidv4();
 
-    // Start attempt record
-    await db.query(
-      `INSERT INTO exam_attempts (id, exam_id, student_id, score, total_points, status)
-       VALUES ($1, $2, $3, 0, 0, 'COMPLETED')`,
-      [attemptId, id, req.user!.id]
-    );
+    // Ensure attempt record exists in database
+    if (!targetAttemptId) {
+      targetAttemptId = uuidv4();
+      const nowIso = new Date().toISOString();
+      await db.query(
+        `INSERT INTO exam_attempts (id, exam_id, student_id, score, total_points, status, started_at)
+         VALUES ($1, $2, $3, 0, 0, 'IN_PROGRESS', $4)`,
+        [targetAttemptId, id, req.user!.id, nowIso]
+      );
+    }
+
+    // Delete any draft answers for this attempt before final recording
+    await db.query(`DELETE FROM student_answers WHERE attempt_id = $1`, [targetAttemptId]);
 
     for (const q of questionsRes.rows) {
       totalPoints += q.points;
@@ -872,7 +1169,7 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
         `INSERT INTO student_answers (
            id, attempt_id, question_id, selected_option_id, is_correct, points_awarded
          ) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [uuidv4(), attemptId, q.id, selectedOptId || null, isCorrect ? 1 : 0, pointsAwarded]
+        [uuidv4(), targetAttemptId, q.id, selectedOptId || null, isCorrect ? 1 : 0, pointsAwarded]
       );
 
       itemResults.push({
@@ -890,10 +1187,10 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
       });
     }
 
-    // Update attempt with final score
+    // Update attempt with final score and mark as COMPLETED
     await db.query(
-      `UPDATE exam_attempts SET score = $2, total_points = $3, completed_at = datetime('now') WHERE id = $1`,
-      [attemptId, totalScore, totalPoints]
+      `UPDATE exam_attempts SET score = $2, total_points = $3, status = 'COMPLETED', completed_at = datetime('now') WHERE id = $1`,
+      [targetAttemptId, totalScore, totalPoints]
     );
 
     const percentage = totalPoints > 0 ? Number(((totalScore / totalPoints) * 100).toFixed(1)) : 0;
@@ -903,12 +1200,12 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
       `INSERT INTO student_learning_history (
          id, student_id, event_type, reference_id, subject_id, chapter_id, score_percentage
        ) VALUES ($1, $2, 'EXAM', $3, $4, $5, $6)`,
-      [uuidv4(), req.user!.id, attemptId, exam.subject_id, exam.chapter_id, percentage]
+      [uuidv4(), req.user!.id, targetAttemptId, exam.subject_id, exam.chapter_id, percentage]
     );
 
     return res.json({
       message: 'تم تصحيح وتسجيل نتائج الاختبار فورياً',
-      attempt_id: attemptId,
+      attempt_id: targetAttemptId,
       score: totalScore,
       total_points: totalPoints,
       percentage,
