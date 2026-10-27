@@ -12,11 +12,18 @@ import {
   Users,
   TrendingUp,
   AlertTriangle,
-  Clock,
   Award,
   Eye,
   Search,
-  Lock
+  Lock,
+  Clock,
+  FileSpreadsheet,
+  UploadCloud,
+  Download,
+  Check,
+  X,
+  HelpCircle,
+  RefreshCw
 } from 'lucide-react';
 
 export const TeacherDashboard: React.FC = () => {
@@ -190,6 +197,17 @@ export const TeacherDashboard: React.FC = () => {
     }
   ]);
   const [isCreatingExam, setIsCreatingExam] = useState(false);
+
+  // Excel Question Import State for Builder Studio
+  const [composerMode, setComposerMode] = useState<'manual' | 'excel'>('manual');
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [isPreviewingExcel, setIsPreviewingExcel] = useState(false);
+  const [excelPreviewData, setExcelPreviewData] = useState<any | null>(null);
+  const [excelPreviewError, setExcelPreviewError] = useState<string | null>(null);
+  const [showAppendReplaceModal, setShowAppendReplaceModal] = useState(false);
+  const [pendingLoadedQuestions, setPendingLoadedQuestions] = useState<any[]>([]);
+  const [isDirectImporting, setIsDirectImporting] = useState(false);
+  const [excelImportSuccessSummary, setExcelImportSuccessSummary] = useState<any | null>(null);
 
   // Analytics
   const [teacherAnalytics, setTeacherAnalytics] = useState<any | null>(null);
@@ -667,6 +685,169 @@ export const TeacherDashboard: React.FC = () => {
       alert(err.message);
     } finally {
       setIsCreatingExam(false);
+    }
+  };
+
+  // Download reference Excel template
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/exams/references/template'), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(isAr ? 'فشل تحميل نموذج Excel' : 'Failed to download template');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Farabi_Teacher_Reference_Template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert(err.message || (isAr ? 'حدث خطأ أثناء تحميل القالب' : 'Error downloading template'));
+    }
+  };
+
+  // Select Excel file and automatically preview
+  const handleSelectExcelFile = (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'xlsx' && ext !== 'xls') {
+      alert(isAr ? 'يرجى اختيار ملف بصيغة Excel (.xlsx أو .xls) فقط' : 'Please select a valid Excel file (.xlsx or .xls)');
+      return;
+    }
+    setExcelFile(file);
+    setExcelPreviewError(null);
+    setExcelPreviewData(null);
+    handlePreviewExcel(file);
+  };
+
+  // Preview reference workbook (Non-destructive, dry-run)
+  const handlePreviewExcel = async (fileToPreview?: File) => {
+    const file = fileToPreview || excelFile;
+    if (!file) {
+      alert(isAr ? 'يرجى اختيار ملف Excel أولاً (.xlsx أو .xls)' : 'Please select an Excel file first');
+      return;
+    }
+    setIsPreviewingExcel(true);
+    setExcelPreviewError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (selectedSubjectId) formData.append('subject_id', selectedSubjectId);
+      if (selectedGradeId) formData.append('grade_id', selectedGradeId);
+      formData.append('duration_minutes', examDuration || '30');
+      formData.append('school_type', examSchoolType);
+
+      const res = await fetch(apiUrl('/api/exams/references/preview-excel'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || (isAr ? 'فشل في قراءة ومعاينة ملف Excel' : 'Failed to preview Excel workbook'));
+      }
+
+      setExcelPreviewData(data);
+    } catch (err: any) {
+      setExcelPreviewError(err.message);
+      setExcelPreviewData(null);
+    } finally {
+      setIsPreviewingExcel(false);
+    }
+  };
+
+  // Load previewed questions into the existing composer
+  const handleLoadQuestionsToComposer = () => {
+    if (!excelPreviewData || !excelPreviewData.questions || excelPreviewData.questions.length === 0) {
+      alert(isAr ? 'لا توجد أسئلة صالحة للتحميل من هذا الملف' : 'No valid questions to load from this workbook');
+      return;
+    }
+
+    const formattedQuestions = excelPreviewData.questions.map((q: any) => ({
+      question_text: q.question_text,
+      points: q.points || 1,
+      page_reference: q.page_reference ? String(q.page_reference).trim() : '',
+      explanation: q.explanation || '',
+      options: (q.options || []).map((opt: any) => ({
+        option_text: opt.option_text,
+        is_correct: opt.is_correct === true || opt.is_correct === 1 || opt.is_correct === '1'
+      }))
+    }));
+
+    // If teacher already typed questions in composer, ask to Append or Replace
+    const hasExistingQuestions = examQuestions.some(q => q.question_text.trim().length > 0);
+    if (hasExistingQuestions) {
+      setPendingLoadedQuestions(formattedQuestions);
+      setShowAppendReplaceModal(true);
+      return;
+    }
+
+    setExamQuestions(formattedQuestions);
+    setComposerMode('manual');
+    alert(isAr 
+      ? `✅ تم بنجاح تحميل ${formattedQuestions.length} سؤال إلى استوديو الامتحان! يمكنك الآن مراجعتها أو تعديلها قبل الحفظ.` 
+      : `✅ Successfully loaded ${formattedQuestions.length} questions into the studio! You can now review or edit them before saving.`);
+  };
+
+  const handleResolveAppendReplace = (mode: 'replace' | 'append') => {
+    if (mode === 'replace') {
+      setExamQuestions(pendingLoadedQuestions);
+    } else {
+      setExamQuestions(prev => [
+        ...prev.filter(q => q.question_text.trim().length > 0),
+        ...pendingLoadedQuestions
+      ]);
+    }
+    setShowAppendReplaceModal(false);
+    setPendingLoadedQuestions([]);
+    setComposerMode('manual');
+    alert(isAr ? 'تم تحديث أسئلة الامتحان بنجاح في الاستوديو!' : 'Studio questions updated successfully!');
+  };
+
+  // Direct reference exam import & save
+  const handleDirectImportReferenceExam = async () => {
+    if (!excelFile) {
+      alert(isAr ? 'الرجاء اختيار ملف Excel أولاً' : 'Please select an Excel file');
+      return;
+    }
+    if (!newExamTitle.trim()) {
+      alert(isAr ? 'يرجى كتابة عنوان الامتحان أولاً في النموذج أعلاه' : 'Please provide an exam title first');
+      return;
+    }
+
+    setIsDirectImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', excelFile);
+      if (selectedSubjectId) formData.append('subject_id', selectedSubjectId);
+      if (selectedGradeId) formData.append('grade_id', selectedGradeId);
+      formData.append('duration_minutes', examDuration || '30');
+      formData.append('exam_title', newExamTitle.trim());
+      formData.append('school_type', examSchoolType);
+      formData.append('is_style_reference', String(isStyleReference));
+      formData.append('is_published', 'true');
+      formData.append('create_fixed_exam', 'true');
+
+      const res = await fetch(apiUrl('/api/exams/references/import-excel'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || (isAr ? 'فشل استيراد المرجع' : 'Import failed'));
+      }
+
+      setExcelImportSuccessSummary(data);
+      loadTeacherData();
+    } catch (err: any) {
+      alert(err.message || (isAr ? 'حدث خطأ أثناء الاستيراد' : 'Error importing reference'));
+    } finally {
+      setIsDirectImporting(false);
     }
   };
 
@@ -1538,121 +1719,570 @@ export const TeacherDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Questions Composer */}
-                <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
-                      {isAr ? `أسئلة الامتحان (${examQuestions.length})` : `Exam Questions (${examQuestions.length})`}
-                    </h3>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => setExamQuestions([...examQuestions, {
-                        question_text: '',
-                        points: 1,
-                        page_reference: '',
-                        options: [
-                          { option_text: '', is_correct: true },
-                          { option_text: '', is_correct: false },
-                          { option_text: '', is_correct: false },
-                          { option_text: '', is_correct: false }
-                        ]
-                      }])}
-                    >
-                      {isAr ? '+ إضافة سؤال' : '+ Add Question'}
-                    </button>
+                {/* Questions Composer Section */}
+                <div style={{ marginTop: '1.75rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem' }}>
+                  {/* Mode Selector Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 0.25rem' }}>
+                        {isAr ? 'أسئلة الاختبار' : 'Exam Questions'}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {isAr 
+                          ? 'اختر طريقة إضافة الأسئلة: إدخال يدوي مباشر أو استيراد معتمد من ملف Excel' 
+                          : 'Choose how to add questions: manual entry or verified Excel import'}
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '0.25rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-light)' }}>
+                      <button
+                        type="button"
+                        onClick={() => setComposerMode('manual')}
+                        style={{
+                          padding: '0.45rem 1rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: 'none',
+                          fontWeight: 800,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          background: composerMode === 'manual' ? '#FFFFFF' : 'transparent',
+                          color: composerMode === 'manual' ? 'var(--primary-700)' : 'var(--text-muted)',
+                          boxShadow: composerMode === 'manual' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span>✏️</span>
+                        <span>{isAr ? 'إدخال يدوي' : 'Manual Entry'}</span>
+                        <span className="badge" style={{ background: composerMode === 'manual' ? 'var(--primary-100)' : 'transparent', color: 'var(--primary-700)', fontSize: '0.7rem' }}>
+                          {examQuestions.length}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setComposerMode('excel')}
+                        style={{
+                          padding: '0.45rem 1rem',
+                          borderRadius: 'var(--radius-md)',
+                          border: 'none',
+                          fontWeight: 800,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          background: composerMode === 'excel' ? '#059669' : 'transparent',
+                          color: composerMode === 'excel' ? '#FFFFFF' : 'var(--text-muted)',
+                          boxShadow: composerMode === 'excel' ? '0 2px 5px rgba(5, 150, 105, 0.25)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <FileSpreadsheet size={15} />
+                        <span>{isAr ? 'استيراد الأسئلة من Excel' : 'Import from Excel'}</span>
+                        <span className="badge" style={{ background: composerMode === 'excel' ? 'rgba(255,255,255,0.2)' : '#D1FAE5', color: composerMode === 'excel' ? '#FFFFFF' : '#065F46', fontSize: '0.7rem' }}>
+                          {isAr ? 'معتمد ⚡' : 'Verified ⚡'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
-                  {examQuestions.map((q, qIndex) => (
-                    <div key={qIndex} style={{ padding: '1.25rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)', marginBottom: '1rem', border: '1px solid var(--border-light)' }}>
-                      <div className="responsive-form-grid-2" style={{ alignItems: 'flex-start' }}>
-                        <div className="form-group" style={{ flex: 2 }}>
-                          <label className="form-label" style={{ fontWeight: 800 }}>
-                            {isAr ? `نص السؤال #${qIndex + 1}` : `Question Text #${qIndex + 1}`}
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            className="form-input"
-                            value={q.question_text}
-                            onChange={e => {
-                              const updated = [...examQuestions];
-                              updated[qIndex].question_text = e.target.value;
-                              setExamQuestions(updated);
-                            }}
-                            placeholder={isAr ? 'مثال: وحدة قياس الكثافة هي...' : 'e.g., The unit of measurement for density is...'}
-                          />
-                        </div>
-
-                        <div className="form-group" style={{ flex: 1 }}>
-                          <label className="form-label" style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <span>📖</span>
-                            <span>{isAr ? 'رقم الصفحة بالكتاب (مرجع الإجابة):' : 'Book Page (Answer Reference):'}</span>
-                          </label>
-                          <input
-                            type="text"
-                            className="form-input"
-                            value={q.page_reference || ''}
-                            onChange={e => {
-                              const updated = [...examQuestions];
-                              updated[qIndex].page_reference = e.target.value;
-                              setExamQuestions(updated);
-                            }}
-                            placeholder={isAr ? 'مثال: 5 أو صفحة 5' : 'e.g. 5 or Page 5'}
-                          />
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                            {isAr ? '💡 ستظهر للطالب بجوار الإجابة الصحيحة عند مراجعة الامتحان.' : '💡 Shown to the student next to the correct answer.'}
+                  {/* MODE 1: EXCEL WORKBOOK IMPORTER STUDIO */}
+                  {composerMode === 'excel' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.5rem' }}>
+                      {/* Guidance & Template Download Card */}
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.05), rgba(16, 185, 129, 0.08))',
+                        border: '1.5px solid #A7F3D0',
+                        borderRadius: 'var(--radius-lg)',
+                        padding: '1.25rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '1rem'
+                      }}>
+                        <div style={{ flex: 1, minWidth: '240px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                            <span style={{ fontSize: '1.2rem' }}>📊</span>
+                            <strong style={{ fontSize: '0.95rem', color: '#065F46' }}>
+                              {isAr ? 'استيراد الأسئلة من مصنف Excel الوزاري' : 'Import Curriculum Excel Reference'}
+                            </strong>
                           </div>
+                          <p style={{ margin: 0, fontSize: '0.8rem', color: '#047857', lineHeight: 1.5 }}>
+                            {isAr 
+                              ? 'يمكنك استيراد الأسئلة المنهجية مباشرة من ملف Excel، ومعاينتها والتحقق من صحة الإجابات وأرقام الصفحات قبل اعتمادها في الامتحان.'
+                              : 'Import curriculum questions from Excel, preview answer keys and page references before saving.'}
+                          </p>
                         </div>
+                        <button
+                          type="button"
+                          onClick={handleDownloadTemplate}
+                          className="btn btn-outline btn-sm"
+                          style={{
+                            borderColor: '#059669',
+                            color: '#065F46',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            background: '#FFFFFF'
+                          }}
+                        >
+                          <Download size={15} />
+                          <span>{isAr ? 'تحميل قالب Excel المعتمد' : 'Download Sample Template'}</span>
+                        </button>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
-                        <label className="form-label" style={{ fontSize: '0.8rem' }}>
-                          {isAr ? 'الخيارات (حدد الإجابة الصحيحة):' : 'Options (Mark the correct answer):'}
-                        </label>
-                        {q.options.map((opt: any, optIndex: number) => (
-                          <div key={optIndex} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {/* File Selector Card */}
+                      <div style={{
+                        border: '2px dashed var(--border-medium, #CBD5E1)',
+                        borderRadius: 'var(--radius-xl)',
+                        padding: '1.75rem',
+                        textAlign: 'center',
+                        background: excelFile ? 'rgba(5, 150, 105, 0.03)' : 'var(--bg-subtle)',
+                        transition: 'all 0.2s ease'
+                      }}>
+                        <FileSpreadsheet size={36} color={excelFile ? '#059669' : '#94A3B8'} style={{ margin: '0 auto 0.75rem' }} />
+                        <h4 style={{ margin: '0 0 0.35rem', fontSize: '1rem', fontWeight: 800 }}>
+                          {excelFile ? excelFile.name : (isAr ? 'اختر ملف مصنف الأسئلة (Excel)' : 'Select Excel Workbook File')}
+                        </h4>
+                        <p style={{ margin: '0 0 1rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          {isAr ? 'يدعم ملفات بصيغة .xlsx أو .xls حتى 15 ميجابايت' : 'Supports .xlsx or .xls files up to 15MB'}
+                        </p>
+
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer', fontWeight: 800, margin: 0, background: '#059669', borderColor: '#059669' }}>
+                            <UploadCloud size={16} />
+                            <span>{isAr ? (excelFile ? 'تغيير الملف' : 'تحديد ملف Excel') : (excelFile ? 'Change File' : 'Browse File')}</span>
                             <input
-                              type="radio"
-                              name={`correct_${qIndex}`}
-                              checked={opt.is_correct}
-                              onChange={() => {
-                                const updated = [...examQuestions];
-                                updated[qIndex].options.forEach((o: any, i: number) => {
-                                  o.is_correct = i === optIndex;
-                                });
-                                setExamQuestions(updated);
-                              }}
-                            />
-                            <input
-                              type="text"
-                              required
-                              className="form-input"
-                              value={opt.option_text}
+                              type="file"
+                              accept=".xlsx,.xls"
+                              style={{ display: 'none' }}
                               onChange={e => {
-                                const updated = [...examQuestions];
-                                updated[qIndex].options[optIndex].option_text = e.target.value;
-                                setExamQuestions(updated);
+                                if (e.target.files && e.target.files[0]) {
+                                  handleSelectExcelFile(e.target.files[0]);
+                                }
                               }}
-                              placeholder={isAr ? `الخيار ${optIndex + 1}` : `Option ${optIndex + 1}`}
                             />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                          </label>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-lg"
-                  disabled={isCreatingExam}
-                  style={{ width: '100%', marginTop: '1.5rem', fontWeight: 800 }}
-                >
-                  {isCreatingExam 
-                    ? (isAr ? 'جاري الحفظ والنشر...' : 'Saving & Publishing...') 
-                    : (isAr ? 'حفظ ونشر الامتحان للطلاب 🚀' : 'Save & Publish Exam 🚀')}
-                </button>
+                          {excelFile && (
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handlePreviewExcel()}
+                              disabled={isPreviewingExcel}
+                              style={{ fontWeight: 800 }}
+                            >
+                              <RefreshCw size={14} className={isPreviewingExcel ? 'spin' : ''} />
+                              <span>{isPreviewingExcel ? (isAr ? 'جاري الفحص والمعاينة...' : 'Previewing...') : (isAr ? 'إعادة الفحص والمعاينة' : 'Re-verify & Preview')}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Error Display */}
+                      {excelPreviewError && (
+                        <div style={{
+                          background: '#FEF2F2',
+                          border: '1.5px solid #FECACA',
+                          borderRadius: 'var(--radius-lg)',
+                          padding: '1rem 1.25rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          color: '#991B1B'
+                        }}>
+                          <AlertTriangle size={20} color="#DC2626" />
+                          <div style={{ flex: 1, fontSize: '0.85rem', fontWeight: 700 }}>
+                            {excelPreviewError}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Preview Results Panel */}
+                      {excelPreviewData && (
+                        <div style={{
+                          background: '#FFFFFF',
+                          border: '1.5px solid #E2E8F0',
+                          borderRadius: 'var(--radius-xl)',
+                          overflow: 'hidden',
+                          boxShadow: 'var(--shadow-sm)'
+                        }}>
+                          {/* Preview Header */}
+                          <div style={{
+                            background: 'linear-gradient(135deg, #065F46 0%, #047857 100%)',
+                            color: '#FFFFFF',
+                            padding: '1.25rem 1.5rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '0.5rem'
+                          }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <CheckCircle2 size={20} color="#A7F3D0" />
+                                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF' }}>
+                                  {isAr ? 'نتائج فحص ومعاينة مصنف Excel' : 'Workbook Preview & Verification'}
+                                </h4>
+                              </div>
+                              <span style={{ fontSize: '0.78rem', color: '#D1FAE5', marginTop: '0.2rem', display: 'block' }}>
+                                {excelPreviewData.workbookName} • {isAr ? 'ورقة العمل:' : 'Sheet:'} {excelPreviewData.sheetName}
+                              </span>
+                            </div>
+
+                            {/* Duration notice tag */}
+                            <div style={{
+                              background: 'rgba(255,255,255,0.18)',
+                              padding: '0.35rem 0.85rem',
+                              borderRadius: 'var(--radius-full)',
+                              fontSize: '0.8rem',
+                              fontWeight: 800,
+                              color: '#FFFFFF',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.35rem'
+                            }}>
+                              <span>⏱️</span>
+                              <span>{isAr ? `المدة المحددة للاختبار: ${examDuration || 30} دقيقة` : `Duration: ${examDuration || 30} mins`}</span>
+                            </div>
+                          </div>
+
+                          <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            {/* Curriculum Context Details */}
+                            <div style={{
+                              background: '#F8FAFC',
+                              border: '1px solid #E2E8F0',
+                              borderRadius: 'var(--radius-lg)',
+                              padding: '0.85rem 1rem',
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                              gap: '0.75rem'
+                            }}>
+                              <div>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>
+                                  {isAr ? 'المادة المعتمدة:' : 'Subject:'}
+                                </span>
+                                <strong style={{ fontSize: '0.88rem', color: 'var(--primary-700)' }}>
+                                  {excelPreviewData.resolvedCurriculum?.subjectNameAr || '—'}
+                                </strong>
+                              </div>
+                              <div>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>
+                                  {isAr ? 'الصف الدراسي:' : 'Grade:'}
+                                </span>
+                                <strong style={{ fontSize: '0.88rem', color: '#1E293B' }}>
+                                  {excelPreviewData.resolvedCurriculum?.gradeNameAr || 'الصف الثالث الإعدادي'}
+                                </strong>
+                              </div>
+                              <div>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>
+                                  {isAr ? 'الوحدة المكتشفة:' : 'Detected Unit:'}
+                                </span>
+                                <strong style={{ fontSize: '0.88rem', color: '#1E293B' }}>
+                                  {excelPreviewData.resolvedCurriculum?.chapterTitleAr || (isAr ? 'الوحدة المنهجية' : 'Curriculum Unit')}
+                                </strong>
+                              </div>
+                              <div>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>
+                                  {isAr ? 'مدة الامتحان المحفوظة:' : 'Saved Duration:'}
+                                </span>
+                                <strong style={{ fontSize: '0.88rem', color: '#065F46' }}>
+                                  {examDuration || 30} {isAr ? 'دقيقة' : 'mins'}
+                                </strong>
+                              </div>
+                            </div>
+
+                            {/* Metric Counters */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.75rem' }}>
+                              <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-lg)', padding: '0.75rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#334155' }}>
+                                  {excelPreviewData.totalRows}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>
+                                  {isAr ? 'إجمالي الصفوف' : 'Total Rows'}
+                                </div>
+                              </div>
+
+                              <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', borderRadius: 'var(--radius-lg)', padding: '0.75rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#065F46' }}>
+                                  {excelPreviewData.validCount}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857' }}>
+                                  {isAr ? 'أسئلة صالحة ومعتمدة' : 'Valid Questions'}
+                                </div>
+                              </div>
+
+                              <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: 'var(--radius-lg)', padding: '0.75rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#1E40AF' }}>
+                                  {excelPreviewData.duplicatesCount}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1D4ED8' }}>
+                                  {isAr ? 'أسئلة مكررة بالبنك' : 'Duplicates in Bank'}
+                                </div>
+                              </div>
+
+                              {excelPreviewData.invalidCount > 0 && (
+                                <div style={{ background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: 'var(--radius-lg)', padding: '0.75rem', textAlign: 'center' }}>
+                                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#991B1B' }}>
+                                    {excelPreviewData.invalidCount}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#B91C1C' }}>
+                                    {isAr ? 'صفوف مستبعدة' : 'Invalid Rows'}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Invalid Rows Warning Details (if any) */}
+                            {excelPreviewData.invalidRows && excelPreviewData.invalidRows.length > 0 && (
+                              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--radius-lg)', padding: '0.85rem 1rem' }}>
+                                <strong style={{ fontSize: '0.82rem', color: '#92400E', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+                                  <AlertTriangle size={15} />
+                                  <span>{isAr ? 'تنبيه: تم استبعاد الصفوف التالية لعدم اكتمال متطلبات الامتحان:' : 'Warning: Following rows were quarantined:'}</span>
+                                </strong>
+                                <ul style={{ margin: 0, paddingRight: isAr ? '1.25rem' : '0', paddingLeft: isAr ? '0' : '1.25rem', fontSize: '0.75rem', color: '#B45309', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  {excelPreviewData.invalidRows.map((inv: any, i: number) => (
+                                    <li key={i}>
+                                      <strong>{isAr ? `السطر ${inv.rowNumber}:` : `Row ${inv.rowNumber}:`}</strong> {inv.reason}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Questions Preview List */}
+                            <div>
+                              <h5 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-title)' }}>
+                                {isAr ? `معاينة الأسئلة (${excelPreviewData.questions.length} سؤال):` : `Questions Preview (${excelPreviewData.questions.length}):`}
+                              </h5>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '320px', overflowY: 'auto', paddingRight: '0.35rem' }}>
+                                {excelPreviewData.questions.map((pq: any, pIdx: number) => (
+                                  <div key={pIdx} style={{
+                                    padding: '0.85rem 1rem',
+                                    borderRadius: 'var(--radius-md)',
+                                    background: 'var(--bg-subtle)',
+                                    border: '1px solid var(--border-light)'
+                                  }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1E293B' }}>
+                                        {pIdx + 1}. {pq.question_text}
+                                      </span>
+                                      <span className="badge" style={{ background: '#E0E7FF', color: '#3730A3', fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                        📖 {isAr ? `صفحة ${pq.page_reference || '1'}` : `Page ${pq.page_reference || '1'}`}
+                                      </span>
+                                    </div>
+
+                                    {/* Options display with correct checkmark */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.4rem', marginTop: '0.4rem' }}>
+                                      {pq.options.map((opt: any, oIdx: number) => (
+                                        <div key={oIdx} style={{
+                                          padding: '0.35rem 0.65rem',
+                                          borderRadius: 'var(--radius-sm)',
+                                          fontSize: '0.78rem',
+                                          background: opt.is_correct ? '#DCFCE7' : '#FFFFFF',
+                                          border: opt.is_correct ? '1.5px solid #86EFAC' : '1px solid var(--border-light)',
+                                          fontWeight: opt.is_correct ? 800 : 500,
+                                          color: opt.is_correct ? '#166534' : 'inherit',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.35rem'
+                                        }}>
+                                          <span>{opt.is_correct ? '✅' : '⚪'}</span>
+                                          <span>{opt.option_text}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginTop: '0.5rem', borderTop: '1px solid var(--border-light)', paddingTop: '1rem' }}>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleLoadQuestionsToComposer}
+                                style={{
+                                  padding: '0.75rem 1.25rem',
+                                  fontWeight: 800,
+                                  fontSize: '0.88rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '0.5rem',
+                                  background: 'linear-gradient(135deg, #1E3A8A, #3B82F6)',
+                                  border: 'none',
+                                  boxShadow: 'var(--shadow-blue)'
+                                }}
+                              >
+                                <span>📝</span>
+                                <span>{isAr ? 'تحميل الأسئلة إلى الاستوديو للتعديل والمراجعة' : 'Load Questions to Studio to Edit'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={handleDirectImportReferenceExam}
+                                disabled={isDirectImporting}
+                                style={{
+                                  padding: '0.75rem 1.25rem',
+                                  fontWeight: 800,
+                                  fontSize: '0.88rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '0.5rem',
+                                  background: '#059669',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  boxShadow: '0 4px 6px -1px rgba(5, 150, 105, 0.2)'
+                                }}
+                              >
+                                <Check size={16} />
+                                <span>{isDirectImporting ? (isAr ? 'جاري الاستيراد والحفظ...' : 'Saving...') : (isAr ? 'استيراد واعتماد مباشر كاختبار مرجعي' : 'Save Directly as Reference Exam')}</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* MODE 2: MANUAL QUESTION ENTRY */}
+                  {composerMode === 'manual' && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
+                          {isAr ? `أسئلة الامتحان (${examQuestions.length})` : `Exam Questions (${examQuestions.length})`}
+                        </h3>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => setComposerMode('excel')}
+                            style={{ fontWeight: 700, borderColor: '#059669', color: '#059669' }}
+                          >
+                            <FileSpreadsheet size={15} />
+                            <span>{isAr ? 'استيراد من Excel' : 'Import from Excel'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => setExamQuestions([...examQuestions, {
+                              question_text: '',
+                              points: 1,
+                              page_reference: '',
+                              options: [
+                                { option_text: '', is_correct: true },
+                                { option_text: '', is_correct: false },
+                                { option_text: '', is_correct: false },
+                                { option_text: '', is_correct: false }
+                              ]
+                            }])}
+                          >
+                            {isAr ? '+ إضافة سؤال' : '+ Add Question'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {examQuestions.map((q, qIndex) => (
+                        <div key={qIndex} style={{ padding: '1.25rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)', marginBottom: '1rem', border: '1px solid var(--border-light)' }}>
+                          <div className="responsive-form-grid-2" style={{ alignItems: 'flex-start' }}>
+                            <div className="form-group" style={{ flex: 2 }}>
+                              <label className="form-label" style={{ fontWeight: 800 }}>
+                                {isAr ? `نص السؤال #${qIndex + 1}` : `Question Text #${qIndex + 1}`}
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                className="form-input"
+                                value={q.question_text}
+                                onChange={e => {
+                                  const updated = [...examQuestions];
+                                  updated[qIndex].question_text = e.target.value;
+                                  setExamQuestions(updated);
+                                }}
+                                placeholder={isAr ? 'مثال: وحدة قياس الكثافة هي...' : 'e.g., The unit of measurement for density is...'}
+                              />
+                            </div>
+
+                            <div className="form-group" style={{ flex: 1 }}>
+                              <label className="form-label" style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <span>📖</span>
+                                <span>{isAr ? 'رقم الصفحة بالكتاب (مرجع الإجابة):' : 'Book Page (Answer Reference):'}</span>
+                              </label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={q.page_reference || ''}
+                                onChange={e => {
+                                  const updated = [...examQuestions];
+                                  updated[qIndex].page_reference = e.target.value;
+                                  setExamQuestions(updated);
+                                }}
+                                placeholder={isAr ? 'مثال: 5 أو صفحة 5' : 'e.g. 5 or Page 5'}
+                              />
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                {isAr ? '💡 ستظهر للطالب بجوار الإجابة الصحيحة عند مراجعة الامتحان.' : '💡 Shown to the student next to the correct answer.'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                            <label className="form-label" style={{ fontSize: '0.8rem' }}>
+                              {isAr ? 'الخيارات (حدد الإجابة الصحيحة):' : 'Options (Mark the correct answer):'}
+                            </label>
+                            {q.options.map((opt: any, optIndex: number) => (
+                              <div key={optIndex} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <input
+                                  type="radio"
+                                  name={`correct_${qIndex}`}
+                                  checked={opt.is_correct}
+                                  onChange={() => {
+                                    const updated = [...examQuestions];
+                                    updated[qIndex].options.forEach((o: any, i: number) => {
+                                      o.is_correct = i === optIndex;
+                                    });
+                                    setExamQuestions(updated);
+                                  }}
+                                />
+                                <input
+                                  type="text"
+                                  required
+                                  className="form-input"
+                                  value={opt.option_text}
+                                  onChange={e => {
+                                    const updated = [...examQuestions];
+                                    updated[qIndex].options[optIndex].option_text = e.target.value;
+                                    setExamQuestions(updated);
+                                  }}
+                                  placeholder={isAr ? `الخيار ${optIndex + 1}` : `Option ${optIndex + 1}`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-lg"
+                        disabled={isCreatingExam}
+                        style={{ width: '100%', marginTop: '1.5rem', fontWeight: 800 }}
+                      >
+                        {isCreatingExam 
+                          ? (isAr ? 'جاري الحفظ والنشر...' : 'Saving & Publishing...') 
+                          : (isAr ? 'حفظ ونشر الامتحان للطلاب 🚀' : 'Save & Publish Exam 🚀')}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </form>
             </div>
           </div>
@@ -2839,14 +3469,244 @@ export const TeacherDashboard: React.FC = () => {
           <PlusCircle size={20} />
           <span>{isAr ? 'إنشاء' : 'Create'}</span>
         </button>
-        <button
-          className={`mobile-nav-btn ${activeTab === 'analytics' ? 'active' : ''}`}
-          onClick={() => setActiveTab('analytics')}
-        >
-          <BarChart2 size={20} />
-          <span>{isAr ? 'الطلاب' : 'Students'}</span>
-        </button>
       </nav>
+
+      {/* Modal: Append or Replace Composer Questions */}
+      {showAppendReplaceModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '1.25rem',
+            width: '100%',
+            maxWidth: '520px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1.5px solid #E2E8F0',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%)',
+              color: '#FFFFFF',
+              padding: '1.25rem 1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <HelpCircle size={22} color="#93C5FD" />
+                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF' }}>
+                  {isAr ? 'خيارات تحميل الأسئلة إلى الاستوديو' : 'Questions Loading Options'}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAppendReplaceModal(false)}
+                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '0.25rem' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#334155', lineHeight: 1.6 }}>
+                {isAr 
+                  ? `يحتوي استوديو الامتحان حالياً على ${examQuestions.length} سؤال مدخل. كيف ترغب في التعامل مع أسئلة ملف Excel الجديدة (${pendingLoadedQuestions.length} سؤال)؟`
+                  : `Your exam composer already contains ${examQuestions.length} question(s). How would you like to handle the ${pendingLoadedQuestions.length} new question(s) from Excel?`}
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => handleResolveAppendReplace('replace')}
+                  style={{
+                    padding: '0.85rem 1.25rem',
+                    fontWeight: 800,
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    background: '#DC2626',
+                    borderColor: '#DC2626'
+                  }}
+                >
+                  <span>🔄</span>
+                  <span>{isAr ? 'استبدال الأسئلة الحالية بالكامل' : 'Replace All Existing Questions'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => handleResolveAppendReplace('append')}
+                  style={{
+                    padding: '0.85rem 1.25rem',
+                    fontWeight: 800,
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    background: '#2563EB',
+                    color: '#FFFFFF',
+                    border: 'none'
+                  }}
+                >
+                  <span>➕</span>
+                  <span>{isAr ? 'إضافة الأسئلة الجديدة إلى الأسئلة الحالية' : 'Append to Existing Questions'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div style={{ background: '#F8FAFC', borderTop: '1px solid #E2E8F0', padding: '0.85rem 1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setShowAppendReplaceModal(false)}
+              >
+                {isAr ? 'إلغاء' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Direct Excel Import Success Summary */}
+      {excelImportSuccessSummary && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '1.25rem',
+            width: '100%',
+            maxWidth: '540px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1.5px solid #E2E8F0',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #065F46 0%, #047857 100%)',
+              color: '#FFFFFF',
+              padding: '1.25rem 1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <CheckCircle2 size={24} color="#A7F3D0" />
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF' }}>
+                    {isAr ? 'تم استيراد وحفظ الامتحان بنجاح!' : 'Exam Imported & Saved Successfully!'}
+                  </h4>
+                  <div style={{ fontSize: '0.78rem', color: '#D1FAE5', marginTop: '0.2rem' }}>
+                    {excelImportSuccessSummary.workbookName}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExcelImportSuccessSummary(null)}
+                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '0.25rem' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {excelImportSuccessSummary.fixedExam && (
+                <div style={{ background: '#F0FDF4', border: '1.5px solid #86EFAC', borderRadius: '0.75rem', padding: '1rem' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 900, color: '#166534', marginBottom: '0.35rem' }}>
+                    🏆 {excelImportSuccessSummary.fixedExam.title}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#15803D', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span>⏱️ {isAr ? `المدة: ${examDuration || 30} دقيقة` : `Duration: ${examDuration || 30} mins`}</span>
+                    <span>📝 {isAr ? `عدد الأسئلة: ${excelImportSuccessSummary.fixedExam.questionsCount}` : `${excelImportSuccessSummary.fixedExam.questionsCount} questions`}</span>
+                    {excelImportSuccessSummary.fixedExam.isExisting && (
+                      <span className="badge" style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 800 }}>
+                        {isAr ? 'مرجع معتمد موجود مسبقاً' : 'Existing Reference'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
+                <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '0.75rem', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#065F46' }}>
+                    {excelImportSuccessSummary.imported || 0}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857' }}>
+                    {isAr ? 'أسئلة جديدة' : 'New Questions'}
+                  </div>
+                </div>
+
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '0.75rem', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#1E40AF' }}>
+                    {excelImportSuccessSummary.duplicates || 0}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1D4ED8' }}>
+                    {isAr ? 'مكررات تم تخطيها' : 'Duplicates'}
+                  </div>
+                </div>
+
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.75rem', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#991B1B' }}>
+                    {excelImportSuccessSummary.quarantined || 0}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#B91C1C' }}>
+                    {isAr ? 'مستبعد' : 'Quarantined'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: '#F8FAFC', borderTop: '1px solid #E2E8F0', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setExcelImportSuccessSummary(null)}
+              >
+                {isAr ? 'إغلاق' : 'Close'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setExcelImportSuccessSummary(null);
+                  setActiveTab('exams');
+                }}
+                style={{ fontWeight: 800, background: '#059669', borderColor: '#059669' }}
+              >
+                {isAr ? 'عرض قائمة الامتحانات 📋' : 'View in Exams List 📋'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

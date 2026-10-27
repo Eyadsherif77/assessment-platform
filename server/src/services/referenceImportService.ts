@@ -132,6 +132,7 @@ export interface ImportSummary {
     id: string;
     title: string;
     questionsCount: number;
+    isExisting?: boolean;
   };
 }
 
@@ -238,6 +239,18 @@ export class ReferenceImportService {
       const rawOptions = [optA, optB, optC, optD].filter(Boolean);
       if (rawOptions.length < 2) {
         errors.push(`السطر ${rowNum}: يجب توفير خيارين على الأقل للسؤال`);
+        parsedRows.push({
+          rowNumber: rowNum,
+          subjectName,
+          unitName,
+          questionText,
+          options: rawOptions.map(text => ({ id: uuidv4(), text, is_correct: false })),
+          rightAnswerText: rawRightAnswer,
+          pageReference: pageNum,
+          explanation: explanation || undefined,
+          isValid: false,
+          validationError: 'يجب توفير خيارين على الأقل للسؤال مع تحديد الإجابة الصحيحة'
+        });
         return;
       }
 
@@ -614,7 +627,7 @@ export class ReferenceImportService {
     }
 
     // 6. Automatically Create/Update a Fixed Exam (if requested or by default)
-    let fixedExamResult: { id: string; title: string; questionsCount: number } | undefined;
+    let fixedExamResult: { id: string; title: string; questionsCount: number; isExisting?: boolean } | undefined;
 
     if (options.createFixedExam !== false && validatedExamQuestions.length > 0) {
       const fixedExamId = uuidv4();
@@ -643,15 +656,37 @@ export class ReferenceImportService {
       }
 
       let targetExamId: string;
+      let isExistingExam = false;
       if (existingExamRes.rows.length > 0) {
         targetExamId = existingExamRes.rows[0].id;
-        // Update exam settings and duration
-        await db.query(
-          `UPDATE exams SET duration_minutes = $2, is_style_reference = $3, is_published = $4 WHERE id = $1`,
-          [targetExamId, durationMin, isStyleRef, isPub]
-        );
-        // Clean old questions to refresh with updated verified questions
-        await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [targetExamId]);
+
+        // If ALL parsed rows are duplicates and NO new questions were imported (identical workbook re-import):
+        if (imported === 0 && duplicates === parsedRows.length) {
+          isExistingExam = true;
+          // Retain the existing exam completely untouched (do not overwrite title, duration, or metadata)
+          const examDataRes = await db.query(
+            `SELECT id, title_ar, duration_minutes, is_published, is_style_reference FROM exams WHERE id = $1`,
+            [targetExamId]
+          );
+          const qCountRes = await db.query(
+            `SELECT COUNT(*) as count FROM exam_questions WHERE exam_id = $1`,
+            [targetExamId]
+          );
+          fixedExamResult = {
+            id: targetExamId,
+            title: examDataRes.rows[0]?.title_ar || existingExamRes.rows[0].title_ar,
+            questionsCount: parseInt(qCountRes.rows[0]?.count, 10) || validatedExamQuestions.length,
+            isExisting: true
+          };
+        } else {
+          // Update exam settings and duration ONLY if new questions or explicit updates
+          await db.query(
+            `UPDATE exams SET duration_minutes = $2, is_style_reference = $3, is_published = $4 WHERE id = $1`,
+            [targetExamId, durationMin, isStyleRef, isPub]
+          );
+          // Clean old questions to refresh with updated verified questions
+          await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [targetExamId]);
+        }
       } else {
         targetExamId = fixedExamId;
         let teacherId = options.operatorId;
@@ -686,41 +721,44 @@ export class ReferenceImportService {
         );
       }
 
-      // Insert questions into exam_questions
-      for (let i = 0; i < validatedExamQuestions.length; i++) {
-        const eq = validatedExamQuestions[i];
-        const examQId = uuidv4();
+      if (!isExistingExam) {
+        // Insert questions into exam_questions
+        for (let i = 0; i < validatedExamQuestions.length; i++) {
+          const eq = validatedExamQuestions[i];
+          const examQId = uuidv4();
 
-        await db.query(
-          `INSERT INTO exam_questions (
-             id, exam_id, question_item_id, question_text, question_type,
-             points, page_reference, explanation, order_index
-           ) VALUES ($1, $2, $3, $4, 'MULTIPLE_CHOICE', 1, $5, $6, $7)`,
-          [
-            examQId,
-            targetExamId,
-            eq.id,
-            eq.question_text,
-            String(eq.page_reference || 1),
-            eq.explanation || null,
-            i + 1
-          ]
-        );
-
-        for (const opt of eq.options) {
           await db.query(
-            `INSERT INTO exam_question_options (id, question_id, option_text, is_correct)
-             VALUES ($1, $2, $3, $4)`,
-            [uuidv4(), examQId, opt.text, opt.is_correct ? 1 : 0]
+            `INSERT INTO exam_questions (
+               id, exam_id, question_item_id, question_text, question_type,
+               points, page_reference, explanation, order_index
+             ) VALUES ($1, $2, $3, $4, 'MULTIPLE_CHOICE', 1, $5, $6, $7)`,
+            [
+              examQId,
+              targetExamId,
+              eq.id,
+              eq.question_text,
+              String(eq.page_reference || 1),
+              eq.explanation || null,
+              i + 1
+            ]
           );
-        }
-      }
 
-      fixedExamResult = {
-        id: targetExamId,
-        title: examTitleAr,
-        questionsCount: validatedExamQuestions.length
-      };
+          for (const opt of eq.options) {
+            await db.query(
+              `INSERT INTO exam_question_options (id, question_id, option_text, is_correct)
+               VALUES ($1, $2, $3, $4)`,
+              [uuidv4(), examQId, opt.text, opt.is_correct ? 1 : 0]
+            );
+          }
+        }
+
+        fixedExamResult = {
+          id: targetExamId,
+          title: examTitleAr,
+          questionsCount: validatedExamQuestions.length,
+          isExisting: false
+        };
+      }
     }
 
     return {
@@ -911,8 +949,12 @@ export class ReferenceImportService {
       const verificationHash = computeQuestionVerificationHash(candidate);
 
       const dupRes = await db.query(
-        `SELECT id FROM question_bank_items WHERE quarantine_reason = $1 LIMIT 1`,
-        [`VERIFIED:${verificationHash}`]
+        chapterId
+          ? `SELECT id FROM question_bank_items WHERE (chapter_id = $1 AND question_text = $2) OR quarantine_reason = $3 LIMIT 1`
+          : `SELECT id FROM question_bank_items WHERE question_text = $1 OR quarantine_reason = $2 LIMIT 1`,
+        chapterId
+          ? [chapterId, q.questionText, `VERIFIED:${verificationHash}`]
+          : [q.questionText, `VERIFIED:${verificationHash}`]
       );
 
       if (dupRes.rows.length > 0) {

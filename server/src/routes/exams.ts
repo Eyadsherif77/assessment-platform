@@ -1,9 +1,17 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import multer from 'multer';
+import path from 'path';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
 import { checkStudentExamLimit, getMonthlyExamLimit } from '../services/examLimitService.js';
 import { ExamCacheService } from '../services/examCacheService.js';
+import { ReferenceImportService } from '../services/referenceImportService.js';
+
+const excelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 } // 15 MB limit
+});
 
 const router = Router();
 
@@ -538,6 +546,180 @@ router.get('/style-references', authenticateToken, requireRole(['TEACHER', 'ADMI
     return res.json({ style_references: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: 'خطأ في جلب مراجع الأسلوب: ' + err.message });
+  }
+});
+
+/**
+ * Teacher Excel Reference Import Endpoints
+ * 1. Download official reference Excel template
+ * GET /api/exams/references/template
+ */
+router.get('/references/template', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN']), (req: AuthenticatedRequest, res) => {
+  try {
+    const buffer = ReferenceImportService.generateTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Farabi_Reference_Workbook_Template.xlsx"');
+    return res.send(buffer);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل إنشاء قالب Excel: ' + err.message });
+  }
+});
+
+/**
+ * 2. Non-destructive Preview & Validation of Workbook (Zero DB writes)
+ * POST /api/exams/references/preview-excel
+ */
+router.post('/references/preview-excel', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN']), excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
+    }
+
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (ext !== '.xlsx' && ext !== '.xls') {
+      return res.status(400).json({ error: 'نوع الملف غير مدعوم، يرجى رفع ملف Excel بصيغة .xlsx أو .xls' });
+    }
+
+    const {
+      subject_id,
+      grade_id,
+      chapter_id,
+      stage_id,
+      term,
+      school_type,
+      duration_minutes
+    } = req.body;
+
+    // Enforce teacher authorization strictly: verify subject authorization
+    let overrideSubjectId = subject_id || undefined;
+    if (req.user!.role === 'TEACHER') {
+      const teacherRes = await db.query(
+        `SELECT u.id, u.subject_id, tp.subject_id as profile_subject_id, tp.specialization, tp.grade_id, tp.academic_stage_id
+         FROM users u
+         LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+         WHERE u.id = $1`,
+        [req.user!.id]
+      );
+      if (teacherRes.rows.length > 0) {
+        const t = teacherRes.rows[0];
+        const teacherSubj = t.subject_id || t.profile_subject_id;
+        if (teacherSubj) {
+          if (overrideSubjectId && overrideSubjectId !== teacherSubj) {
+            return res.status(403).json({ error: 'غير مصرح للمعلم باستيراد أسئلة لمادة مختلفة عن تخصصه المعتمد' });
+          }
+          overrideSubjectId = teacherSubj;
+        }
+      }
+    }
+
+    const parsedDuration = duration_minutes ? Math.max(5, parseInt(String(duration_minutes), 10) || 30) : 30;
+
+    const preview = await ReferenceImportService.previewReferenceWorkbook(
+      req.file.buffer,
+      {
+        operatorId: req.user!.id,
+        operatorRole: req.user!.role,
+        workbookName: req.file.originalname,
+        overrideSubjectId,
+        overrideGradeId: grade_id || undefined,
+        overrideChapterId: chapter_id || undefined,
+        overrideStageId: stage_id || undefined,
+        overrideTerm: term ? parseInt(String(term), 10) : undefined,
+        overrideSchoolType: school_type || undefined,
+        durationMinutes: parsedDuration
+      }
+    );
+
+    return res.json(preview);
+  } catch (err: any) {
+    console.error('Teacher reference workbook preview error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'حدث خطأ أثناء معاينة ملف المراجع'
+    });
+  }
+});
+
+/**
+ * 3. Verified Excel Reference Import into Question Bank & Fixed Exam
+ * POST /api/exams/references/import-excel
+ */
+router.post('/references/import-excel', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR', 'CENTRAL_ADMIN']), excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
+    }
+
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (ext !== '.xlsx' && ext !== '.xls') {
+      return res.status(400).json({ error: 'نوع الملف غير مدعوم، يرجى رفع ملف Excel بصيغة .xlsx أو .xls' });
+    }
+
+    const {
+      subject_id,
+      grade_id,
+      chapter_id,
+      stage_id,
+      term,
+      school_type,
+      create_fixed_exam,
+      duration_minutes,
+      exam_title,
+      is_published,
+      is_style_reference
+    } = req.body;
+
+    // Enforce teacher authorization strictly: verify subject authorization
+    let overrideSubjectId = subject_id || undefined;
+    if (req.user!.role === 'TEACHER') {
+      const teacherRes = await db.query(
+        `SELECT u.id, u.subject_id, tp.subject_id as profile_subject_id, tp.specialization
+         FROM users u
+         LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+         WHERE u.id = $1`,
+        [req.user!.id]
+      );
+      if (teacherRes.rows.length > 0) {
+        const t = teacherRes.rows[0];
+        const teacherSubj = t.subject_id || t.profile_subject_id;
+        if (teacherSubj) {
+          if (overrideSubjectId && overrideSubjectId !== teacherSubj) {
+            return res.status(403).json({ error: 'غير مصرح للمعلم باستيراد أسئلة لمادة مختلفة عن تخصصه المعتمد' });
+          }
+          overrideSubjectId = teacherSubj;
+        }
+      }
+    }
+
+    const parsedDuration = duration_minutes ? Math.max(5, parseInt(String(duration_minutes), 10) || 30) : 30;
+
+    const summary = await ReferenceImportService.importReferenceWorkbook(
+      req.file.buffer,
+      {
+        operatorId: req.user!.id,
+        operatorRole: req.user!.role,
+        workbookName: req.file.originalname,
+        overrideSubjectId,
+        overrideGradeId: grade_id || undefined,
+        overrideChapterId: chapter_id || undefined,
+        overrideStageId: stage_id || undefined,
+        overrideTerm: term ? parseInt(String(term), 10) : undefined,
+        overrideSchoolType: school_type || undefined,
+        createFixedExam: create_fixed_exam !== 'false' && create_fixed_exam !== false,
+        durationMinutes: parsedDuration,
+        examTitle: exam_title || undefined,
+        isPublished: is_published !== undefined ? (is_published === 'true' || is_published === true) : (req.user!.role === 'TEACHER' ? false : true),
+        isStyleReference: is_style_reference !== undefined ? (is_style_reference === 'true' || is_style_reference === true) : (req.user!.role === 'TEACHER' ? false : true)
+      }
+    );
+
+    return res.json(summary);
+  } catch (err: any) {
+    console.error('Teacher reference workbook import error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'حدث خطأ أثناء استيراد ومعالجة ملف المراجع'
+    });
   }
 });
 
