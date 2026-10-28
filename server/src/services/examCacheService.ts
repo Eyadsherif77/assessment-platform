@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { AnswerValidationService, ExamValidationSummary, QuestionValidationResult } from './answerValidationService.js';
 import { AiUsageMetricsService } from './aiUsageMetricsService.js';
+import { validateListeningAndSourceGrounding } from './ai/aiRagEngine.js';
 
 export interface AuthoritativeCurriculumIdentity {
   bookId: string;
@@ -797,6 +798,24 @@ export class ExamCacheService {
 
     if (!allQuestionsValid) {
       console.warn(`⚠️ [ExamCacheService] Cached exam ${row.id} contains structurally malformed questions or missing options. Skipping corrupted cache record.`);
+      return {
+        hit: false,
+        reason: 'CACHE_MISS',
+        configKey,
+        cacheKey: configKey,
+        configHash,
+        curriculumIdentity: identity
+      };
+    }
+
+    // Verify textbook grounding & listening audio availability for cached questions
+    const allQuestionsGrounded = parsedQuestions.every(q => {
+      const gResult = validateListeningAndSourceGrounding(q, q.chunk_text || q.source_excerpt || '');
+      return gResult.isValid;
+    });
+
+    if (!allQuestionsGrounded) {
+      console.warn(`⚠️ [ExamCacheService] Cached exam ${row.id} contains question(s) that fail textbook grounding or listening source checks. Skipping cache record.`);
       return {
         hit: false,
         reason: 'CACHE_MISS',

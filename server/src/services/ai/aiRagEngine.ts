@@ -51,6 +51,17 @@ export interface QualityScoreResult {
   reason?: string;
 }
 
+export interface GroundingValidationResult {
+  isValid: boolean;
+  reason?: string;
+  reasonCode?: string;
+  reasonMessage?: string;
+  isListeningQuestion: boolean;
+  hasListeningEvidence: boolean;
+  category?: 'GRAMMAR' | 'VOCABULARY' | 'READING_COMPREHENSION' | 'LISTENING' | 'WRITING' | 'DIALOGUE' | 'TRANSLATION' | 'SOCIAL_STUDIES' | 'GENERAL';
+  detectedCategory?: 'GRAMMAR' | 'VOCABULARY' | 'READING_COMPREHENSION' | 'LISTENING' | 'WRITING' | 'DIALOGUE' | 'TRANSLATION' | 'SOCIAL_STUDIES' | 'GENERAL';
+}
+
 // ─── Bloom Taxonomy Localisation Maps ───────────────────────────────────────
 /**
  * Converts an internal Bloom level code to an Arabic pedagogical label
@@ -341,6 +352,215 @@ export function isDuplicateOrParameterVariant(
 }
 
 /**
+ * Validates textbook grounding and listening source requirements for English, Arabic, and Social Studies.
+ *
+ * Requirements:
+ * 1. Listening questions must assess knowledge supported by an available recording transcript, dialogue,
+ *    passage, or approved source content. Questions requiring information from unavailable audio must be rejected.
+ * 2. Supported listening questions (with transcripts/dialogue present in the source) remain eligible.
+ * 3. English grammar, vocabulary, reading comprehension, writing, dialogue, and translation remain supported.
+ * 4. Arabic grammar (النحو والقواعد), vocabulary (المفردات), reading comprehension remain supported.
+ * 5. Social Studies questions must be grounded in actual textbook facts (dates, locations, figures, events)
+ *    and not invented or unsupported general knowledge.
+ */
+export function validateListeningAndSourceGrounding(
+  q: GroundedQuestion,
+  sourceContext?: string,
+  options?: { subjectCode?: string; subjectName?: string }
+): GroundingValidationResult {
+  const qText = (q.question_text || '').trim();
+  const availableSource = (sourceContext || q.chunk_text || q.source_excerpt || '').trim();
+  const normalizedSource = availableSource
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .toLowerCase();
+  const normalizedQ = qText
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .toLowerCase();
+
+  const enListeningRx = /\b(?:listen(?:ing)?|audio(?:\s+track)?|record(?:ed|ing)?|transcript|hear(?:d)?|spoken\s+(?:text|passage|dialogue)|speaker\s+(?:says|mentions|states)|according\s+to\s+what\s+you\s+heard|in\s+the\s+conversation\s+you\s+listened\s+to)\b/i;
+  const arListeningRx = /(?:استمع|الاستماع|المسموع|التسجيل\s+الصوتي|المقطع\s+الصوتي|المتحدث|الحوار\s+المسموع|النص\s+المسموع|ما\s+سمعته|الشريط\s+المسجل)/i;
+
+  const isListeningQuestion = enListeningRx.test(qText) || arListeningRx.test(qText);
+
+  if (isListeningQuestion) {
+    // Check if the source is missing, or is ONLY a bare listening instruction without the audio transcript
+    const isBareInstruction =
+      availableSource.length < 35 ||
+      /^(?:\s*track\s*\d+[\s:]*|\s*(?:listen|look\s+and\s+listen)\s+(?:and\s+)?(?:answer|choose|circle|complete|check|match|number|repeat)(?:\s+the\s+questions?|\s+to\s+the\s+recording|\s+to\s+the\s+track)?[\.\!]?\s*)+$/i.test(availableSource) ||
+      /^(?:\s*(?:استمع|أنصت)\s+(?:ثم|و)?\s*(?:أجب|اختر|ضع\s+دائرة|أكمل|طابق|ردد)(?:\s+عن\s+الأسئلة|\s+إلى\s+الشريط|\s+إلى\s+التسجيل)?[\.\!]?\s*)+$/i.test(availableSource);
+
+    // Check if transcript / dialogue / script is present in the source text
+    const hasTranscriptMarker =
+      /\b(?:transcript|audio\s+script|script|listening\s+text|dialogue|speaker\s+[a-z1-2]|track\s+\d+\s+script)\b/i.test(availableSource) ||
+      /(?:نص\s+الاستماع|تفريغ\s+التسجيل|الحوار\s+المسجل|المحادثة\s+المسجلة|النص\s+الصوتي)/i.test(availableSource) ||
+      /(?:^|\n)\s*[A-Z][a-z]{1,12}\s*:\s*.+/m.test(availableSource) ||
+      /(?:^|\n)\s*[\u0621-\u064A]{2,15}\s*:\s*.+/m.test(availableSource);
+
+    // Verify whether the correct answer or key premise exists in the available source
+    const correctOpt = (q.options || []).find(o => o.is_correct)?.text || '';
+    const normCorrect = correctOpt.replace(/[\u064B-\u065F\u0670\u0640]/g, '').toLowerCase().trim();
+
+    const hasAnswerInSource = normCorrect.length > 1 && normalizedSource.includes(normCorrect);
+
+    // If source has transcript or dialogue AND contains the answer/premise:
+    if (!isBareInstruction && (hasTranscriptMarker || hasAnswerInSource)) {
+      const res: GroundingValidationResult = {
+        isValid: true,
+        isListeningQuestion: true,
+        hasListeningEvidence: true,
+        category: 'LISTENING',
+        detectedCategory: 'LISTENING'
+      };
+      if (q.validation_status) q.validation_status = { isValid: true };
+      return res;
+    }
+
+    // Otherwise, audio/transcript is unavailable in the source material
+    const res: GroundingValidationResult = {
+      isValid: false,
+      reason: 'UNSUPPORTED_LISTENING_SOURCE: Question depends on an audio recording or transcript that is unavailable in the approved source material',
+      reasonCode: 'UNSUPPORTED_LISTENING_SOURCE',
+      reasonMessage: 'يتطلب السؤال الاستماع إلى محتوى غير متوفر في كتاب الوزارة المعتمد',
+      isListeningQuestion: true,
+      hasListeningEvidence: false,
+      category: 'LISTENING',
+      detectedCategory: 'LISTENING'
+    };
+    if (q.validation_status) q.validation_status = { isValid: false, reason: res.reason };
+    return res;
+  }
+
+  // 2. Social Studies Factual Grounding Check
+  const subjName = (options?.subjectName || '').toLowerCase();
+  const subjCode = (options?.subjectCode || '').toLowerCase();
+  const isSocialStudies =
+    subjCode.includes('social') ||
+    subjCode.includes('studies') ||
+    subjCode.includes('geography') ||
+    subjCode.includes('history') ||
+    subjName.includes('دراسات') ||
+    subjName.includes('اجتماعية') ||
+    subjName.includes('تاريخ') ||
+    subjName.includes('جغرافيا') ||
+    /(?:الدراسات\s+الاجتماعية|التاريخ|الجغرافيا|تاريخ|جغرافيا|الثورة|معركة|الاحتلال|عهد|حكم|غزوة|مجدو|قادش)/i.test(q.question_text);
+
+  if (isSocialStudies && availableSource.length > 0) {
+    const correctOpt = (q.options || []).find(o => o.is_correct)?.text || '';
+    const combinedFactText = qText + ' ' + correctOpt;
+
+    // Check specific historical years in question text and correct answer
+    const yearMatches = combinedFactText.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/g);
+    if (yearMatches) {
+      for (const y of yearMatches) {
+        if (!availableSource.includes(y)) {
+          const res: GroundingValidationResult = {
+            isValid: false,
+            reason: `UNSUPPORTED_HISTORICAL_FACT: Historical year '${y}' asserted in question or correct answer is not supported by textbook material`,
+            reasonCode: 'UNSUPPORTED_HISTORICAL_FACT',
+            reasonMessage: `التاريخ المذكور '${y}' غير وارد في كتاب الوزارة المعتمد`,
+            isListeningQuestion: false,
+            hasListeningEvidence: false,
+            category: 'SOCIAL_STUDIES',
+            detectedCategory: 'SOCIAL_STUDIES'
+          };
+          if (q.validation_status) q.validation_status = { isValid: false, reason: res.reason };
+          return res;
+        }
+      }
+    }
+
+    // Check correct answer presence for Social Studies
+    const normCorrect = correctOpt.replace(/[\u064B-\u065F\u0670\u0640]/g, '').toLowerCase().trim();
+    if (normCorrect.length > 2 && !normalizedSource.includes(normCorrect)) {
+      const ansWords = normCorrect.split(/[^\w\u0600-\u06FF]+/).filter(w => w.length > 2);
+      const matched = ansWords.filter(w => normalizedSource.includes(w));
+      if (ansWords.length > 0 && (matched.length / ansWords.length) < 0.5) {
+        const res: GroundingValidationResult = {
+          isValid: false,
+          reason: `UNSUPPORTED_HISTORICAL_FACT: Answer '${correctOpt}' is not grounded in textbook evidence`,
+          reasonCode: 'UNSUPPORTED_HISTORICAL_FACT',
+          reasonMessage: `الإجابة '${correctOpt}' غير واردة في كتاب الوزارة المعتمد`,
+          isListeningQuestion: false,
+          hasListeningEvidence: false,
+          category: 'SOCIAL_STUDIES',
+          detectedCategory: 'SOCIAL_STUDIES'
+        };
+        if (q.validation_status) q.validation_status = { isValid: false, reason: res.reason };
+        return res;
+      }
+    }
+  }
+
+  // 3. Category classification for auditability
+  let category: GroundingValidationResult['category'] = isSocialStudies ? 'SOCIAL_STUDIES' : 'GENERAL';
+  if (/\b(?:verb|tense|grammar|preposition|pronoun|plural|singular|passive|conditional|modals|adjective|adverb|form|clause|sentence|if)\b/i.test(qText) ||
+      /(?:نحو|إعراب|مبتدأ|خبر|فاعل|مفعول|مشتق|فعل|اسم\s+فاعل|اسم\s+مفعول|صيغة\s+مبالغة|مجرور|مرفوع|منصوب)/i.test(qText)) {
+    category = 'GRAMMAR';
+  } else if (/\b(?:synonym|antonym|meaning|closest\s+in\s+meaning|opposite|word|vocabulary|definition)\b/i.test(qText) ||
+             /(?:مرادف|مضاد|معنى|المعنى|المفردات|اللغوية|جمع|مفرد)/i.test(qText)) {
+    category = 'VOCABULARY';
+  } else if (/\b(?:passage|paragraph|read|according\s+to\s+the\s+story|author|main\s+idea)\b/i.test(qText) ||
+             /(?:الفقرة|النص|القرائي|الكاتب|الفكرة\s+الرئيسة|مضمون)/i.test(qText)) {
+    category = 'READING_COMPREHENSION';
+  } else if (/\b(?:dialogue|conversation|speak)\b/i.test(qText) || /(?:حوار|محادثة)/i.test(qText)) {
+    category = 'DIALOGUE';
+  } else if (/\b(?:write|email|letter|paragraph\s+writing)\b/i.test(qText) || /(?:تعبير|كتابة|رسالة|بريد)/i.test(qText)) {
+    category = 'WRITING';
+  } else if (/\b(?:translate|translation)\b/i.test(qText) || /(?:ترجم|ترجمة)/i.test(qText)) {
+    category = 'TRANSLATION';
+  } else if (isSocialStudies || /معركة|قائد|جيش|قادش|مجدو|تاريخ|تضاريس|مناخ|قارة/i.test(qText)) {
+    category = 'SOCIAL_STUDIES';
+  }
+
+  // 4. Grounding Check for Reading Comprehension / General Story Questions
+  if (availableSource.length >= 25 && (category === 'READING_COMPREHENSION' || category === 'GENERAL')) {
+    const stopWords = new Set([
+      'what', 'which', 'where', 'when', 'who', 'whom', 'whose', 'why', 'how',
+      'from', 'with', 'that', 'this', 'have', 'does', 'did', 'done', 'doing',
+      'the', 'under', 'into', 'over', 'onto', 'through', 'about', 'between',
+      'and', 'but', 'for', 'nor', 'yet', 'you', 'your', 'they', 'them',
+      'his', 'her', 'she', 'him', 'its', 'their', 'our', 'were', 'been',
+      'ماذا', 'لماذا', 'كيف', 'أين', 'متى', 'الذي', 'التي', 'الذين', 'اللاتي', 'منها',
+      'إلى', 'على', 'عن', 'في', 'من', 'مع', 'هذا', 'هذه', 'تلك', 'ذلك', 'كذلك',
+      'أنها', 'كان', 'كانت', 'يكون', 'تكون', 'الوحدة', 'الدرس', 'سؤال', 'أجب'
+    ]);
+    const correctOpt = (q.options || []).find(o => o.is_correct)?.text || '';
+    const combinedText = `${qText} ${correctOpt}`.toLowerCase();
+    const contentTokens = combinedText
+      .split(/[^\w\u0600-\u06FF]+/)
+      .filter(w => w.length > 2 && !stopWords.has(w));
+
+    if (contentTokens.length >= 3) {
+      const matchCount = contentTokens.filter(t => normalizedSource.includes(t)).length;
+      if (matchCount === 0) {
+        const res: GroundingValidationResult = {
+          isValid: false,
+          reason: 'UNSUPPORTED_SOURCE_GROUNDING: Question or answer refers to facts, characters, or story elements not found in the textbook source',
+          reasonCode: 'UNSUPPORTED_SOURCE_GROUNDING',
+          reasonMessage: 'السؤال أو الإجابة تستند إلى قصة أو شخصيات أو معلومات غير واردة في كتاب الوزارة',
+          isListeningQuestion: false,
+          hasListeningEvidence: false,
+          category,
+          detectedCategory: category
+        };
+        if (q.validation_status) q.validation_status = { isValid: false, reason: res.reason };
+        return res;
+      }
+    }
+  }
+
+  const res: GroundingValidationResult = {
+    isValid: true,
+    isListeningQuestion: false,
+    hasListeningEvidence: false,
+    category,
+    detectedCategory: category
+  };
+  if (q.validation_status && !q.validation_status.reason) q.validation_status = { isValid: true };
+  return res;
+}
+
+/**
  * Teacher Quality Score Evaluator:
  * - Relevance Score >= 90%
  * - Educational Value >= 90%
@@ -427,6 +647,19 @@ export function evaluateQuestionQuality(
         reason: optUniq.reason || 'Failed option uniqueness or single-correct-answer check'
       };
     }
+  }
+
+  // 1e. Textbook Grounding & Listening Safeguard (Task 1)
+  const grounding = validateListeningAndSourceGrounding(q, q.chunk_text || q.source_excerpt);
+  if (!grounding.isValid) {
+    return {
+      isValid: false,
+      relevanceScore: 0,
+      educationalValue: 0,
+      metadataPresence: 0,
+      isDuplicate: false,
+      reason: grounding.reason || 'Failed textbook grounding and listening validation'
+    };
   }
 
   // 2. Metadata Presence (Target: 0%)
@@ -550,9 +783,9 @@ export function evaluateQuestionQuality(
     eduScore -= 12; // Deduct for verbose options
   }
 
-  // Teacher Rule: Question text must test understanding (definitions, reasoning, cause/effect, problem-solving)
+  // Teacher Rule: Question text must test understanding (definitions, reasoning, cause/effect, problem-solving, grammar, vocabulary, history/facts)
   const normalizedQStem = (q.question_text || '').replace(/[\u064B-\u065F\u0670]/g, '');
-  const isTeacherStem = /من|ما|علل|احسب|متى|أي|أين|لماذا|كيف|وضح|اذكر|إذا|ماذا يحدث|what|why|which|how|calculate|if|who|where/i.test(normalizedQStem);
+  const isTeacherStem = /من|ما|علل|احسب|متى|أي|أين|لماذا|كيف|وضح|اذكر|إذا|ماذا يحدث|اختر|حدد|أكمل|أعرب|إعراب|مرادف|مضاد|معنى|جمع|مفرد|بين|ميز|اضبط|صوب|هات|عين|استخرج|الفكرة|الهدف|عام|سنة|تاريخ|معركة|موقعة|حكم|عهد|يعد|تعد|يعتبر|تعتبر|تم|قام|قامت|نجح|انتصر|هزم|قاد|تولى|توفي|ولد|تأسس|تأسست|حدث|حدثت|وقع|وقعت|سبب|نتيجة|أثر|عاصمة|أهم|أكبر|أول|آخر|وفقا|بحسب|نستنتج|يدل|what|why|which|how|calculate|if|who|where|when|choose|complete|select|identify|fill|the word|the synonym|the antonym|the meaning|the opposite|in the dialogue|in the sentence|rewrite|translate|according|implies|indicates|refers|was|were|did|during/i.test(normalizedQStem);
   if (!isTeacherStem) {
     eduScore -= 12;
   }
@@ -779,6 +1012,15 @@ export async function verifyQuestionProvenance(
         reason: `Answer "${correctOpt}" is disconnected from question subject on page ${q.page_reference} (distance > ${maxProximity} chars)`
       };
     }
+  }
+
+  // 6. Source Grounding & Listening Safeguard (Task 1)
+  const grounding = validateListeningAndSourceGrounding(q, combinedRaw);
+  if (!grounding.isValid) {
+    return {
+      isVerified: false,
+      reason: grounding.reason || 'Failed textbook grounding or listening source verification'
+    };
   }
 
   return { isVerified: true };
@@ -2537,6 +2779,9 @@ Teacher Language & Educational Quality Rules (STRICT):
    - Maximum 1–2 short sentences written as a teacher's direct answer key using clear, simple school-level English.
 7. ZERO document structure: Never mention page numbers, chapters, lessons, units, headings, or publisher info.
 8. MANDATORY GROUNDING: The correct answer (or its key terms) must appear explicitly in the provided content. Do not ask questions whose answers must come from outside the provided content.
+9. CURRICULUM CATEGORIES & LISTENING SAFEGUARDS:
+   - Preserve required English curriculum categories present in the unit: Grammar, Vocabulary, Reading Comprehension, Writing, Dialogue/Conversation, and Translation.
+   - LISTENING RULE: NEVER generate questions requiring audio tracks, recordings, or listening comprehension UNLESS the full transcript or dialogue script is explicitly printed in the provided content. If the content only contains an instruction such as "Listen and answer" without the transcript, DO NOT ask questions about what the speaker said or invent the recording content.
 ${avoidanceNotice}${styleGuidanceSection}
 Educational Textbook Content:
 ${contextText}
