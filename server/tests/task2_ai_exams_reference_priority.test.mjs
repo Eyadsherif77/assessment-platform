@@ -12,6 +12,8 @@ console.log('Priority Order: Cached AI -> Imported Reference -> Gemini ($0 spend
 console.log('================================================================\n');
 
 const { tempDir, dbPath } = setupDisposableTestDb('task2_priority');
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_task2_priority_12345';
+process.env.EXAM_ATTEMPT_SECRET = process.env.EXAM_ATTEMPT_SECRET || 'test_exam_attempt_secret_task2_priority_12345';
 
 let totalTests = 0;
 let passedTests = 0;
