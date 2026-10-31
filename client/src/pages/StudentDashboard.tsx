@@ -457,10 +457,16 @@ export const StudentDashboard: React.FC = () => {
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
-          setBooks(data);
-          if (data.length > 0) {
-            const firstAvailable = data.find((b: any) => b.is_available !== false) || data[0];
-            handleSelectAiBook(firstAvailable);
+          // Hide subjects whose books are not uploaded yet across all grades
+          const uploadedBooks = data.filter((b: any) =>
+            b &&
+            b.is_available !== false &&
+            !String(b.id).startsWith('placeholder_') &&
+            b.processing_status !== 'UPCOMING_TEXTBOOK'
+          );
+          setBooks(uploadedBooks);
+          if (uploadedBooks.length > 0) {
+            handleSelectAiBook(uploadedBooks[0]);
           } else {
             setSelectedAiBook(null);
           }
@@ -489,11 +495,13 @@ export const StudentDashboard: React.FC = () => {
       .then(r => r.json())
       .then(data => {
         if (data && Array.isArray(data.subjects)) {
-          setFixedExamsHierarchy(data.subjects);
-          if (data.subjects.length > 0) {
+          // Hide subjects that have no uploaded book and no exams
+          const validSubjects = data.subjects.filter((s: any) => s.book_id || (s.total_exams || 0) > 0);
+          setFixedExamsHierarchy(validSubjects);
+          if (validSubjects.length > 0) {
             setSelectedFixedSubjectId(prev => {
-              if (prev && data.subjects.some((s: any) => s.id === prev)) return prev;
-              const firstWithExams = data.subjects.find((s: any) => s.total_exams > 0) || data.subjects[0];
+              if (prev && validSubjects.some((s: any) => s.id === prev)) return prev;
+              const firstWithExams = validSubjects.find((s: any) => s.total_exams > 0) || validSubjects[0];
               return firstWithExams.id;
             });
           }
@@ -1245,64 +1253,64 @@ export const StudentDashboard: React.FC = () => {
                 </div>
 
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-                  {books.map(b => {
-                    const isSelected = selectedAiBook?.id === b.id;
-                    const isAvailable = b.is_available !== false;
-                    return (
-                      <div
-                        key={b.id}
-                        onClick={() => {
-                          if (!isAvailable) {
-                            alert(isAr ? (b.message || 'جاري رفع كتاب الوزارة المعتمد لهذه المادة.') : 'Official textbook is being prepared for this subject.');
-                            return;
-                          }
-                          handleSelectAiBook(b);
-                          setAiStep(2);
-                        }}
-                        style={{
-                          padding: '1.5rem',
-                          borderRadius: 'var(--radius-xl)',
-                          border: isSelected ? '2px solid var(--primary-600)' : '1px solid var(--border-light)',
-                          background: !isAvailable ? 'var(--bg-muted, #f8fafc)' : isSelected ? 'var(--primary-50)' : 'var(--bg-card)',
-                          cursor: isAvailable ? 'pointer' : 'not-allowed',
-                          opacity: isAvailable ? 1 : 0.65,
-                          transition: 'all 0.2s ease',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '1rem'
-                        }}
-                      >
-                        <div style={{
-                          width: '46px',
-                          height: '46px',
-                          borderRadius: 'var(--radius-lg)',
-                          background: isAvailable
-                            ? 'linear-gradient(135deg, var(--primary-600), var(--primary-800))'
-                            : 'linear-gradient(135deg, #94a3b8, #64748b)',
-                          color: '#FFFFFF',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
-                          <BookOpen size={22} />
+                {books.filter(b => b.is_available !== false && !String(b.id).startsWith('placeholder_')).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '3rem 1.5rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xl)' }}>
+                    <BookOpen size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem', opacity: 0.5 }} />
+                    <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: '0 0 0.5rem' }}>
+                      {isAr ? 'لا توجد مواد دراسية مرفوعة لهذا الصف والترم حتى الآن' : 'No uploaded textbooks available for this grade and term yet'}
+                    </h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '480px', margin: '0 auto' }}>
+                      {isAr
+                        ? 'سيتم إتاحة المواد الدراسية فور رفع كتب الوزارة المعتمدة من قبل الإدارة.'
+                        : 'Subjects will appear here once official textbooks are uploaded.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+                    {books.filter(b => b.is_available !== false && !String(b.id).startsWith('placeholder_')).map(b => {
+                      const isSelected = selectedAiBook?.id === b.id;
+                      return (
+                        <div
+                          key={b.id}
+                          onClick={() => {
+                            handleSelectAiBook(b);
+                            setAiStep(2);
+                          }}
+                          style={{
+                            padding: '1.5rem',
+                            borderRadius: 'var(--radius-xl)',
+                            border: isSelected ? '2px solid var(--primary-600)' : '1px solid var(--border-light)',
+                            background: isSelected ? 'var(--primary-50)' : 'var(--bg-card)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '1rem'
+                          }}
+                        >
+                          <div style={{
+                            width: '46px',
+                            height: '46px',
+                            borderRadius: 'var(--radius-lg)',
+                            background: 'linear-gradient(135deg, var(--primary-600), var(--primary-800))',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            <BookOpen size={22} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.25rem' }}>
+                              {isAr ? b.title_ar : (b.title_en || b.title_ar)}
+                            </h4>
+                          </div>
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <h4 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-title)', margin: '0 0 0.25rem' }}>
-                            {isAr ? b.title_ar : (b.title_en || b.title_ar)}
-                          </h4>
-                          {!isAvailable && (
-                            <span style={{ fontSize: '0.78rem', color: '#d97706', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                              ⏳ {isAr ? 'قيد التجهيز والرفع' : 'Coming Soon'}
-                            </span>
-                          )}
-                        </div>
-
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -2649,7 +2657,7 @@ export const StudentDashboard: React.FC = () => {
                     <span>{isAr ? 'المواد الدراسية المتاحة (اختر المادة):' : 'Available Subjects (Select Subject):'}</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-                    {fixedExamsHierarchy.map(subj => {
+                    {fixedExamsHierarchy.filter(subj => subj.book_id || (subj.total_exams || 0) > 0).map(subj => {
                       const isSelected = selectedFixedSubjectId === subj.id;
                       const hasExams = (subj.total_exams || 0) > 0;
                       return (

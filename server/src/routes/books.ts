@@ -475,6 +475,9 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       params.push(req.studentProfile.gradeId);
       conditions.push(`b.grade_id = $${params.length}`);
 
+      // Only show uploaded books (exclude failed entries)
+      conditions.push(`(b.processing_status IS NULL OR b.processing_status != 'FAILED')`);
+
       // Filter by student's school_type: show books for their specific type OR 'كلاهما' (common books)
       const studentSchoolType = (req.studentProfile.schoolType || 'عربي').trim();
       const normStudentSchoolType = studentSchoolType.replace('ى', 'ي');
@@ -576,7 +579,10 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       ? req.studentProfile.gradeId
       : (req.query.grade_id as string | undefined);
 
-    if (targetGradeId && (!req.query.subject_id || req.user?.role === 'STUDENT')) {
+    // For students: do NOT inject placeholders for subjects without an uploaded textbook.
+    // They are hidden until the book is uploaded across all grades.
+    const shouldIncludePlaceholders = req.query.include_placeholders === 'true' && req.user?.role !== 'STUDENT';
+    if (shouldIncludePlaceholders && targetGradeId) {
       try {
         const subjectsRes = await db.query(
           `SELECT s.id, s.name_ar, s.name_en, s.grade_id,

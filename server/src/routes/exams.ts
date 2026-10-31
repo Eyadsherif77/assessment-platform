@@ -180,6 +180,11 @@ router.get('/fixed/hierarchy', authenticateToken, enforceStudentGrade, async (re
         });
       }
 
+      // For students: hide subjects that have no uploaded textbook and no published exams
+      if (!isStaff && !book && allExams.length === 0) {
+        continue;
+      }
+
       resultSubjects.push({
         id: subj.id,
         name_ar: subj.name_ar,
