@@ -330,6 +330,7 @@ export const AdminDashboard: React.FC = () => {
           email: profileEmail,
           currentPassword: profileCurrentPassword,
           newPassword: profileNewPassword || undefined,
+          confirmNewPassword: profileConfirmPassword || undefined,
           confirmPassword: profileConfirmPassword || undefined
         })
       });
@@ -355,8 +356,8 @@ export const AdminDashboard: React.FC = () => {
       setResetError(language === 'ar' ? 'كلمات المرور غير متطابقة' : 'Passwords do not match');
       return;
     }
-    if (resetNewPassword.length < 4) {
-      setResetError(language === 'ar' ? 'كلمة المرور يجب أن تكون 4 أحرف على الأقل' : 'Password must be at least 4 chars');
+    if (resetNewPassword.length < 1) {
+      setResetError(language === 'ar' ? 'الرجاء إدخال كلمة المرور الجديدة' : 'Password is required');
       return;
     }
     setResettingPassword(true);
@@ -369,6 +370,7 @@ export const AdminDashboard: React.FC = () => {
         },
         body: JSON.stringify({
           newPassword: resetNewPassword,
+          confirmNewPassword: resetConfirmPassword,
           confirmPassword: resetConfirmPassword
         })
       });

@@ -892,7 +892,8 @@ router.put('/books/:id', async (req: AuthenticatedRequest, res) => {
 router.put('/profile/credentials', async (req: AuthenticatedRequest, res) => {
   try {
     const adminId = req.user!.id;
-    const { fullName, email, currentPassword, newPassword, confirmNewPassword } = req.body;
+    const { fullName, email, currentPassword, newPassword } = req.body;
+    const confirmNewPassword = req.body.confirmNewPassword ?? req.body.confirmPassword;
 
     const adminRes = await db.query(`SELECT id, email, full_name, role, password_hash FROM users WHERE id = $1`, [adminId]);
     if (adminRes.rows.length === 0) {
@@ -911,10 +912,10 @@ router.put('/profile/credentials', async (req: AuthenticatedRequest, res) => {
     }
 
     if (newPassword) {
-      if (newPassword.length < 6) {
-        return res.status(400).json({ error: 'يجب ألا تقل كلمة المرور الجديدة عن 6 أحرف' });
+      if (typeof newPassword !== 'string' || newPassword.trim().length === 0) {
+        return res.status(400).json({ error: 'الرجاء إدخال كلمة المرور الجديدة' });
       }
-      if (!confirmNewPassword || newPassword !== confirmNewPassword) {
+      if (confirmNewPassword !== undefined && confirmNewPassword !== null && newPassword !== confirmNewPassword) {
         return res.status(400).json({ error: 'كلمتا المرور غير متطابقتين (فشل التأكيد المزدوج)' });
       }
     }
@@ -968,12 +969,13 @@ router.put('/profile/credentials', async (req: AuthenticatedRequest, res) => {
 router.put('/users/:userId/password', async (req: AuthenticatedRequest, res) => {
   try {
     const { userId } = req.params;
-    const { newPassword, confirmNewPassword } = req.body;
+    const { newPassword } = req.body;
+    const confirmNewPassword = req.body.confirmNewPassword ?? req.body.confirmPassword;
 
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ error: 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل' });
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length === 0) {
+      return res.status(400).json({ error: 'الرجاء إدخال كلمة المرور الجديدة' });
     }
-    if (!confirmNewPassword || newPassword !== confirmNewPassword) {
+    if (confirmNewPassword !== undefined && confirmNewPassword !== null && newPassword !== confirmNewPassword) {
       return res.status(400).json({ error: 'كلمتا المرور غير متطابقتين (فشل التأكيد المزدوج)' });
     }
 
