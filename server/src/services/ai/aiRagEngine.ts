@@ -3348,7 +3348,7 @@ ${contextText}
     );
   }
 
-  private async updateTopicMastery(params: {
+  public async updateTopicMastery(params: {
     studentId: string;
     subjectId: string;
     chapterId: string;
@@ -3383,12 +3383,13 @@ ${contextText}
            status = $7,
            weak_subtopics = $8,
            strong_subtopics = $9,
-           last_assessed_at = NOW()
+           last_assessed_at = $10
          WHERE student_id = $1 AND subject_id = $2 AND chapter_id = $3`,
         [
           studentId, subjectId, chapterId,
           newAttempted, newCorrect, newPct, newStatus,
-          JSON.stringify(weakTopics), JSON.stringify(strongTopics)
+          JSON.stringify(weakTopics), JSON.stringify(strongTopics),
+          new Date().toISOString()
         ]
       );
     } else {
@@ -3401,8 +3402,8 @@ ${contextText}
       await db.query(
         `INSERT INTO student_topic_mastery (
            id, student_id, subject_id, chapter_id, total_attempted, total_correct,
-           mastery_percentage, status, weak_subtopics, strong_subtopics
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+           mastery_percentage, status, weak_subtopics, strong_subtopics, last_assessed_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           uuidv4(),
           studentId,
@@ -3413,7 +3414,8 @@ ${contextText}
           pct,
           status,
           JSON.stringify(weakTopics),
-          JSON.stringify(strongTopics)
+          JSON.stringify(strongTopics),
+          new Date().toISOString()
         ]
       );
     }

@@ -7,6 +7,7 @@ import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedReque
 import { checkStudentExamLimit, getMonthlyExamLimit } from '../services/examLimitService.js';
 import { ExamCacheService } from '../services/examCacheService.js';
 import { ReferenceImportService } from '../services/referenceImportService.js';
+import { aiRagEngine } from '../services/ai/aiRagEngine.js';
 
 const excelUpload = multer({
   storage: multer.memoryStorage(),
@@ -843,8 +844,8 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
 
         if (elapsedSec > (durationSeconds + 90)) {
           await db.query(
-            `UPDATE exam_attempts SET status = 'ABANDONED', completed_at = datetime('now') WHERE id = $1`,
-            [att.id]
+            `UPDATE exam_attempts SET status = 'ABANDONED', completed_at = $2 WHERE id = $1`,
+            [att.id, new Date().toISOString()]
           );
           att.status = 'ABANDONED';
         }
@@ -1110,8 +1111,8 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
 
       if (elapsedSeconds > (durationSeconds + GRACE_PERIOD_SECONDS)) {
         await db.query(
-          `UPDATE exam_attempts SET status = 'ABANDONED', completed_at = datetime('now') WHERE id = $1`,
-          [attemptRecord.id]
+          `UPDATE exam_attempts SET status = 'ABANDONED', completed_at = $2 WHERE id = $1`,
+          [attemptRecord.id, new Date().toISOString()]
         );
         return res.status(403).json({
           error: 'انتهت المهلة الزمنية المحددة للاختبار ولا يمكن قبول الإجابات بعد انتهاء الوقت',
@@ -1155,7 +1156,8 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
     for (const q of questionsRes.rows) {
       totalPoints += q.points;
       const studentSub = Array.isArray(answers) ? answers.find((a: any) => a.question_id === q.id) : null;
-      const selectedOptId = studentSub?.selected_option_id;
+      const mapOpt = (answers && typeof answers === 'object' && !Array.isArray(answers)) ? answers[q.id] : null;
+      const selectedOptId = studentSub?.selected_option_id || mapOpt || null;
 
       const isCorrect = selectedOptId === q.correct_option_id;
       const pointsAwarded = isCorrect ? q.points : 0;
@@ -1194,8 +1196,8 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
 
     // Update attempt with final score and mark as COMPLETED
     await db.query(
-      `UPDATE exam_attempts SET score = $2, total_points = $3, status = 'COMPLETED', completed_at = datetime('now') WHERE id = $1`,
-      [targetAttemptId, totalScore, totalPoints]
+      `UPDATE exam_attempts SET score = $2, total_points = $3, status = 'COMPLETED', completed_at = $4 WHERE id = $1`,
+      [targetAttemptId, totalScore, totalPoints, new Date().toISOString()]
     );
 
     const percentage = totalPoints > 0 ? Number(((totalScore / totalPoints) * 100).toFixed(1)) : 0;
@@ -1207,6 +1209,25 @@ router.post('/:id/submit', authenticateToken, requireRole(['STUDENT']), enforceS
        ) VALUES ($1, $2, 'EXAM', $3, $4, $5, $6)`,
       [uuidv4(), req.user!.id, targetAttemptId, exam.subject_id, exam.chapter_id, percentage]
     );
+
+    // Update student topic mastery for this exam's chapter so analytics reflect real student progress
+    if (exam.chapter_id && exam.subject_id) {
+      const weakTopics = itemResults.filter(i => !i.is_correct).map(i => i.question_text.slice(0, 50));
+      const strongTopics = itemResults.filter(i => i.is_correct).map(i => i.question_text.slice(0, 50));
+      try {
+        await aiRagEngine.updateTopicMastery({
+          studentId: req.user!.id,
+          subjectId: exam.subject_id,
+          chapterId: exam.chapter_id,
+          totalAttempted: totalPoints,
+          totalCorrect: totalScore,
+          weakTopics,
+          strongTopics
+        });
+      } catch (masteryErr) {
+        console.warn('Could not update topic mastery for exam submit:', masteryErr);
+      }
+    }
 
     return res.json({
       message: 'تم تصحيح وتسجيل نتائج الاختبار فورياً',

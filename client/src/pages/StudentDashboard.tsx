@@ -69,6 +69,9 @@ export const StudentDashboard: React.FC = () => {
       window.history.replaceState({}, '', url.toString());
       localStorage.setItem('student_active_tab', tab);
     } catch (_) {}
+    if (tab === 'analytics' || tab === 'home') {
+      loadAnalytics();
+    }
   };
 
   // Dedicated Completed Exams History Modal State
@@ -233,16 +236,20 @@ export const StudentDashboard: React.FC = () => {
   // Learning Analytics Data
   const [analytics, setAnalytics] = useState<any | null>(null);
 
-  const calculatedMastery = (analytics?.summary?.overall_mastery_percentage !== undefined && analytics?.summary?.overall_mastery_percentage > 0)
+  const calculatedMastery = (analytics?.summary?.overall_mastery_percentage !== undefined && analytics?.summary?.overall_mastery_percentage !== null)
     ? analytics.summary.overall_mastery_percentage
-    : (analytics?.topics && analytics.topics.length > 0
-        ? Math.round(analytics.topics.reduce((acc: number, t: any) => acc + (Number(t.mastery_percentage) || 0), 0) / analytics.topics.length)
-        : 0);
+    : (analytics?.completed_exams && analytics.completed_exams.length > 0
+        ? Math.round(analytics.completed_exams.reduce((acc: number, e: any) => acc + (Number(e.percentage) || 0), 0) / analytics.completed_exams.length)
+        : (analytics?.topics && analytics.topics.length > 0
+            ? Math.round(analytics.topics.reduce((acc: number, t: any) => acc + (Number(t.mastery_percentage) || 0), 0) / analytics.topics.length)
+            : 0));
 
-  const totalCompletedAssessments = analytics?.summary?.total_exams_taken 
-    || analytics?.summary?.total_attempts 
-    || analytics?.topics?.length 
-    || 0;
+  const totalCompletedAssessments = (analytics?.completed_exams?.length !== undefined && analytics?.completed_exams?.length !== null)
+    ? analytics.completed_exams.length
+    : (analytics?.summary?.total_exams_taken 
+        || analytics?.summary?.total_attempts 
+        || analytics?.topics?.length 
+        || 0);
 
   // Periodic Average Level Filter State (Monthly / Weekly / Subject)
   const [periodType, setPeriodType] = useState<'month' | 'week'>('month');
@@ -3002,7 +3009,7 @@ export const StudentDashboard: React.FC = () => {
                     return (
                       <div key={t.id || t.chapter_id} style={{ padding: '1rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-                          <span>{isAr ? `${t.subject_name_ar} • ${t.chapter_title_ar}` : `${t.subject_name_en || t.subject_name_ar} • ${t.chapter_title_en || t.chapter_title_ar}`}</span>
+                          <span>{isAr ? `${t.subject_name_ar || t.book_title || 'المادة'} • ${t.chapter_title_ar || t.title_ar || 'الوحدة الدراسية'}` : `${t.subject_name_en || t.subject_name_ar || 'Subject'} • ${t.chapter_title_en || t.chapter_title_ar || 'Unit'}`}</span>
                           <span style={{ color: barColor }}>{pct}% ({statusLabel})</span>
                         </div>
                         <div style={{ width: '100%', height: '8px', background: 'var(--border-light)', borderRadius: '999px', overflow: 'hidden' }}>

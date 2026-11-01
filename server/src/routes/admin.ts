@@ -495,7 +495,7 @@ router.get('/students/:id/details', async (req: AuthenticatedRequest, res) => {
     );
 
     const aiEvalsRes = await db.query(
-      `SELECT ae.id, ae.score, ae.total_questions, ae.created_at,
+      `SELECT ae.id, ae.score, ae.total_questions, ae.created_at, ae.evaluation_report,
               s.name_ar as subject_name_ar,
               COALESCE(bc.title_ar, b.title_ar, s.name_ar, 'تقييم تشخيصي معتمد') as exam_title
        FROM ai_evaluations ae
@@ -526,8 +526,24 @@ router.get('/students/:id/details', async (req: AuthenticatedRequest, res) => {
         };
       }),
       ...aiEvalsRes.rows.map((r: any) => {
-        const total = Number(r.total_questions) || 1;
-        const score = Number(r.score) || 0;
+        let total = Number(r.total_questions) || 0;
+        let score = Number(r.score) || 0;
+        if (total <= 0 && r.evaluation_report) {
+          try {
+            const rep = typeof r.evaluation_report === 'string' ? JSON.parse(r.evaluation_report) : r.evaluation_report;
+            if (rep.max_score > 0) {
+              total = Number(rep.max_score);
+              score = Number(rep.score || 0);
+            } else if (rep.provisional_max_score > 0) {
+              total = Number(rep.provisional_max_score);
+              score = Number(rep.provisional_score || 0);
+            } else if (Array.isArray(rep.items) && rep.items.length > 0) {
+              total = rep.items.length;
+              score = rep.items.filter((i: any) => i.is_correct).length;
+            }
+          } catch {}
+        }
+        if (total <= 0) total = 1;
         const pct = Math.round((score / total) * 100);
         return {
           id: r.id,

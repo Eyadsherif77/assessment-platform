@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
+import { aiRagEngine } from '../services/ai/aiRagEngine.js';
 
 const router = Router();
 
@@ -55,33 +56,51 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
     );
 
     const examsRes = await db.query(
-      `SELECT ea.id, ea.score, ea.total_points, ea.completed_at,
-              e.title_ar as exam_title_ar, e.title_en as exam_title_en,
-              e.subject_id as subject_id,
-              s.name_ar as subject_name_ar, s.name_en as subject_name_en
+      `SELECT ea.id, ea.score, ea.total_points, ea.completed_at, ea.status,
+              e.id as exam_id, e.title_ar as exam_title_ar, e.title_en as exam_title_en,
+              e.subject_id as subject_id, e.chapter_id as chapter_id,
+              s.name_ar as subject_name_ar, s.name_en as subject_name_en,
+              bc.title_ar as chapter_title_ar, bc.title_en as chapter_title_en, bc.chapter_number,
+              b.title_ar as book_title_ar, b.title_en as book_title_en
        FROM exam_attempts ea
-       LEFT JOIN exams e ON ea.exam_id = e.id
+       JOIN exams e ON ea.exam_id = e.id
        LEFT JOIN subjects s ON e.subject_id = s.id
+       LEFT JOIN book_chapters bc ON e.chapter_id = bc.id
+       LEFT JOIN books b ON bc.book_id = b.id
        WHERE ea.student_id = $1
+         AND (ea.status = 'COMPLETED' OR ea.status = 'GRADED' OR ea.completed_at IS NOT NULL)
        ORDER BY ea.completed_at DESC`,
       [studentId]
     );
 
     const totalAiCount = aiEvalsRes.rows.length;
     const totalExamsCount = examsRes.rows.length;
-    const rawAttemptsCount = totalAiCount + totalExamsCount;
-    const totalAttempts = Math.max(rawAttemptsCount, masteryRes.rows.length, historyRes.rows.length);
 
     // Build unified completed exams list
     const completedExams = [
       ...aiEvalsRes.rows.map((r: any) => {
-        const qCount = Number(r.total_questions) || 1;
-        const score = Number(r.score) || 0;
-        const pct = Math.round((score / qCount) * 100);
-        let parsedReport = null;
-        try {
-          parsedReport = typeof r.evaluation_report === 'string' ? JSON.parse(r.evaluation_report) : r.evaluation_report;
-        } catch {}
+        let score = Number(r.score) || 0;
+        let total = Number(r.total_questions) || 0;
+        let parsedReport: any = null;
+        if (r.evaluation_report) {
+          try {
+            parsedReport = typeof r.evaluation_report === 'string' ? JSON.parse(r.evaluation_report) : r.evaluation_report;
+          } catch {}
+        }
+        if (total <= 0 && parsedReport) {
+          if (parsedReport.max_score > 0) {
+            total = Number(parsedReport.max_score);
+            score = Number(parsedReport.score || 0);
+          } else if (parsedReport.provisional_max_score > 0) {
+            total = Number(parsedReport.provisional_max_score);
+            score = Number(parsedReport.provisional_score || 0);
+          } else if (Array.isArray(parsedReport.items) && parsedReport.items.length > 0) {
+            total = parsedReport.items.length;
+            score = parsedReport.items.filter((i: any) => i.is_correct).length;
+          }
+        }
+        if (total <= 0) total = 1;
+        const pct = Math.round((score / total) * 100);
         return {
           id: r.id,
           type: 'AI_DIAGNOSTIC',
@@ -90,13 +109,14 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
           subject_id: r.subject_id,
           subject_name_ar: r.subject_name_ar || 'المادة الدراسية',
           subject_name_en: r.subject_name_en || 'Subject',
-          chapter_title_ar: r.chapter_title_ar || r.book_title_ar,
-          chapter_title_en: r.chapter_title_en || r.book_title_en,
+          chapter_id: r.chapter_id,
+          chapter_title_ar: r.chapter_title_ar || r.book_title_ar || 'الوحدة الدراسية',
+          chapter_title_en: r.chapter_title_en || r.book_title_en || 'Unit',
           chapter_number: r.chapter_number,
           book_title_ar: r.book_title_ar,
           book_title_en: r.book_title_en,
           score,
-          total: qCount,
+          total,
           percentage: pct,
           status: pct >= 80 ? 'MASTERED' : pct >= 50 ? 'DEVELOPING' : 'NEEDS_WORK',
           created_at: r.created_at,
@@ -110,16 +130,17 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
         return {
           id: r.id,
           type: 'TIMED_EXAM',
-          title_ar: r.exam_title_ar || 'امتحان مدرسي محدد بوقت',
-          title_en: r.exam_title_en || 'Timed School Exam',
+          title_ar: r.chapter_title_ar || r.exam_title_ar || 'امتحان مدرسي محدد بوقت',
+          title_en: r.chapter_title_en || r.exam_title_en || 'Timed School Exam',
           subject_id: r.subject_id,
           subject_name_ar: r.subject_name_ar || 'المادة الدراسية',
           subject_name_en: r.subject_name_en || 'Subject',
-          chapter_title_ar: r.exam_title_ar,
-          chapter_title_en: r.exam_title_en,
-          chapter_number: null,
-          book_title_ar: null,
-          book_title_en: null,
+          chapter_id: r.chapter_id,
+          chapter_title_ar: r.chapter_title_ar || r.exam_title_ar || 'الوحدة الدراسية',
+          chapter_title_en: r.chapter_title_en || r.exam_title_en || 'Unit',
+          chapter_number: r.chapter_number || null,
+          book_title_ar: r.book_title_ar || null,
+          book_title_en: r.book_title_en || null,
           score,
           total,
           percentage: pct,
@@ -130,51 +151,117 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
       })
     ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Compute real overall mastery percentage across all real student activities
-    let scoreSumPercentages = 0;
-    let totalScoredCount = 0;
-
-    for (const aiRow of aiEvalsRes.rows) {
-      const qCount = Number(aiRow.total_questions) || 1;
-      const score = Number(aiRow.score) || 0;
-      scoreSumPercentages += (score / qCount) * 100;
-      totalScoredCount++;
-    }
-
-    for (const exRow of examsRes.rows) {
-      const totalPts = Number(exRow.total_points) || 1;
-      const score = Number(exRow.score) || 0;
-      scoreSumPercentages += (score / totalPts) * 100;
-      totalScoredCount++;
-    }
-
-    // If direct evaluation rows are empty but student topic mastery records exist,
-    // calculate average mastery directly from the evaluated chapters
+    // Compute real overall mastery percentage across all completed exams/assessments
     let overallMasteryPercentage = 0;
-    if (totalScoredCount > 0) {
-      overallMasteryPercentage = Math.round(scoreSumPercentages / totalScoredCount);
+    if (completedExams.length > 0) {
+      const sumPcts = completedExams.reduce((acc, cur) => acc + (cur.percentage || 0), 0);
+      overallMasteryPercentage = Math.round(sumPcts / completedExams.length);
     } else if (masteryRes.rows.length > 0) {
       const topicSum = masteryRes.rows.reduce((acc: number, r: any) => acc + (Number(r.mastery_percentage) || 0), 0);
       overallMasteryPercentage = Math.round(topicSum / masteryRes.rows.length);
     }
 
+    // Dynamic Unit Mastery Aggregation & Synchronization:
+    // If student_topic_mastery is missing records for chapters present in completedExams,
+    // calculate chapter mastery directly and upsert into student_topic_mastery
+    const existingChapterIds = new Set(masteryRes.rows.map((r: any) => r.chapter_id).filter(Boolean));
+    const computedTopics: any[] = [...masteryRes.rows];
+
+    const missingChapters = new Map<string, {
+      chapter_id: string;
+      subject_id: string;
+      chapter_title_ar: string;
+      chapter_title_en: string;
+      subject_name_ar: string;
+      subject_name_en: string;
+      book_title: string;
+      book_title_en: string;
+      totalAttempted: number;
+      totalCorrect: number;
+      lastDate: string;
+    }>();
+
+    for (const exam of completedExams) {
+      if (!exam.chapter_id || existingChapterIds.has(exam.chapter_id)) continue;
+      const key = exam.chapter_id;
+      if (!missingChapters.has(key)) {
+        missingChapters.set(key, {
+          chapter_id: exam.chapter_id,
+          subject_id: exam.subject_id,
+          chapter_title_ar: exam.chapter_title_ar || 'الوحدة الدراسية',
+          chapter_title_en: exam.chapter_title_en || 'Unit',
+          subject_name_ar: exam.subject_name_ar || 'المادة الدراسية',
+          subject_name_en: exam.subject_name_en || 'Subject',
+          book_title: exam.book_title_ar || exam.subject_name_ar || 'الكتاب المدرسي',
+          book_title_en: exam.book_title_en || exam.subject_name_en || 'Textbook',
+          totalAttempted: 0,
+          totalCorrect: 0,
+          lastDate: exam.created_at
+        });
+      }
+      const item = missingChapters.get(key)!;
+      item.totalAttempted += (exam.total || 0);
+      item.totalCorrect += (exam.score || 0);
+      if (new Date(exam.created_at).getTime() > new Date(item.lastDate).getTime()) {
+        item.lastDate = exam.created_at;
+      }
+    }
+
+    for (const ch of missingChapters.values()) {
+      const pct = ch.totalAttempted > 0 ? Number(((ch.totalCorrect / ch.totalAttempted) * 100).toFixed(1)) : 0;
+      let status: 'MASTERED' | 'PROFICIENT' | 'DEVELOPING' | 'NEEDS_WORK' = 'NEEDS_WORK';
+      if (pct >= 85) status = 'MASTERED';
+      else if (pct >= 70) status = 'PROFICIENT';
+      else if (pct >= 50) status = 'DEVELOPING';
+
+      computedTopics.push({
+        id: `computed_${ch.chapter_id}`,
+        student_id: studentId,
+        subject_id: ch.subject_id,
+        chapter_id: ch.chapter_id,
+        total_attempted: ch.totalAttempted,
+        total_correct: ch.totalCorrect,
+        mastery_percentage: pct,
+        status,
+        weak_subtopics: '[]',
+        strong_subtopics: '[]',
+        last_assessed_at: ch.lastDate,
+        subject_name_ar: ch.subject_name_ar,
+        subject_name_en: ch.subject_name_en,
+        chapter_title_ar: ch.chapter_title_ar,
+        chapter_title_en: ch.chapter_title_en,
+        book_title: ch.book_title,
+        book_title_en: ch.book_title_en
+      });
+
+      // Synchronize in database
+      try {
+        await aiRagEngine.updateTopicMastery({
+          studentId,
+          subjectId: ch.subject_id,
+          chapterId: ch.chapter_id,
+          totalAttempted: ch.totalAttempted,
+          totalCorrect: ch.totalCorrect,
+          weakTopics: [],
+          strongTopics: []
+        });
+      } catch (_) {}
+    }
+
     // Mastered chapters count (>= 80% mastery)
-    const masteredTopicsCount = masteryRes.rows.filter(
+    const masteredTopicsCount = computedTopics.filter(
       (m: any) => Number(m.mastery_percentage) >= 80 || m.status === 'MASTERED'
     ).length;
 
     // Calculate real consecutive days streak
     const activityDates = new Set<string>();
-    aiEvalsRes.rows.forEach((r: any) => {
+    completedExams.forEach((r: any) => {
       if (r.created_at) activityDates.add(new Date(r.created_at).toISOString().split('T')[0]);
-    });
-    examsRes.rows.forEach((r: any) => {
-      if (r.completed_at) activityDates.add(new Date(r.completed_at).toISOString().split('T')[0]);
     });
     historyRes.rows.forEach((r: any) => {
       if (r.created_at) activityDates.add(new Date(r.created_at).toISOString().split('T')[0]);
     });
-    masteryRes.rows.forEach((r: any) => {
+    computedTopics.forEach((r: any) => {
       if (r.last_assessed_at) activityDates.add(new Date(r.last_assessed_at).toISOString().split('T')[0]);
     });
 
@@ -188,7 +275,6 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
         if (activityDates.has(dateStr)) {
           streakDays++;
         } else if (d === 0) {
-          // If not active today, check if active yesterday
           continue;
         } else {
           break;
@@ -200,29 +286,36 @@ router.get('/student', authenticateToken, async (req: AuthenticatedRequest, res)
     const weakTopics: string[] = [];
     const strongTopics: string[] = [];
 
-    masteryRes.rows.forEach((item: any) => {
+    computedTopics.forEach((item: any) => {
       if (item.status === 'NEEDS_WORK' || item.status === 'DEVELOPING') {
-        const weaks = typeof item.weak_subtopics === 'string' ? JSON.parse(item.weak_subtopics) : item.weak_subtopics;
+        const weaks = typeof item.weak_subtopics === 'string' ? JSON.parse(item.weak_subtopics || '[]') : item.weak_subtopics;
         if (Array.isArray(weaks)) weakTopics.push(...weaks);
       } else {
-        const strongs = typeof item.strong_subtopics === 'string' ? JSON.parse(item.strong_subtopics) : item.strong_subtopics;
+        const strongs = typeof item.strong_subtopics === 'string' ? JSON.parse(item.strong_subtopics || '[]') : item.strong_subtopics;
         if (Array.isArray(strongs)) strongTopics.push(...strongs);
       }
     });
 
+    completedExams.forEach((e: any) => {
+      if (e.report) {
+        if (Array.isArray(e.report.weak_topics)) weakTopics.push(...e.report.weak_topics);
+        if (Array.isArray(e.report.strong_topics)) strongTopics.push(...e.report.strong_topics);
+      }
+    });
+
     return res.json({
-      topics: masteryRes.rows,
+      topics: computedTopics,
       history: historyRes.rows,
       completed_exams: completedExams,
       summary: {
-        total_ai_assessments: Math.max(totalAiCount, masteryRes.rows.length),
-        total_exams_taken: totalAttempts,
-        total_attempts: totalAttempts,
+        total_ai_assessments: totalAiCount,
+        total_exams_taken: completedExams.length,
+        total_attempts: completedExams.length,
         overall_mastery_percentage: overallMasteryPercentage,
         mastered_topics_count: masteredTopicsCount,
-        study_streak_days: Math.max(streakDays, totalAttempts > 0 ? 1 : 0),
-        weak_topics: [...new Set(weakTopics)],
-        strong_topics: [...new Set(strongTopics)]
+        study_streak_days: Math.max(streakDays, completedExams.length > 0 ? 1 : 0),
+        weak_topics: [...new Set(weakTopics.filter(Boolean))],
+        strong_topics: [...new Set(strongTopics.filter(Boolean))]
       }
     });
   } catch (err: any) {
@@ -334,7 +427,7 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
     let aiAttemptsRes: any = { rows: [] };
     if (subjectId) {
       aiAttemptsRes = await db.query(`
-        SELECT ae.id, ae.score, ae.total_questions, ae.created_at, ae.chapter_id,
+        SELECT ae.id, ae.score, ae.total_questions, ae.created_at, ae.chapter_id, ae.evaluation_report,
                u.full_name as student_name,
                sp.student_code,
                COALESCE(bc.title_ar, b.title_ar, s.name_ar, 'تقييم تشخيصي معتمد') as exam_title
@@ -379,8 +472,24 @@ router.get('/teacher', authenticateToken, requireRole(['TEACHER', 'ADMIN']), asy
         };
       }),
       ...aiAttemptsRes.rows.map((r: any) => {
-        const total = Number(r.total_questions) || 1;
-        const score = Number(r.score) || 0;
+        let total = Number(r.total_questions) || 0;
+        let score = Number(r.score) || 0;
+        if (total <= 0 && r.evaluation_report) {
+          try {
+            const rep = typeof r.evaluation_report === 'string' ? JSON.parse(r.evaluation_report) : r.evaluation_report;
+            if (rep.max_score > 0) {
+              total = Number(rep.max_score);
+              score = Number(rep.score || 0);
+            } else if (rep.provisional_max_score > 0) {
+              total = Number(rep.provisional_max_score);
+              score = Number(rep.provisional_score || 0);
+            } else if (Array.isArray(rep.items) && rep.items.length > 0) {
+              total = rep.items.length;
+              score = rep.items.filter((i: any) => i.is_correct).length;
+            }
+          } catch {}
+        }
+        if (total <= 0) total = 1;
         const pct = Math.round((score / total) * 100);
         return {
           id: r.id,
