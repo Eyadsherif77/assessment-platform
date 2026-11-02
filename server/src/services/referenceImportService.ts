@@ -291,6 +291,25 @@ export class ReferenceImportService {
    * Validates required columns, 4 options, question text, correct answer,
    * extracts passages (either column or sheet), and ignores empty rows.
    */
+  /**
+   * Normalize educational text for Arabic & English options & answers.
+   * Strips Tashkeel, normalizes Alef variants (أ/إ/آ -> ا), Ta Marbuta (ة -> ه),
+   * Ya (ى -> ي), strips leading option prefixes (A), (أ), 1., etc., and punctuation.
+   */
+  public static normalizeEducationalText(text: string): string {
+    if (!text) return '';
+    return String(text)
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي')
+      .toLowerCase()
+      .replace(/^(\([a-dأ-د1-4]\)|[a-dأ-د1-4][\)\.\-:]|option\s*[a-d1-4][\.\-:]?|خيار\s*[أ-د1-4][\.\-:]?)\s*/i, '')
+      .replace(/[\u201C\u201D"''`«»\(\)\[\]\{\}\.,:;!؟\?_\-\\/]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   public static parseWorkbook(buffer: Buffer, originalname: string): {
     sheetName: string;
     parsedRows: ParsedQuestionRow[];
@@ -344,21 +363,46 @@ export class ReferenceImportService {
     }
 
     const rawRows: RawExcelRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+    const rawSheetArrays: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
     if (rawRows.length === 0) {
       throw new Error(`ورقة العمل "${targetSheetName}" لا تحتوي على أي بيانات`);
     }
 
-    const parsedRows: ParsedQuestionRow[] = [];
-    const seenTextsInFile = new Set<string>();
+    // Dynamic header index resolver for robust column extraction
+    const headerRow = (rawSheetArrays[0] || []).map((h: any) => 
+      String(h || '').trim().toLowerCase().replace(/[\s_\-\.\:]+/g, '')
+    );
+    
+    const findHeaderIdx = (...aliases: string[]): number => {
+      const normAliases = aliases.map(a => a.toLowerCase().replace(/[\s_\-\.\:]+/g, ''));
+      return headerRow.findIndex((h: string) => normAliases.includes(h));
+    };
 
-    // Helper for flexible case/space-insensitive column extraction
-    const getRowVal = (rowObj: any, ...aliases: string[]): string => {
+    const qIdx = findHeaderIdx('question', 'السؤال', 'نصالسؤال');
+    const optAIdx = findHeaderIdx('optiona', 'answera', 'الخيارأ', 'الخيار(أ)', 'أ', 'a', 'option1', 'الخيار1');
+    const optBIdx = findHeaderIdx('optionb', 'answerb', 'الخيارب', 'الخيار(ب)', 'ب', 'b', 'option2', 'الخيار2');
+    const optCIdx = findHeaderIdx('optionc', 'answerc', 'الخيارج', 'الخيار(ج)', 'ج', 'c', 'option3', 'الخيار3');
+    const optDIdx = findHeaderIdx('optiond', 'answerd', 'الخيارد', 'الخيار(د)', 'د', 'd', 'option4', 'الخيار4');
+    const rightIdx = findHeaderIdx('rightanswer', 'correctanswer', 'الإجابةالصحيحة', 'الاجابةالصحيحة', 'الصحيحة', 'rightans');
+    const refIdx = findHeaderIdx('reference', 'referencepage', 'صفحةالمرجع', 'المرجع', 'رقمالصفحة', 'الصفحة');
+    const expIdx = findHeaderIdx('explanation', 'التوضيح', 'الشرح');
+    const typeIdx = findHeaderIdx('questiontype', 'نوعالسؤال', 'النوع');
+    const passageIdx = findHeaderIdx('passage', 'readingpassage', 'قطعةالقراءة', 'النص', 'القطعة', 'passagetext', 'نصالقطعة');
+    const subjIdx = findHeaderIdx('subject', 'المادة');
+    const unitIdx = findHeaderIdx('unit', 'الوحدة');
+
+    const parsedRows: ParsedQuestionRow[] = [];
+    const seenSignaturesInFile = new Set<string>();
+
+    const getRowVal = (rowObj: any, colIdx: number, ...aliases: string[]): string => {
+      // 1. Check exact key or alias in rowObj
       for (const a of aliases) {
         if (rowObj[a] !== undefined && rowObj[a] !== null && String(rowObj[a]).trim() !== '') {
           return String(rowObj[a]).trim();
         }
       }
+      // 2. Check normalized keys in rowObj
       const normAliases = aliases.map(a => a.toLowerCase().replace(/[\s_\-\.\:]+/g, ''));
       for (const [rk, val] of Object.entries(rowObj)) {
         if (val === undefined || val === null || String(val).trim() === '') continue;
@@ -372,27 +416,51 @@ export class ReferenceImportService {
 
     rawRows.forEach((row, index) => {
       const rowNum = index + 2; // 1-indexed, accounting for header row
+      const posCells = rawSheetArrays[index + 1] || [];
+      const getPosCell = (colIdx: number): string => {
+        if (colIdx >= 0 && posCells && posCells[colIdx] !== undefined && posCells[colIdx] !== null) {
+          return String(posCells[colIdx]).trim();
+        }
+        return '';
+      };
 
-      const subjectName = getRowVal(row, 'Subject', 'المادة');
-      const unitName = getRowVal(row, 'Unit', 'الوحدة');
-      const questionText = getRowVal(row, 'Question', 'السؤال', 'نص السؤال');
+      const subjectName = getRowVal(row, subjIdx, 'Subject', 'المادة') || getPosCell(subjIdx);
+      const unitName = getRowVal(row, unitIdx, 'Unit', 'الوحدة') || getPosCell(unitIdx);
+      
+      // Question text: check rowObj first, then header column position if defined
+      let questionText = getRowVal(row, qIdx, 'Question', 'السؤال', 'نص السؤال');
+      if (!questionText && qIdx >= 0) {
+        questionText = getPosCell(qIdx);
+      }
 
-      const optA = getRowVal(row, 'Option A', 'OptionA', 'Answer A', 'الخيار أ', 'الخيار (أ)', 'أ', 'A');
-      const optB = getRowVal(row, 'Option B', 'OptionB', 'Answer B', 'الخيار ب', 'الخيار (ب)', 'ب', 'B');
-      const optC = getRowVal(row, 'Option C', 'OptionC', 'Answer C', 'الخيار ج', 'الخيار (ج)', 'ج', 'C');
-      const optD = getRowVal(row, 'Option D', 'OptionD', 'Answer D', 'الخيار د', 'الخيار (د)', 'د', 'D');
+      let optA = getRowVal(row, optAIdx, 'Option A', 'OptionA', 'Answer A', 'الخيار أ', 'الخيار (أ)', 'أ', 'A', 'Option 1', 'الخيار 1', 'الخيار الاول');
+      if (!optA && optAIdx >= 0) optA = getPosCell(optAIdx);
 
-      const rawRightAnswer = getRowVal(row, 'Right Answer', 'RightAnswer', 'Correct Answer', 'الإجابة الصحيحة', 'الصحيحة', 'Right Ans');
-      const rawPage = getRowVal(row, 'Reference', 'Reference Page', 'صفحة المرجع', 'المرجع', 'رقم الصفحة', 'الصفحة');
+      let optB = getRowVal(row, optBIdx, 'Option B', 'OptionB', 'Answer B', 'الخيار ب', 'الخيار (ب)', 'ب', 'B', 'Option 2', 'الخيار 2', 'الخيار الثاني');
+      if (!optB && optBIdx >= 0) optB = getPosCell(optBIdx);
+
+      let optC = getRowVal(row, optCIdx, 'Option C', 'OptionC', 'Answer C', 'الخيار ج', 'الخيار (ج)', 'ج', 'C', 'Option 3', 'الخيار 3', 'الخيار الثالث');
+      if (!optC && optCIdx >= 0) optC = getPosCell(optCIdx);
+
+      let optD = getRowVal(row, optDIdx, 'Option D', 'OptionD', 'Answer D', 'الخيار د', 'الخيار (د)', 'د', 'D', 'Option 4', 'الخيار 4', 'الخيار الرابع');
+      if (!optD && optDIdx >= 0) optD = getPosCell(optDIdx);
+
+      let rawRightAnswer = getRowVal(row, rightIdx, 'Right Answer', 'RightAnswer', 'Correct Answer', 'الإجابة الصحيحة', 'الاجابة الصحيحة', 'الصحيحة', 'Right Ans');
+      if (!rawRightAnswer && rightIdx >= 0) rawRightAnswer = getPosCell(rightIdx);
+
+      let rawPage = getRowVal(row, refIdx, 'Reference', 'Reference Page', 'صفحة المرجع', 'المرجع', 'رقم الصفحة', 'الصفحة');
+      if (!rawPage && refIdx >= 0) rawPage = getPosCell(refIdx);
       const pageNum = parseInt(String(rawPage).replace(/[^0-9]/g, ''), 10) || 1;
-      const explanation = getRowVal(row, 'Explanation', 'التوضيح', 'الشرح');
 
-      // Extract question type
-      let questionType = getRowVal(row, 'Question Type', 'QuestionType', 'نوع السؤال', 'النوع');
+      let explanation = getRowVal(row, expIdx, 'Explanation', 'التوضيح', 'الشرح');
+      if (!explanation && expIdx >= 0) explanation = getPosCell(expIdx);
 
-      // Extract reading passage
+      let questionType = getRowVal(row, typeIdx, 'Question Type', 'QuestionType', 'نوع السؤال', 'النوع');
+      if (!questionType && typeIdx >= 0) questionType = getPosCell(typeIdx);
+
       let passageText = getRowVal(
         row,
+        passageIdx,
         'Passage',
         'Reading Passage',
         'قطعة القراءة',
@@ -401,9 +469,10 @@ export class ReferenceImportService {
         'Passage Text',
         'نص القطعة'
       );
+      if (!passageText && passageIdx >= 0) passageText = getPosCell(passageIdx);
 
       // If row references a passage ID from the Passages sheet
-      const passageIdRef = getRowVal(row, 'Passage ID', 'PassageID', 'رقم القطعة', 'معرف القطعة').toLowerCase();
+      const passageIdRef = getRowVal(row, -1, 'Passage ID', 'PassageID', 'رقم القطعة', 'معرف القطعة').toLowerCase();
       if (!passageText && passageIdRef && passageMap.has(passageIdRef)) {
         passageText = passageMap.get(passageIdRef) || '';
       }
@@ -444,7 +513,7 @@ export class ReferenceImportService {
 
       // Validation 2: Check for 4 required options
       const rawOptions = [optA, optB, optC, optD];
-      const validOptions = rawOptions.filter(o => Boolean(o && o.trim()));
+      const validOptions = rawOptions.map(o => String(o || '').trim()).filter(Boolean);
 
       if (validOptions.length < 4) {
         const missingCount = 4 - validOptions.length;
@@ -467,9 +536,10 @@ export class ReferenceImportService {
         return;
       }
 
-      // Validation 3: Check intra-file duplicate question
-      const normQText = questionText.trim().toLowerCase().replace(/[؟\?\.\!\s]+/g, ' ');
-      if (seenTextsInFile.has(normQText)) {
+      // Validation 3: Check intra-file duplicate question (only duplicate if BOTH question and options match)
+      const normQText = ReferenceImportService.normalizeEducationalText(questionText);
+      const questionSignature = `${normQText} ::: ${validOptions.map(o => ReferenceImportService.normalizeEducationalText(o)).sort().join(' | ')}`;
+      if (seenSignaturesInFile.has(questionSignature)) {
         const reason = `السطر ${rowNum}: تكرار السؤال داخل نفس الملف ("${questionText.slice(0, 45)}...")`;
         errors.push(reason);
         parsedRows.push({
@@ -488,45 +558,48 @@ export class ReferenceImportService {
         });
         return;
       }
-      seenTextsInFile.add(normQText);
+      seenSignaturesInFile.add(questionSignature);
 
-      // Validation 4: Determine correct answer matching one of the 4 options
+      // Validation 4: Determine correct answer matching one of the options
       let matchedIndex = -1;
       const normRight = rawRightAnswer.toLowerCase().trim();
+      const cleanRight = ReferenceImportService.normalizeEducationalText(rawRightAnswer);
 
-      // Clean normalization for comparing strings
-      const cleanNorm = (str: string) => str.toLowerCase().replace(/[\u064B-\u065F\u0670]/g, '').replace(/[^\w\u0600-\u06FF]+/g, ' ').trim();
-      const cleanRight = cleanNorm(normRight);
+      // Check letter indicators: A/B/C/D or أ/ب/ج/د or 1/2/3/4 or First/Second/Third/Fourth
+      const letterA = ['a', 'أ', 'ا', 'الخيار a', 'الخيار أ', 'الخيار ا', 'option a', 'answer a', '1', 'الخيار الاول', 'first'];
+      const letterB = ['b', 'ب', 'الخيار b', 'الخيار ب', 'option b', 'answer b', '2', 'الخيار الثاني', 'second'];
+      const letterC = ['c', 'ج', 'الخيار c', 'الخيار ج', 'option c', 'answer c', '3', 'الخيار الثالث', 'third'];
+      const letterD = ['d', 'د', 'الخيار د', 'الخيار د', 'option d', 'answer d', '4', 'الخيار الرابع', 'fourth'];
 
-      // Check letter indicators: A/B/C/D or أ/ب/ج/د or 1/2/3/4
-      if (['a', 'أ', 'الخيار a', 'الخيار أ', 'option a', 'answer a', '1'].includes(normRight) || cleanRight === 'a' || cleanRight === 'أ' || cleanRight === '1') {
+      if (letterA.includes(normRight) || letterA.includes(cleanRight) || cleanRight === 'a' || cleanRight === 'ا' || cleanRight === '1') {
         matchedIndex = 0;
-      } else if (['b', 'ب', 'الخيار b', 'الخيار ب', 'option b', 'answer b', '2'].includes(normRight) || cleanRight === 'b' || cleanRight === 'ب' || cleanRight === '2') {
+      } else if (letterB.includes(normRight) || letterB.includes(cleanRight) || cleanRight === 'b' || cleanRight === 'ب' || cleanRight === '2') {
         matchedIndex = 1;
-      } else if (['c', 'ج', 'الخيار c', 'الخيار ج', 'option c', 'answer c', '3'].includes(normRight) || cleanRight === 'c' || cleanRight === 'ج' || cleanRight === '3') {
+      } else if (letterC.includes(normRight) || letterC.includes(cleanRight) || cleanRight === 'c' || cleanRight === 'ج' || cleanRight === '3') {
         matchedIndex = 2;
-      } else if (['d', 'د', 'الخيار د', 'الخيار د', 'option d', 'answer d', '4'].includes(normRight) || cleanRight === 'd' || cleanRight === 'د' || cleanRight === '4') {
+      } else if (letterD.includes(normRight) || letterD.includes(cleanRight) || cleanRight === 'd' || cleanRight === 'د' || cleanRight === '4') {
         matchedIndex = 3;
       } else {
-        // Match by exact or trimmed option text
+        // 1. Raw exact/trimmed text match
         matchedIndex = validOptions.findIndex(o => 
-          o.toLowerCase().trim() === normRight ||
+          o.trim().toLowerCase() === normRight ||
           o.trim() === rawRightAnswer
         );
-        // Match by normalized text
+        // 2. Normalized educational text match (normalizes Hamzas, Ta Marbuta, Ya, Tashkeel, prefixes)
         if (matchedIndex === -1) {
-          matchedIndex = validOptions.findIndex(o => cleanNorm(o) === cleanRight);
+          matchedIndex = validOptions.findIndex(o => ReferenceImportService.normalizeEducationalText(o) === cleanRight);
         }
-        // Substring match for phrases
-        if (matchedIndex === -1 && cleanRight.length >= 3) {
+        // 3. Substring inclusion match (if answer or option is long enough)
+        if (matchedIndex === -1 && cleanRight.length >= 2) {
           matchedIndex = validOptions.findIndex(o => {
-            const co = cleanNorm(o);
-            return co.length >= 3 && (cleanRight.includes(co) || co.includes(cleanRight));
+            const no = ReferenceImportService.normalizeEducationalText(o);
+            return (no.length >= 2 && (cleanRight.includes(no) || no.includes(cleanRight)));
           });
         }
       }
 
-      if (matchedIndex === -1) {
+      // If matched index is beyond the number of valid options available
+      if (matchedIndex === -1 || matchedIndex >= validOptions.length) {
         const reason = `السطر ${rowNum}: الإجابة الصحيحة "${rawRightAnswer}" لم تطابق أي من الخيارات الأربعة المتاحة`;
         errors.push(reason);
         parsedRows.push({
@@ -711,13 +784,13 @@ export class ReferenceImportService {
     const invalidRows: Array<{ rowNumber: number; questionText: string; reason: string }> = [];
     let duplicatesCount = 0;
 
-    // High performance bulk pre-fetch of existing question texts (avoids N sequential roundtrips)
+    // High performance bulk pre-fetch of existing REFERENCE question texts (only actual reference items)
     const existingTexts = new Set<string>();
     try {
       const existingRes = await db.query(
         chapterId
-          ? `SELECT question_text FROM question_bank_items WHERE chapter_id = $1`
-          : `SELECT question_text FROM question_bank_items LIMIT 5000`,
+          ? `SELECT question_text FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1`
+          : `SELECT question_text FROM question_bank_items WHERE is_reference = 1 LIMIT 5000`,
         chapterId ? [chapterId] : []
       );
       for (const row of existingRes.rows) {

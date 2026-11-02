@@ -1282,24 +1282,46 @@ router.get('/reference-questions', async (req: AuthenticatedRequest, res) => {
 router.delete('/reference-questions/:id', async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const examRes = await db.query(`SELECT id, chapter_id, grade_id, subject_id FROM exams WHERE id = $1 AND is_ai_reference = 1`, [id]);
+    const examRes = await db.query(`SELECT id, chapter_id, grade_id, subject_id FROM exams WHERE id = $1`, [id]);
     if (examRes.rows.length === 0) {
       return res.status(404).json({ error: 'المرجع المنهجي غير موجود' });
     }
     const row = examRes.rows[0];
 
-    // Delete questions from question_bank_items
+    // 1. Delete all options belonging to reference questions of this chapter
     if (row.chapter_id) {
+      await db.query(`
+        DELETE FROM question_bank_options 
+        WHERE question_item_id IN (
+          SELECT id FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1
+        )
+      `, [row.chapter_id]);
+
+      // 2. Delete all reference question items for this chapter
       await db.query(`DELETE FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1`, [row.chapter_id]);
-      // Invalidate cache
+
+      // 3. Invalidate cached AI exams
       await db.query(`DELETE FROM shared_cached_exams WHERE grade_id = $1 AND subject_id = $2 AND (unit_ids LIKE $3 OR unit_ids = $4)`,
         [row.grade_id, row.subject_id, `%${row.chapter_id}%`, row.chapter_id]);
     }
+
+    // 4. Delete questions linked to this exam
     await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [id]);
+
+    // 5. Delete exam submissions if any exist
+    try {
+      await db.query(`DELETE FROM exam_submissions WHERE exam_id = $1`, [id]);
+    } catch (_) {}
+
+    // 6. Delete the reference exam container from exams table
     await db.query(`DELETE FROM exams WHERE id = $1`, [id]);
 
-    return res.json({ success: true, message: 'تم حذف المرجع بنجاح' });
+    return res.json({ 
+      success: true, 
+      message: 'تم حذف المرجع المنهجي وكافة أسئلته وخياراته بالكامل من قاعدة البيانات بنجاح' 
+    });
   } catch (err: any) {
+    console.error('Error deleting reference exam:', err);
     return res.status(500).json({ error: 'فشل حذف المرجع: ' + err.message });
   }
 });

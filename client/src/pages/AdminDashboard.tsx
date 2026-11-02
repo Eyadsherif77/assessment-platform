@@ -325,14 +325,16 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleDeleteRefBank = async (id: string) => {
-    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذا المرجع المنهجي؟' : 'Are you sure you want to delete this reference bank?')) return;
+    if (!window.confirm(language === 'ar' 
+      ? 'هل أنت متأكد من حذف هذا المرجع المنهجي؟ سيتم حذف كافة أسئلته وخياراته بالكامل ونهائياً من قاعدة البيانات.' 
+      : 'Are you sure you want to delete this reference? All its questions and options will be completely removed from the database.')) return;
     try {
       const res = await fetch(apiUrl(`/api/admin/reference-questions/${id}`), {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
-        showAlert(language === 'ar' ? 'تم حذف المرجع بنجاح' : 'Reference bank deleted', 'success');
+        showAlert(language === 'ar' ? 'تم حذف المرجع المنهجي وكافة أسئلته وخياراته بالكامل من قاعدة البيانات بنجاح' : 'Reference and all its questions deleted successfully from database', 'success');
         fetchActiveReferenceBanks();
       } else {
         const d = await res.json();
@@ -4635,7 +4637,7 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                     <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: '0.75rem', padding: '0.75rem', textAlign: 'center' }}>
                       <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1E40AF' }}>{refExamPreview.duplicatesCount}</div>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1D4ED8' }}>{language === 'ar' ? 'مكررات سابقة' : 'Duplicates'}</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1D4ED8' }}>{language === 'ar' ? 'أسئلة مرجعية سابقة للوحدة' : 'Existing Unit References'}</div>
                     </div>
                   </div>
 
