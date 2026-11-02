@@ -1442,6 +1442,15 @@ export class ReferenceImportService {
     } catch (_) {}
 
     // 6. Transactional Save & Deduplication: Remove prior active reference questions for this exact chapter
+    try {
+      await db.query(`
+        DELETE FROM question_bank_options 
+        WHERE question_item_id IN (
+          SELECT id FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1
+        )
+      `, [options.chapterId]);
+    } catch (_) {}
+
     await db.query(
       `DELETE FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1`,
       [options.chapterId]
@@ -1453,51 +1462,24 @@ export class ReferenceImportService {
       [options.chapterId]
     );
     for (const oldEx of oldExamRes.rows) {
+      try {
+        await db.query(`
+          DELETE FROM exam_question_options 
+          WHERE question_id IN (SELECT id FROM exam_questions WHERE exam_id = $1)
+        `, [oldEx.id]);
+      } catch (_) {}
+      try {
+        await db.query(`DELETE FROM exam_submissions WHERE exam_id = $1`, [oldEx.id]);
+      } catch (_) {}
       await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [oldEx.id]);
       await db.query(`DELETE FROM exams WHERE id = $1`, [oldEx.id]);
     }
 
-    // 7. Insert new reference questions
-    let imported = 0;
+    // 7. Insert new reference questions using high-speed bulk batching
     const validatedQuestions: any[] = [];
-
     for (const q of parsedRows) {
-      const questionItemId = uuidv4();
-
-      await db.query(
-        `INSERT INTO question_bank_items (
-           id, bank_id, chapter_id, question_text, question_type, difficulty,
-           bloom_level, explanation, passage_text, is_reference, page_reference,
-           is_quarantined, quarantine_reason
-         ) VALUES ($1, $2, $3, $4, $5, 'MEDIUM', 'UNDERSTANDING', $6, $7, 1, $8, 0, 'VERIFIED:ADMIN_REFERENCE')`,
-        [
-          questionItemId,
-          bankId,
-          options.chapterId,
-          q.questionText,
-          q.questionType || 'MULTIPLE_CHOICE',
-          q.explanation || null,
-          q.passageText || null,
-          q.pageReference || 1
-        ]
-      );
-
-      if (q.options && q.options.length > 0) {
-        const optValues: any[] = [];
-        const optClauses = q.options.map((opt, idx) => {
-          const offset = idx * 4;
-          optValues.push(uuidv4(), questionItemId, opt.text, opt.is_correct ? 1 : 0);
-          return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`;
-        });
-        await db.query(
-          `INSERT INTO question_bank_options (id, question_item_id, option_text, is_correct) VALUES ${optClauses.join(', ')}`,
-          optValues
-        );
-      }
-
-      imported++;
       validatedQuestions.push({
-        id: questionItemId,
+        id: uuidv4(),
         question_text: q.questionText,
         question_type: q.questionType,
         passage_text: q.passageText,
@@ -1506,6 +1488,61 @@ export class ReferenceImportService {
         explanation: q.explanation
       });
     }
+
+    const chunkSize = 40;
+    for (let c = 0; c < validatedQuestions.length; c += chunkSize) {
+      const chunk = validatedQuestions.slice(c, c + chunkSize);
+
+      // Bulk insert question_bank_items
+      const qbValues: any[] = [];
+      const qbClauses = chunk.map((vq, idx) => {
+        const offset = idx * 8;
+        qbValues.push(
+          vq.id,
+          bankId,
+          options.chapterId,
+          vq.question_text,
+          vq.question_type || 'MULTIPLE_CHOICE',
+          vq.explanation || null,
+          vq.passage_text || null,
+          vq.page_reference || 1
+        );
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, 'MEDIUM', 'UNDERSTANDING', $${offset + 6}, $${offset + 7}, 1, $${offset + 8}, 0, 'VERIFIED:ADMIN_REFERENCE')`;
+      });
+
+      await db.query(
+        `INSERT INTO question_bank_items (
+           id, bank_id, chapter_id, question_text, question_type, difficulty,
+           bloom_level, explanation, passage_text, is_reference, page_reference,
+           is_quarantined, quarantine_reason
+         ) VALUES ${qbClauses.join(', ')}`,
+        qbValues
+      );
+
+      // Bulk insert question_bank_options
+      const optValues: any[] = [];
+      const optClauses: string[] = [];
+      let optIdx = 0;
+      for (const vq of chunk) {
+        if (vq.options && vq.options.length > 0) {
+          for (const opt of vq.options) {
+            const offset = optIdx * 4;
+            optValues.push(uuidv4(), vq.id, opt.text, opt.is_correct ? 1 : 0);
+            optClauses.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+            optIdx++;
+          }
+        }
+      }
+
+      if (optClauses.length > 0) {
+        await db.query(
+          `INSERT INTO question_bank_options (id, question_item_id, option_text, is_correct) VALUES ${optClauses.join(', ')}`,
+          optValues
+        );
+      }
+    }
+
+    const imported = validatedQuestions.length;
 
     // 8. Create AI Reference container in `exams` (isolated from static listings: is_published = 0, is_ai_reference = 1)
     const refExamId = uuidv4();
@@ -1531,16 +1568,19 @@ export class ReferenceImportService {
       ]
     );
 
-    for (let i = 0; i < validatedQuestions.length; i++) {
-      const vq = validatedQuestions[i];
-      const examQId = uuidv4();
+    // Bulk insert exam_questions and exam_question_options
+    for (let c = 0; c < validatedQuestions.length; c += chunkSize) {
+      const chunk = validatedQuestions.slice(c, c + chunkSize);
+      const eqValues: any[] = [];
+      const eqClauses: string[] = [];
+      const eqOptsToInsert: Array<{ id: string; question_id: string; text: string; is_correct: number }> = [];
 
-      await db.query(
-        `INSERT INTO exam_questions (
-           id, exam_id, question_item_id, question_text, question_type,
-           points, page_reference, passage_text, explanation, order_index
-         ) VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9)`,
-        [
+      for (let i = 0; i < chunk.length; i++) {
+        const vq = chunk[i];
+        const examQId = uuidv4();
+        const globalIdx = c + i + 1;
+        const offset = i * 9;
+        eqValues.push(
           examQId,
           refExamId,
           vq.id,
@@ -1549,16 +1589,43 @@ export class ReferenceImportService {
           String(vq.page_reference || 1),
           vq.passage_text || null,
           vq.explanation || null,
-          i + 1
-        ]
+          globalIdx
+        );
+        eqClauses.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, 1, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`);
+
+        if (vq.options && vq.options.length > 0) {
+          for (const opt of vq.options) {
+            eqOptsToInsert.push({
+              id: uuidv4(),
+              question_id: examQId,
+              text: opt.text,
+              is_correct: opt.is_correct ? 1 : 0
+            });
+          }
+        }
+      }
+
+      await db.query(
+        `INSERT INTO exam_questions (
+           id, exam_id, question_item_id, question_text, question_type,
+           points, page_reference, passage_text, explanation, order_index
+         ) VALUES ${eqClauses.join(', ')}`,
+        eqValues
       );
 
-      for (const opt of vq.options) {
-        await db.query(
-          `INSERT INTO exam_question_options (id, question_id, option_text, is_correct)
-           VALUES ($1, $2, $3, $4)`,
-          [uuidv4(), examQId, opt.text, opt.is_correct ? 1 : 0]
-        );
+      if (eqOptsToInsert.length > 0) {
+        try {
+          const eqOptValues: any[] = [];
+          const eqOptClauses = eqOptsToInsert.map((eo, idx) => {
+            const offset = idx * 4;
+            eqOptValues.push(eo.id, eo.question_id, eo.text, eo.is_correct);
+            return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`;
+          });
+          await db.query(
+            `INSERT INTO exam_question_options (id, question_id, option_text, is_correct) VALUES ${eqOptClauses.join(', ')}`,
+            eqOptValues
+          );
+        } catch (_) {}
       }
     }
 
