@@ -50,6 +50,7 @@ class DatabaseManager {
           await this.tidbConn.execute('SELECT 1');
           console.log('✅ Connected to TiDB Cloud Serverless (HTTP) successfully.');
           this.isInitialized = true;
+          await this.ensureEssentialColumns();
           if (!this.isSchemaApplied) {
             await this.applySchema();
             this.isSchemaApplied = true;
@@ -202,30 +203,43 @@ class DatabaseManager {
       try {
         res = await this.tidbConn.execute(tidbSql, orderedParams, { fullResult: true });
       } catch (err: any) {
-        const isConnErr = err.message?.includes('invalid connection') ||
-          err.message?.includes('fetch failed') ||
-          err.message?.includes('Connect Timeout') ||
-          err.message?.includes('UND_ERR_CONNECT_TIMEOUT');
-        if (isConnErr) {
-          console.warn(`🔄 Reconnecting to TiDB Cloud Serverless after error: ${err.message} [SQL: ${tidbSql.slice(0, 60)}, params size: ${JSON.stringify(orderedParams).length}]`);
-          this.isInitialized = false;
-          this.tidbConn = null;
-          let retries = 0;
-          while (retries < 5) {
-            try {
-              await new Promise(r => setTimeout(r, 1000 * Math.pow(1.5, retries)));
-              await this.init();
-              if (this.tidbConn) {
-                res = await (this.tidbConn as any).execute(tidbSql, orderedParams, { fullResult: true });
-                break;
-              }
-            } catch (retryErr: any) {
-              retries++;
-              if (retries >= 5) throw retryErr;
-            }
-          }
+        const isUnknownColErr = err.message?.includes('1054') || 
+                                err.message?.includes('Unknown column') || 
+                                err.code === 'ER_BAD_FIELD_ERROR';
+        if (isUnknownColErr && (
+          err.message?.includes('is_reference') || 
+          err.message?.includes('passage_text') || 
+          err.message?.includes('is_ai_reference')
+        )) {
+          console.warn(`⚠️ TiDB missing column detected (${err.message}). Auto-applying schema migration and retrying query...`);
+          await this.ensureEssentialColumns();
+          res = await (this.tidbConn as any).execute(tidbSql, orderedParams, { fullResult: true });
         } else {
-          throw err;
+          const isConnErr = err.message?.includes('invalid connection') ||
+            err.message?.includes('fetch failed') ||
+            err.message?.includes('Connect Timeout') ||
+            err.message?.includes('UND_ERR_CONNECT_TIMEOUT');
+          if (isConnErr) {
+            console.warn(`🔄 Reconnecting to TiDB Cloud Serverless after error: ${err.message} [SQL: ${tidbSql.slice(0, 60)}, params size: ${JSON.stringify(orderedParams).length}]`);
+            this.isInitialized = false;
+            this.tidbConn = null;
+            let retries = 0;
+            while (retries < 5) {
+              try {
+                await new Promise(r => setTimeout(r, 1000 * Math.pow(1.5, retries)));
+                await this.init();
+                if (this.tidbConn) {
+                  res = await (this.tidbConn as any).execute(tidbSql, orderedParams, { fullResult: true });
+                  break;
+                }
+              } catch (retryErr: any) {
+                retries++;
+                if (retries >= 5) throw retryErr;
+              }
+            }
+          } else {
+            throw err;
+          }
         }
       }
       const rows = (res.rows || []) as T[];
@@ -292,6 +306,25 @@ class DatabaseManager {
       runInTransaction();
     } else {
       fn();
+    }
+  }
+
+  
+  public async ensureEssentialColumns(): Promise<void> {
+    if (!this.tidbConn) return;
+    const essentialMigrations = [
+      'ALTER TABLE question_bank_items ADD COLUMN passage_text TEXT NULL',
+      'ALTER TABLE question_bank_items ADD COLUMN is_reference INT DEFAULT 0',
+      'ALTER TABLE exam_questions ADD COLUMN passage_text TEXT NULL',
+      'ALTER TABLE exams ADD COLUMN is_ai_reference TINYINT DEFAULT 0'
+    ];
+    for (const stmt of essentialMigrations) {
+      try {
+        await this.tidbConn.execute(stmt);
+        console.log(`✅ Applied TiDB schema migration: ${stmt}`);
+      } catch (err: any) {
+        // Harmless if already exists (Error 1060 / 42S21: Duplicate column name)
+      }
     }
   }
 

@@ -1178,6 +1178,7 @@ router.get('/references/template', (req: AuthenticatedRequest, res) => {
  */
 router.post('/reference-questions/preview', excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
   try {
+    await (db as any).ensureEssentialColumns?.();
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
     }
@@ -1215,6 +1216,7 @@ router.post('/reference-questions/preview', excelUpload.single('file'), async (r
  */
 router.post('/reference-questions/import', excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
   try {
+    await (db as any).ensureEssentialColumns?.();
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
     }
@@ -1252,6 +1254,7 @@ router.post('/reference-questions/import', excelUpload.single('file'), async (re
  */
 router.get('/reference-questions', async (req: AuthenticatedRequest, res) => {
   try {
+    await (db as any).ensureEssentialColumns?.();
     const listRes = await db.query(`
       SELECT 
         e.id, e.title_ar, e.created_at, e.grade_id, e.subject_id, e.chapter_id,

@@ -58,6 +58,8 @@ export interface RawExcelRow {
   'نص القطعة'?: string;
   'Passage ID'?: string | number;
   'رقم القطعة'?: string | number;
+  Reference?: number | string;
+  'المرجع'?: number | string;
   'Reference Page'?: number | string;
   'صفحة المرجع'?: number | string;
   'رقم الصفحة'?: number | string;
@@ -189,7 +191,7 @@ export class ReferenceImportService {
         'Option C': 'go',
         'Option D': 'has gone',
         'Right Answer': 'went',
-        'Reference Page': 24,
+        Reference: 24,
         Explanation: 'Yesterday indicates past simple tense.'
       },
       {
@@ -203,7 +205,7 @@ export class ReferenceImportService {
         'Option C': 'microwave',
         'Option D': 'kettle',
         'Right Answer': 'special offer',
-        'Reference Page': 26,
+        Reference: 26,
         Explanation: 'Special offer means a price reduction or deal.'
       },
       {
@@ -217,7 +219,7 @@ export class ReferenceImportService {
         'Option C': 'Items always arrive within one hour',
         'Option D': 'Customers never receive wrong items',
         'Right Answer': 'It saves time and allows price comparison',
-        'Reference Page': 28,
+        Reference: 28,
         Explanation: 'Direct comprehension detail from the first two sentences.'
       },
       {
@@ -231,7 +233,7 @@ export class ReferenceImportService {
         'Option C': 'discounts',
         'Option D': 'deliveries',
         'Right Answer': 'disadvantages',
-        'Reference Page': 28,
+        Reference: 28,
         Explanation: 'Drawbacks means negative aspects or disadvantages.'
       },
       {
@@ -245,7 +247,7 @@ export class ReferenceImportService {
         'Option C': 'نكرة مقصودة',
         'Option D': 'علم مفرد',
         'Right Answer': 'شبيه بالمضاف',
-        'Reference Page': 32,
+        Reference: 32,
         Explanation: 'منادى منون بعده معمول يتمم معناه فهو شبيه بالمضاف.'
       },
       {
@@ -259,13 +261,27 @@ export class ReferenceImportService {
         'Option C': 'صعوبة الحصول على الكتب المفيدة',
         'Option D': 'مقارنة بين المكتبات التقليدية والإلكترونية',
         'Right Answer': 'أهمية القراءة في رقي الفكر وبناء الحضارة',
-        'Reference Page': 35,
+        Reference: 35,
         Explanation: 'النص يتناول دور القراءة في بناء الفكر والحضارة.'
       }
     ];
 
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(sampleData);
+    const headers = [
+      'Subject',
+      'Unit',
+      'Question Type',
+      'Passage',
+      'Question',
+      'Option A',
+      'Option B',
+      'Option C',
+      'Option D',
+      'Right Answer',
+      'Reference',
+      'Explanation'
+    ];
+    const ws = XLSX.utils.json_to_sheet(sampleData, { header: headers });
     XLSX.utils.book_append_sheet(wb, ws, 'Exams');
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }
@@ -336,40 +352,58 @@ export class ReferenceImportService {
     const parsedRows: ParsedQuestionRow[] = [];
     const seenTextsInFile = new Set<string>();
 
+    // Helper for flexible case/space-insensitive column extraction
+    const getRowVal = (rowObj: any, ...aliases: string[]): string => {
+      for (const a of aliases) {
+        if (rowObj[a] !== undefined && rowObj[a] !== null && String(rowObj[a]).trim() !== '') {
+          return String(rowObj[a]).trim();
+        }
+      }
+      const normAliases = aliases.map(a => a.toLowerCase().replace(/[\s_\-\.\:]+/g, ''));
+      for (const [rk, val] of Object.entries(rowObj)) {
+        if (val === undefined || val === null || String(val).trim() === '') continue;
+        const normKey = rk.toLowerCase().replace(/[\s_\-\.\:]+/g, '');
+        if (normAliases.includes(normKey)) {
+          return String(val).trim();
+        }
+      }
+      return '';
+    };
+
     rawRows.forEach((row, index) => {
       const rowNum = index + 2; // 1-indexed, accounting for header row
 
-      const subjectName = String(row.Subject || row['المادة'] || '').trim();
-      const unitName = String(row.Unit || row['الوحدة'] || '').trim();
-      const questionText = String(row.Question || row['السؤال'] || '').trim();
+      const subjectName = getRowVal(row, 'Subject', 'المادة');
+      const unitName = getRowVal(row, 'Unit', 'الوحدة');
+      const questionText = getRowVal(row, 'Question', 'السؤال', 'نص السؤال');
 
-      const optA = String(row['Option A'] || row['Answer A'] || row['الخيار أ'] || row['الخيار (أ)'] || row['A'] || row['أ'] || '').trim();
-      const optB = String(row['Option B'] || row['Answer B'] || row['الخيار ب'] || row['الخيار (ب)'] || row['B'] || row['ب'] || '').trim();
-      const optC = String(row['Option C'] || row['Answer C'] || row['الخيار ج'] || row['الخيار (ج)'] || row['C'] || row['ج'] || '').trim();
-      const optD = String(row['Option D'] || row['Answer D'] || row['الخيار د'] || row['الخيار (د)'] || row['D'] || row['د'] || '').trim();
+      const optA = getRowVal(row, 'Option A', 'OptionA', 'Answer A', 'الخيار أ', 'الخيار (أ)', 'أ', 'A');
+      const optB = getRowVal(row, 'Option B', 'OptionB', 'Answer B', 'الخيار ب', 'الخيار (ب)', 'ب', 'B');
+      const optC = getRowVal(row, 'Option C', 'OptionC', 'Answer C', 'الخيار ج', 'الخيار (ج)', 'ج', 'C');
+      const optD = getRowVal(row, 'Option D', 'OptionD', 'Answer D', 'الخيار د', 'الخيار (د)', 'د', 'D');
 
-      const rawRightAnswer = String(row['Right Answer'] || row['الإجابة الصحيحة'] || row['الصحيحة'] || '').trim();
-      const rawPage = row['Reference Page'] ?? row['صفحة المرجع'] ?? row['رقم الصفحة'] ?? row['الصفحة'];
+      const rawRightAnswer = getRowVal(row, 'Right Answer', 'RightAnswer', 'Correct Answer', 'الإجابة الصحيحة', 'الصحيحة', 'Right Ans');
+      const rawPage = getRowVal(row, 'Reference', 'Reference Page', 'صفحة المرجع', 'المرجع', 'رقم الصفحة', 'الصفحة');
       const pageNum = parseInt(String(rawPage).replace(/[^0-9]/g, ''), 10) || 1;
-      const explanation = String(row.Explanation || row['التوضيح'] || row['الشرح'] || '').trim();
+      const explanation = getRowVal(row, 'Explanation', 'التوضيح', 'الشرح');
 
       // Extract question type
-      let questionType = String(row['Question Type'] || row['نوع السؤال'] || row['النوع'] || '').trim();
+      let questionType = getRowVal(row, 'Question Type', 'QuestionType', 'نوع السؤال', 'النوع');
 
       // Extract reading passage
-      let passageText = String(
-        row.Passage ||
-        row['Reading Passage'] ||
-        row['قطعة القراءة'] ||
-        row['النص'] ||
-        row['القطعة'] ||
-        row['Passage Text'] ||
-        row['نص القطعة'] ||
-        ''
-      ).trim();
+      let passageText = getRowVal(
+        row,
+        'Passage',
+        'Reading Passage',
+        'قطعة القراءة',
+        'النص',
+        'القطعة',
+        'Passage Text',
+        'نص القطعة'
+      );
 
       // If row references a passage ID from the Passages sheet
-      const passageIdRef = String(row['Passage ID'] || row['رقم القطعة'] || '').trim().toLowerCase();
+      const passageIdRef = getRowVal(row, 'Passage ID', 'PassageID', 'رقم القطعة', 'معرف القطعة').toLowerCase();
       if (!passageText && passageIdRef && passageMap.has(passageIdRef)) {
         passageText = passageMap.get(passageIdRef) || '';
       }
@@ -460,18 +494,36 @@ export class ReferenceImportService {
       let matchedIndex = -1;
       const normRight = rawRightAnswer.toLowerCase().trim();
 
-      // Check letter indicators: A/B/C/D or أ/ب/ج/د
-      if (['a', 'أ', 'الخيار a', 'الخيار أ', 'option a', 'answer a'].includes(normRight)) matchedIndex = 0;
-      else if (['b', 'ب', 'الخيار b', 'الخيار ب', 'option b', 'answer b'].includes(normRight)) matchedIndex = 1;
-      else if (['c', 'ج', 'الخيار c', 'الخيار ج', 'option c', 'answer c'].includes(normRight)) matchedIndex = 2;
-      else if (['d', 'د', 'الخيار د', 'الخيار د', 'option d', 'answer d'].includes(normRight)) matchedIndex = 3;
-      else {
-        // Match by option text
+      // Clean normalization for comparing strings
+      const cleanNorm = (str: string) => str.toLowerCase().replace(/[\u064B-\u065F\u0670]/g, '').replace(/[^\w\u0600-\u06FF]+/g, ' ').trim();
+      const cleanRight = cleanNorm(normRight);
+
+      // Check letter indicators: A/B/C/D or أ/ب/ج/د or 1/2/3/4
+      if (['a', 'أ', 'الخيار a', 'الخيار أ', 'option a', 'answer a', '1'].includes(normRight) || cleanRight === 'a' || cleanRight === 'أ' || cleanRight === '1') {
+        matchedIndex = 0;
+      } else if (['b', 'ب', 'الخيار b', 'الخيار ب', 'option b', 'answer b', '2'].includes(normRight) || cleanRight === 'b' || cleanRight === 'ب' || cleanRight === '2') {
+        matchedIndex = 1;
+      } else if (['c', 'ج', 'الخيار c', 'الخيار ج', 'option c', 'answer c', '3'].includes(normRight) || cleanRight === 'c' || cleanRight === 'ج' || cleanRight === '3') {
+        matchedIndex = 2;
+      } else if (['d', 'د', 'الخيار د', 'الخيار د', 'option d', 'answer d', '4'].includes(normRight) || cleanRight === 'd' || cleanRight === 'د' || cleanRight === '4') {
+        matchedIndex = 3;
+      } else {
+        // Match by exact or trimmed option text
         matchedIndex = validOptions.findIndex(o => 
           o.toLowerCase().trim() === normRight ||
-          o.trim() === rawRightAnswer ||
-          normRight.includes(o.toLowerCase().trim())
+          o.trim() === rawRightAnswer
         );
+        // Match by normalized text
+        if (matchedIndex === -1) {
+          matchedIndex = validOptions.findIndex(o => cleanNorm(o) === cleanRight);
+        }
+        // Substring match for phrases
+        if (matchedIndex === -1 && cleanRight.length >= 3) {
+          matchedIndex = validOptions.findIndex(o => {
+            const co = cleanNorm(o);
+            return co.length >= 3 && (cleanRight.includes(co) || co.includes(cleanRight));
+          });
+        }
       }
 
       if (matchedIndex === -1) {

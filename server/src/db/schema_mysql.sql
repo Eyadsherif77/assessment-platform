@@ -238,6 +238,7 @@ CREATE TABLE IF NOT EXISTS exams (
     duration_minutes INT DEFAULT 30,
     is_published INT DEFAULT 0,
     is_style_reference TINYINT NOT NULL DEFAULT 0,
+    is_ai_reference TINYINT DEFAULT 0,
     school_type VARCHAR(64) DEFAULT 'كلاهما',
     term INT DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
