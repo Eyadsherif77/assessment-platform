@@ -2632,6 +2632,7 @@ export const StudentDashboard: React.FC = () => {
                               return (
                                 <label
                                   key={opt.id}
+                                  className="choice-option"
                                   style={{
                                     padding: '0.75rem 1rem',
                                     borderRadius: 'var(--radius-md)',
@@ -2640,7 +2641,10 @@ export const StudentDashboard: React.FC = () => {
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.5rem'
+                                    gap: '0.5rem',
+                                    minWidth: 0,
+                                    maxWidth: '100%',
+                                    boxSizing: 'border-box'
                                   }}
                                 >
                                   <input
@@ -2648,8 +2652,9 @@ export const StudentDashboard: React.FC = () => {
                                     name={`q_${q.id}`}
                                     checked={isSelected}
                                     onChange={() => setExamAnswers({ ...examAnswers, [q.id]: opt.id })}
+                                    style={{ flexShrink: 0 }}
                                   />
-                                  <span>{opt.option_text}</span>
+                                  <span style={{ minWidth: 0, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{opt.option_text}</span>
                                 </label>
                               );
                             })}
@@ -2659,7 +2664,7 @@ export const StudentDashboard: React.FC = () => {
                     })}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                    <div className="card-actions-responsive" style={{ marginTop: '1.5rem', width: '100%' }}>
                       <button className="btn btn-outline" onClick={() => setActiveExam(null)}>
                         {isAr ? 'إلغاء الامتحان' : 'Cancel Exam'}
                       </button>

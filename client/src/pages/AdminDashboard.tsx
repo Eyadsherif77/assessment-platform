@@ -1743,6 +1743,7 @@ export const AdminDashboard: React.FC = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: '0.6rem',
                   fontWeight: 900,
                   fontSize: '0.9rem',
@@ -1750,11 +1751,16 @@ export const AdminDashboard: React.FC = () => {
                   borderColor: '#059669',
                   boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)',
                   padding: '0.65rem 1.25rem',
-                  borderRadius: '0.65rem'
+                  borderRadius: '0.65rem',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  textAlign: 'center'
                 }}
               >
-                <FileSpreadsheet size={20} />
-                <span>{language === 'ar' ? 'Import Exam Reference Questions (استيراد أسئلة مراجع الامتحانات)' : 'Import Exam Reference Questions'}</span>
+                <FileSpreadsheet size={20} style={{ flexShrink: 0 }} />
+                <span>{language === 'ar' ? 'استيراد أسئلة مراجع الامتحانات (Excel)' : 'Import Exam Reference Questions (Excel)'}</span>
               </button>
             </div>
           </div>
@@ -4687,7 +4693,11 @@ export const AdminDashboard: React.FC = () => {
                         background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
                         borderColor: '#059669',
                         boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)',
-                        cursor: refExamIsImporting ? 'not-allowed' : 'pointer'
+                        cursor: refExamIsImporting ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                        lineHeight: 1.35,
+                        textAlign: 'center'
                       }}
                     >
                       {refExamIsImporting

@@ -2103,7 +2103,7 @@ export const TeacherDashboard: React.FC = () => {
                             </div>
 
                             {/* Action Buttons */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginTop: '0.5rem', borderTop: '1px solid var(--border-light)', paddingTop: '1rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(220px, 100%), 1fr))', gap: '0.75rem', marginTop: '0.5rem', borderTop: '1px solid var(--border-light)', paddingTop: '1rem', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
                               <button
                                 type="button"
                                 className="btn btn-primary"
@@ -2118,11 +2118,16 @@ export const TeacherDashboard: React.FC = () => {
                                   gap: '0.5rem',
                                   background: 'linear-gradient(135deg, #1E3A8A, #3B82F6)',
                                   border: 'none',
-                                  boxShadow: 'var(--shadow-blue)'
+                                  boxShadow: 'var(--shadow-blue)',
+                                  whiteSpace: 'normal',
+                                  wordBreak: 'break-word',
+                                  maxWidth: '100%',
+                                  boxSizing: 'border-box',
+                                  lineHeight: 1.35
                                 }}
                               >
-                                <span>📝</span>
-                                <span>{isAr ? 'تحميل الأسئلة إلى الاستوديو للتعديل والمراجعة' : 'Load Questions to Studio to Edit'}</span>
+                                <span style={{ flexShrink: 0 }}>📝</span>
+                                <span style={{ minWidth: 0 }}>{isAr ? 'تحميل الأسئلة إلى الاستوديو للتعديل والمراجعة' : 'Load Questions to Studio to Edit'}</span>
                               </button>
 
                               <button
@@ -2141,11 +2146,16 @@ export const TeacherDashboard: React.FC = () => {
                                   background: '#059669',
                                   color: '#FFFFFF',
                                   border: 'none',
-                                  boxShadow: '0 4px 6px -1px rgba(5, 150, 105, 0.2)'
+                                  boxShadow: '0 4px 6px -1px rgba(5, 150, 105, 0.2)',
+                                  whiteSpace: 'normal',
+                                  wordBreak: 'break-word',
+                                  maxWidth: '100%',
+                                  boxSizing: 'border-box',
+                                  lineHeight: 1.35
                                 }}
                               >
-                                <Check size={16} />
-                                <span>{isDirectImporting ? (isAr ? 'جاري الاستيراد والحفظ...' : 'Saving...') : (isAr ? 'استيراد واعتماد مباشر كاختبار مرجعي' : 'Save Directly as Reference Exam')}</span>
+                                <Check size={16} style={{ flexShrink: 0 }} />
+                                <span style={{ minWidth: 0 }}>{isDirectImporting ? (isAr ? 'جاري الاستيراد والحفظ...' : 'Saving...') : (isAr ? 'استيراد واعتماد مباشر كاختبار مرجعي' : 'Save Directly as Reference Exam')}</span>
                               </button>
                             </div>
                           </div>
