@@ -1262,7 +1262,11 @@ router.get('/reference-questions', async (req: AuthenticatedRequest, res) => {
         s.name_ar as subject_name_ar,
         bc.title_ar as chapter_title_ar,
         bc.chapter_number,
-        (SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id) as questions_count
+        COALESCE(
+          NULLIF((SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id), 0),
+          (SELECT COUNT(*) FROM question_bank_items qb WHERE qb.chapter_id = e.chapter_id AND qb.is_reference = 1),
+          0
+        ) as questions_count
       FROM exams e
       JOIN grades g ON e.grade_id = g.id
       JOIN subjects s ON e.subject_id = s.id

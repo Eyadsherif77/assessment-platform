@@ -302,19 +302,24 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
             }
           }
 
+          // Shuffle standalone questions and passage groups for dynamic, rich student exams
+          const shuffledPassageEntries = Array.from(passageGroups.entries()).sort(() => Math.random() - 0.5);
+          const shuffledStandalone = [...standaloneQuestions].sort(() => Math.random() - 0.5);
+
           let selected: any[] = [];
-          for (const [_, group] of passageGroups) {
+          for (const [_, group] of shuffledPassageEntries) {
             if (selected.length + group.length <= parsedCount) {
               selected.push(...group);
             }
           }
-          for (const q of standaloneQuestions) {
+          for (const q of shuffledStandalone) {
             if (selected.length < parsedCount) {
               selected.push(q);
             }
           }
           if (selected.length < parsedCount) {
-            for (const q of candidateRefQuestions) {
+            const remainingPool = [...candidateRefQuestions].sort(() => Math.random() - 0.5);
+            for (const q of remainingPool) {
               if (!selected.some(s => s.id === q.id) && selected.length < parsedCount) {
                 selected.push(q);
               }
