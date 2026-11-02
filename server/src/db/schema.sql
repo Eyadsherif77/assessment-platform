@@ -178,10 +178,12 @@ CREATE TABLE IF NOT EXISTS question_bank_items (
     bank_id TEXT NOT NULL REFERENCES question_banks(id) ON DELETE CASCADE,
     chapter_id TEXT REFERENCES book_chapters(id) ON DELETE SET NULL,
     question_text TEXT NOT NULL,
-    question_type TEXT DEFAULT 'MULTIPLE_CHOICE' CHECK (question_type IN ('MULTIPLE_CHOICE', 'TRUE_FALSE', 'SHORT_ANSWER')),
+    question_type TEXT DEFAULT 'MULTIPLE_CHOICE',
     difficulty TEXT DEFAULT 'MEDIUM' CHECK (difficulty IN ('EASY', 'MEDIUM', 'HARD')),
     bloom_level TEXT DEFAULT 'COMPREHENSION',
     explanation TEXT,
+    passage_text TEXT,
+    is_reference INTEGER DEFAULT 0,
     source_chunk_id TEXT REFERENCES book_chunks(id) ON DELETE SET NULL,
     page_reference INTEGER,
     is_quarantined INTEGER DEFAULT 0,
@@ -211,6 +213,7 @@ CREATE TABLE IF NOT EXISTS exams (
     duration_minutes INTEGER DEFAULT 30,
     is_published INTEGER DEFAULT 0,
     is_style_reference INTEGER DEFAULT 0,
+    is_ai_reference INTEGER DEFAULT 0,
     school_type TEXT DEFAULT 'كلاهما',
     created_at TEXT DEFAULT (datetime('now'))
 );
@@ -223,6 +226,7 @@ CREATE TABLE IF NOT EXISTS exam_questions (
     question_type TEXT DEFAULT 'MULTIPLE_CHOICE',
     points INTEGER DEFAULT 1,
     page_reference TEXT,
+    passage_text TEXT,
     explanation TEXT,
     order_index INTEGER DEFAULT 1
 );

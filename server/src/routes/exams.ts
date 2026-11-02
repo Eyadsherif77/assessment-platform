@@ -120,6 +120,10 @@ router.get('/fixed/hierarchy', authenticateToken, enforceStudentGrade, async (re
       let examConditions = [`e.subject_id = $1`, `e.grade_id = $2`, `e.term = $3`];
       const examParams: any[] = [subj.id, targetGradeId, term];
 
+      // Strictly isolate AI style/exam reference questions from static exam hierarchy
+      examConditions.push('COALESCE(e.is_ai_reference, 0) = 0');
+      examConditions.push('COALESCE(e.is_style_reference, 0) = 0');
+
       if (!isStaff) {
         examConditions.push(`e.is_published = 1`);
         if (req.studentProfile) {
@@ -243,6 +247,8 @@ router.get('/', authenticateToken, enforceStudentGrade, async (req: Authenticate
       }
 
       conditions.push(`e.is_published = 1`);
+      conditions.push('COALESCE(e.is_ai_reference, 0) = 0');
+      conditions.push('COALESCE(e.is_style_reference, 0) = 0');
 
       const studentSchoolType = (req.studentProfile.schoolType || 'عربي').trim();
       const normStudentSchoolType = studentSchoolType.replace('ى', 'ي');
@@ -789,9 +795,14 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
       }
     }
 
+    // Exclude reference-only exams from direct student static access
+    if (req.user?.role === 'STUDENT' && (exam.is_ai_reference || exam.is_style_reference)) {
+      return res.status(403).json({ error: 'هذا الاختبار مخصص كمرجع للامتحانات الذكية فقط' });
+    }
+
     // Fetch questions
     const questionsRes = await db.query(
-      `SELECT id, question_text, points, page_reference, explanation, order_index FROM exam_questions WHERE exam_id = $1 ORDER BY order_index ASC`,
+      `SELECT id, question_text, question_type, passage_text, points, page_reference, explanation, order_index FROM exam_questions WHERE exam_id = $1 ORDER BY order_index ASC`,
       [id]
     );
 
@@ -806,6 +817,8 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
         return {
           id: q.id,
           question_text: q.question_text,
+          question_type: q.question_type || 'MULTIPLE_CHOICE',
+          passage_text: q.passage_text || undefined,
           points: q.points,
           page_reference: q.page_reference,
           order_index: q.order_index,

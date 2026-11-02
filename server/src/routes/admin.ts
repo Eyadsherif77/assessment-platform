@@ -1171,4 +1171,148 @@ router.get('/references/template', (req: AuthenticatedRequest, res) => {
   }
 });
 
+
+/**
+ * 11. Admin Exclusive Exam Reference Questions Importer
+ * POST /api/admin/reference-questions/preview
+ */
+router.post('/reference-questions/preview', excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
+    }
+
+    const { grade_id, subject_id, chapter_id } = req.body;
+    if (!grade_id || !subject_id || !chapter_id) {
+      return res.status(400).json({ error: 'يجب تحديد الصف والمادة والوحدة بشكل صريح لمعاينة الأسئلة المرجعية' });
+    }
+
+    const preview = await ReferenceImportService.previewReferenceWorkbook(
+      req.file.buffer,
+      {
+        operatorId: req.user!.id,
+        operatorRole: req.user!.role,
+        workbookName: req.file.originalname,
+        overrideGradeId: grade_id,
+        overrideSubjectId: subject_id,
+        overrideChapterId: chapter_id,
+        durationMinutes: 30
+      }
+    );
+
+    return res.json(preview);
+  } catch (err: any) {
+    console.error('Admin reference preview error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'حدث خطأ أثناء معاينة ملف الأسئلة المرجعية'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/reference-questions/import
+ */
+router.post('/reference-questions/import', excelUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'الرجاء إرفاق ملف Excel صالح بصيغة .xlsx أو .xls' });
+    }
+
+    const { grade_id, subject_id, chapter_id } = req.body;
+    if (!grade_id || !subject_id || !chapter_id) {
+      return res.status(400).json({ error: 'يجب تحديد الصف والمادة والوحدة بشكل صريح لاعتماد الأسئلة المرجعية' });
+    }
+
+    const summary = await ReferenceImportService.importAdminReferenceQuestions(
+      req.file.buffer,
+      {
+        operatorId: req.user!.id,
+        operatorRole: req.user!.role,
+        workbookName: req.file.originalname,
+        gradeId: grade_id,
+        subjectId: subject_id,
+        chapterId: chapter_id
+      }
+    );
+
+    return res.json(summary);
+  } catch (err: any) {
+    console.error('Admin reference questions import error:', err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'حدث خطأ أثناء استيراد واعتماد الأسئلة المرجعية'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/reference-questions
+ * List all active reference question sets
+ */
+router.get('/reference-questions', async (req: AuthenticatedRequest, res) => {
+  try {
+    const listRes = await db.query(`
+      SELECT 
+        e.id, e.title_ar, e.created_at, e.grade_id, e.subject_id, e.chapter_id,
+        g.name_ar as grade_name_ar,
+        s.name_ar as subject_name_ar,
+        bc.title_ar as chapter_title_ar,
+        bc.chapter_number,
+        (SELECT COUNT(*) FROM exam_questions eq WHERE eq.exam_id = e.id) as questions_count
+      FROM exams e
+      JOIN grades g ON e.grade_id = g.id
+      JOIN subjects s ON e.subject_id = s.id
+      LEFT JOIN book_chapters bc ON e.chapter_id = bc.id
+      WHERE e.is_ai_reference = 1
+      ORDER BY e.created_at DESC
+    `);
+    return res.json(listRes.rows);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب قائمة المراجع المعتمدة' });
+  }
+});
+
+/**
+ * DELETE /api/admin/reference-questions/:id
+ */
+router.delete('/reference-questions/:id', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const examRes = await db.query(`SELECT id, chapter_id, grade_id, subject_id FROM exams WHERE id = $1 AND is_ai_reference = 1`, [id]);
+    if (examRes.rows.length === 0) {
+      return res.status(404).json({ error: 'المرجع المنهجي غير موجود' });
+    }
+    const row = examRes.rows[0];
+
+    // Delete questions from question_bank_items
+    if (row.chapter_id) {
+      await db.query(`DELETE FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1`, [row.chapter_id]);
+      // Invalidate cache
+      await db.query(`DELETE FROM shared_cached_exams WHERE grade_id = $1 AND subject_id = $2 AND (unit_ids LIKE $3 OR unit_ids = $4)`,
+        [row.grade_id, row.subject_id, `%${row.chapter_id}%`, row.chapter_id]);
+    }
+    await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [id]);
+    await db.query(`DELETE FROM exams WHERE id = $1`, [id]);
+
+    return res.json({ success: true, message: 'تم حذف المرجع بنجاح' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل حذف المرجع: ' + err.message });
+  }
+});
+
+/**
+ * GET /api/admin/reference-questions/template
+ */
+router.get('/reference-questions/template', (req: AuthenticatedRequest, res) => {
+  try {
+    const buffer = ReferenceImportService.generateTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Farabi_Reference_Questions_Template.xlsx"');
+    return res.send(buffer);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل إنشاء قالب Excel: ' + err.message });
+  }
+});
+
 export default router;

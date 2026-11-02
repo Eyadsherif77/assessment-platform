@@ -132,6 +132,20 @@ export const AdminDashboard: React.FC = () => {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isSavingLogo, setIsSavingLogo] = useState(false);
 
+  // Admin Exam Reference Questions Workflow (Prompt GEMINI 3.8)
+  const [isRefExamModalOpen, setIsRefExamModalOpen] = useState(false);
+  const [refExamFile, setRefExamFile] = useState<File | null>(null);
+  const [refExamGradeId, setRefExamGradeId] = useState<string>('');
+  const [refExamSubjectId, setRefExamSubjectId] = useState<string>('');
+  const [refExamChapterId, setRefExamChapterId] = useState<string>('');
+  const [refExamSubjects, setRefExamSubjects] = useState<any[]>([]);
+  const [refExamChapters, setRefExamChapters] = useState<any[]>([]);
+  const [refExamPreview, setRefExamPreview] = useState<any | null>(null);
+  const [refExamIsPreviewing, setRefExamIsPreviewing] = useState<boolean>(false);
+  const [refExamIsImporting, setRefExamIsImporting] = useState<boolean>(false);
+  const [refExamError, setRefExamError] = useState<string | null>(null);
+  const [activeReferenceBanks, setActiveReferenceBanks] = useState<any[]>([]);
+
   // Excel Reference Import State (Phase 3 Reusable Importer)
   const [refFile, setRefFile] = useState<File | null>(null);
   const [refSubjectId, setRefSubjectId] = useState<string>('');
@@ -154,6 +168,144 @@ export const AdminDashboard: React.FC = () => {
       setRefSubjectId('');
     }
   }, [refGradeId]);
+
+  const fetchActiveReferenceBanks = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/admin/reference-questions'), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveReferenceBanks(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error('Failed to load active reference banks:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'curriculum') {
+      fetchActiveReferenceBanks();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (refExamGradeId) {
+      fetch(apiUrl(`/api/meta/grades/${refExamGradeId}/subjects`))
+        .then(r => r.json())
+        .then(data => { if (Array.isArray(data)) setRefExamSubjects(data); })
+        .catch(console.error);
+    } else {
+      setRefExamSubjects([]);
+      setRefExamSubjectId('');
+      setRefExamChapters([]);
+      setRefExamChapterId('');
+    }
+  }, [refExamGradeId]);
+
+  useEffect(() => {
+    if (refExamGradeId && refExamSubjectId) {
+      const b = adminBooks.find((book: any) => book.subject_id === refExamSubjectId && book.grade_id === refExamGradeId);
+      if (b) {
+        fetch(apiUrl(`/api/books/${b.id}/chapters`), {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(r => r.json())
+          .then(data => { if (Array.isArray(data)) setRefExamChapters(data); })
+          .catch(console.error);
+      } else {
+        setRefExamChapters([]);
+        setRefExamChapterId('');
+      }
+    } else {
+      setRefExamChapters([]);
+      setRefExamChapterId('');
+    }
+  }, [refExamGradeId, refExamSubjectId, adminBooks]);
+
+  const handlePreviewRefExam = async () => {
+    if (!refExamFile || !refExamGradeId || !refExamSubjectId || !refExamChapterId) {
+      setRefExamError(language === 'ar' ? 'الرجاء اختيار الملف والصف والمادة والوحدة أولاً' : 'Please select file, grade, subject, and unit first');
+      return;
+    }
+    setRefExamIsPreviewing(true);
+    setRefExamError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', refExamFile);
+      formData.append('grade_id', refExamGradeId);
+      formData.append('subject_id', refExamSubjectId);
+      formData.append('chapter_id', refExamChapterId);
+
+      const res = await fetch(apiUrl('/api/admin/reference-questions/preview'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل فحص ومعاينة الأسئلة');
+      setRefExamPreview(data);
+    } catch (err: any) {
+      setRefExamError(err.message || 'حدث خطأ أثناء فحص الملف');
+    } finally {
+      setRefExamIsPreviewing(false);
+    }
+  };
+
+  const handleConfirmRefExamImport = async () => {
+    if (!refExamFile || !refExamGradeId || !refExamSubjectId || !refExamChapterId) return;
+    setRefExamIsImporting(true);
+    setRefExamError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', refExamFile);
+      formData.append('grade_id', refExamGradeId);
+      formData.append('subject_id', refExamSubjectId);
+      formData.append('chapter_id', refExamChapterId);
+
+      const res = await fetch(apiUrl('/api/admin/reference-questions/import'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل استيراد الأسئلة المرجعية');
+
+      showAlert(
+        language === 'ar'
+          ? `تم اعتماد ${data.imported} سؤال مرجعي بنجاح للوحدة المختارة وتحديث بنك الامتحانات الذكية!`
+          : `Successfully imported ${data.imported} reference questions for AI exams!`,
+        'success'
+      );
+      setIsRefExamModalOpen(false);
+      setRefExamPreview(null);
+      setRefExamFile(null);
+      fetchActiveReferenceBanks();
+    } catch (err: any) {
+      setRefExamError(err.message || 'حدث خطأ أثناء الاستيراد');
+    } finally {
+      setRefExamIsImporting(false);
+    }
+  };
+
+  const handleDeleteRefBank = async (id: string) => {
+    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذا المرجع المنهجي؟' : 'Are you sure you want to delete this reference bank?')) return;
+    try {
+      const res = await fetch(apiUrl(`/api/admin/reference-questions/${id}`), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        showAlert(language === 'ar' ? 'تم حذف المرجع بنجاح' : 'Reference bank deleted', 'success');
+        fetchActiveReferenceBanks();
+      } else {
+        const d = await res.json();
+        showAlert(d.error || 'فشل الحذف', 'error');
+      }
+    } catch (err: any) {
+      showAlert(err.message, 'error');
+    }
+  };
 
   const handleDownloadRefTemplate = async () => {
     try {
@@ -1571,11 +1723,39 @@ export const AdminDashboard: React.FC = () => {
             borderRadius: '1rem',
             boxShadow: '0 4px 16px rgba(49, 46, 129, 0.2)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <span style={{ fontSize: '1.8rem' }}>🏛️</span>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 900, margin: 0, color: '#FFFFFF' }}>
-                {language === 'ar' ? 'المكتبة المنهجية المركزية المعتمدة - الإدارة العامة فقط' : 'Central Ministry Curriculum - Admin Only'}
-              </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.8rem' }}>🏛️</span>
+                <h2 style={{ fontSize: '1.35rem', fontWeight: 900, margin: 0, color: '#FFFFFF' }}>
+                  {language === 'ar' ? 'المكتبة المنهجية المركزية المعتمدة - الإدارة العامة فقط' : 'Central Ministry Curriculum - Admin Only'}
+                </h2>
+              </div>
+
+              {/* Master Prompt Button: Import Exam Reference Questions */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRefExamModalOpen(true);
+                  setRefExamError(null);
+                  setRefExamPreview(null);
+                }}
+                className="btn btn-primary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  fontWeight: 900,
+                  fontSize: '0.9rem',
+                  background: '#059669',
+                  borderColor: '#059669',
+                  boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)',
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '0.65rem'
+                }}
+              >
+                <FileSpreadsheet size={20} />
+                <span>{language === 'ar' ? 'Import Exam Reference Questions (استيراد أسئلة مراجع الامتحانات)' : 'Import Exam Reference Questions'}</span>
+              </button>
             </div>
           </div>
 
@@ -1924,7 +2104,96 @@ export const AdminDashboard: React.FC = () => {
             </form>
           </div>
 
-          {/* Existing Books Explorer & Management */}
+          {/* Approved AI Exam Reference Questions Sets Card */}
+          <div className="card" style={{ padding: '1.75rem', borderRadius: '1rem', border: '1.5px solid #CBD5E1', background: '#FFFFFF' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#1E1B4B' }}>
+                  <span style={{ fontSize: '1.3rem' }}>🎯</span>
+                  <span>{language === 'ar' ? `الأسئلة المرجعية المعتمدة للامتحانات الذكية (${activeReferenceBanks.length} وحدات مفعلة)` : `Approved AI Exam Reference Banks (${activeReferenceBanks.length})`}</span>
+                </h3>
+                <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  {language === 'ar'
+                    ? 'المصدر ذو الأولوية القصوى (Priority 2) للامتحانات الذكية. عند توفر أسئلة مرجعية معتمدة، يتم بناء امتحان الطالب مباشرة منها بتكلفة 0$ ودون استدعاء Gemini.'
+                    : 'Highest priority question bank (Priority 2) for AI exams. Provides school-level examination standard with $0 AI cost.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRefExamModalOpen(true);
+                  setRefExamError(null);
+                  setRefExamPreview(null);
+                }}
+                className="btn btn-outline"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, fontSize: '0.85rem', borderColor: '#059669', color: '#059669' }}
+              >
+                <Plus size={16} />
+                <span>{language === 'ar' ? 'استيراد وحدة جديدة من Excel' : 'Import New Unit from Excel'}</span>
+              </button>
+            </div>
+
+            {activeReferenceBanks.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', background: '#F8FAFC', borderRadius: '0.75rem', border: '1px dashed #CBD5E1' }}>
+                <FileSpreadsheet size={36} color="#94A3B8" style={{ margin: '0 auto 0.75rem' }} />
+                <p style={{ margin: 0, fontWeight: 700, color: '#64748B', fontSize: '0.9rem' }}>
+                  {language === 'ar' ? 'لا توجد أسئلة مرجعية معتمدة مستوردة حتى الآن. اضغط على الزر أعلاه لاستيراد أول ملف Excel.' : 'No reference questions imported yet. Click button above to import your first unit.'}
+                </p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: '#F1F5F9', borderBottom: '2px solid #CBD5E1', textAlign: language === 'ar' ? 'right' : 'left' }}>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{language === 'ar' ? 'الصف الدراسي' : 'Grade'}</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{language === 'ar' ? 'المادة الدراسية' : 'Subject'}</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{language === 'ar' ? 'الوحدة المنهجية' : 'Unit'}</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{language === 'ar' ? 'عدد الأسئلة' : 'Questions'}</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 800 }}>{language === 'ar' ? 'إجراءات' : 'Actions'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeReferenceBanks.map(rb => (
+                      <tr key={rb.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#1E293B' }}>{rb.grade_name_ar}</td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>{rb.subject_name_ar}</td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span style={{ fontWeight: 800, color: '#1E40AF' }}>
+                            {rb.chapter_title_ar || `الوحدة ${rb.chapter_number || 1}`}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span className="badge" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 900 }}>
+                            {rb.questions_count} {language === 'ar' ? 'سؤال معتمد' : 'questions'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span className="badge" style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 800 }}>
+                            ✓ {language === 'ar' ? 'مفعل للامتحانات الذكية' : 'Active for AI'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRefBank(rb.id)}
+                            className="btn btn-outline"
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', color: '#DC2626', borderColor: '#FCA5A5' }}
+                          >
+                            <Trash2 size={14} />
+                            <span>{language === 'ar' ? 'حذف المرجع' : 'Delete'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+                    {/* Existing Books Explorer & Management */}
           <div className="card" style={{ padding: '1.75rem', borderRadius: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
               <div>
@@ -4102,7 +4371,350 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Reference Import Summary Modal */}
+      {/* Dedicated Admin Reference Questions Import Modal */}
+      {isRefExamModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: '1.25rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '1.25rem',
+            width: '100%',
+            maxWidth: '900px',
+            maxHeight: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              color: '#FFFFFF',
+              padding: '1.25rem 1.75rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <FileSpreadsheet size={24} />
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: '#FFFFFF' }}>
+                  {language === 'ar' ? 'استيراد الأسئلة المرجعية للامتحانات الذكية (Excel)' : 'Import Exam Reference Questions (Excel)'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRefExamModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', fontSize: '1.25rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '1.75rem', overflowY: 'auto', flex: 1 }}>
+              {/* Instructions */}
+              <div style={{ background: '#ECFDF5', border: '1.5px solid #A7F3D0', padding: '1rem', borderRadius: '0.75rem', marginBottom: '1.5rem', color: '#065F46', fontSize: '0.875rem', lineHeight: 1.6 }}>
+                <strong>📌 {language === 'ar' ? 'تعليمات هامة للاستيراد:' : 'Important Instructions:'}</strong>
+                <ul style={{ margin: '0.35rem 0 0', paddingInlineStart: '1.25rem' }}>
+                  <li>{language === 'ar' ? 'حدد الصف والمادة والوحدة بدقة؛ حيث تعتبر اختياراتك المرجع الحصري المعتمد لربط الأسئلة بالمنهج.' : 'Select Grade, Subject, and Unit authoritatively.'}</li>
+                  <li>{language === 'ar' ? 'تدعم الأداة أسئلة القواعد والمفردات، وأسئلة الفهم القرائي مع النص الكامل للقطعة دون أي اقتطاع.' : 'Supports Grammar, Vocabulary, and Reading Comprehension with full passage.'}</li>
+                  <li>{language === 'ar' ? 'الأسئلة المستوردة لا تظهر كامتحانات ثابتة، بل تصبح المصدر الأول المعتمد عند طلب الطلاب للامتحان الذكي.' : 'Questions power AI exams directly and will NOT appear in static listings.'}</li>
+                </ul>
+              </div>
+
+              {refExamError && (
+                <div style={{ background: '#FEF2F2', border: '1.5px solid #F87171', color: '#991B1B', padding: '0.85rem 1.25rem', borderRadius: '0.75rem', marginBottom: '1.25rem', fontSize: '0.875rem', fontWeight: 700 }}>
+                  ⚠️ {refExamError}
+                </div>
+              )}
+
+              {/* Form Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                {/* 1. Academic Grade */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 800, marginBottom: '0.35rem', color: '#1E1B4B' }}>
+                    {language === 'ar' ? 'الصف الدراسي: *' : 'Grade: *'}
+                  </label>
+                  <select
+                    value={refExamGradeId}
+                    onChange={(e) => setRefExamGradeId(e.target.value)}
+                    style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.875rem' }}
+                  >
+                    <option value="">{language === 'ar' ? '-- اختر الصف الدراسي --' : '-- Select Grade --'}</option>
+                    {grades.map(g => (
+                      <option key={g.id} value={g.id}>{g.name_ar}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. Subject */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 800, marginBottom: '0.35rem', color: '#1E1B4B' }}>
+                    {language === 'ar' ? 'المادة الدراسية: *' : 'Subject: *'}
+                  </label>
+                  <select
+                    value={refExamSubjectId}
+                    onChange={(e) => setRefExamSubjectId(e.target.value)}
+                    disabled={!refExamGradeId}
+                    style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.875rem' }}
+                  >
+                    <option value="">{language === 'ar' ? '-- اختر المادة --' : '-- Select Subject --'}</option>
+                    {refExamSubjects.map(s => (
+                      <option key={s.id} value={s.id}>{s.name_ar}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Unit / Chapter */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 800, marginBottom: '0.35rem', color: '#1E1B4B' }}>
+                    {language === 'ar' ? 'الوحدة المنهجية: *' : 'Unit / Chapter: *'}
+                  </label>
+                  <select
+                    value={refExamChapterId}
+                    onChange={(e) => setRefExamChapterId(e.target.value)}
+                    disabled={!refExamSubjectId || refExamChapters.length === 0}
+                    style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.875rem' }}
+                  >
+                    <option value="">{language === 'ar' ? '-- اختر الوحدة --' : '-- Select Unit --'}</option>
+                    {refExamChapters.map(ch => (
+                      <option key={ch.id} value={ch.id}>
+                        {language === 'ar' ? `الوحدة ${ch.chapter_number}: ${ch.title_ar}` : `Unit ${ch.chapter_number}: ${ch.title_en || ch.title_ar}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 4. File Picker & Download Template Button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', background: '#F8FAFC', padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid #E2E8F0' }}>
+                <div style={{ flex: 1, minWidth: '240px' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.35rem', color: '#1E1B4B' }}>
+                    {language === 'ar' ? 'ملف مصنف الأسئلة (.xlsx, .xls): *' : 'Reference Excel File (.xlsx, .xls): *'}
+                  </label>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setRefExamFile(e.target.files[0]);
+                        setRefExamPreview(null);
+                      }
+                    }}
+                    style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1.5px solid var(--border-light)', fontSize: '0.85rem' }}
+                  />
+                  {refExamFile && (
+                    <div style={{ fontSize: '0.78rem', color: '#059669', marginTop: '0.35rem', fontWeight: 700 }}>
+                      ✓ {refExamFile.name} ({(refExamFile.size / 1024).toFixed(1)} KB)
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(apiUrl('/api/admin/reference-questions/template'), {
+                          headers: { Authorization: `Bearer ${token}` }
+                        });
+                        const blob = await res.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'Farabi_Reference_Questions_Template.xlsx';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                      } catch (err: any) {
+                        showAlert(err.message, 'error');
+                      }
+                    }}
+                    className="btn btn-outline"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.825rem', fontWeight: 800, borderColor: '#059669', color: '#059669', marginTop: '1.4rem' }}
+                  >
+                    <Download size={15} />
+                    <span>{language === 'ar' ? 'تحميل نموذج الأسئلة المعتمد' : 'Download Sample Template'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons: Preview */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <button
+                  type="button"
+                  onClick={handlePreviewRefExam}
+                  disabled={refExamIsPreviewing || !refExamFile || !refExamGradeId || !refExamSubjectId || !refExamChapterId}
+                  className="btn btn-primary"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    fontSize: '0.95rem',
+                    fontWeight: 900,
+                    background: refExamIsPreviewing ? '#94A3B8' : '#2563EB',
+                    borderColor: '#2563EB',
+                    cursor: refExamIsPreviewing || !refExamFile ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {refExamIsPreviewing
+                    ? (language === 'ar' ? '⏳ جاري فحص ومطابقة الأسئلة...' : 'Validating & Previewing...')
+                    : (language === 'ar' ? '🔍 فحص ومعاينة الأسئلة قبل الاستيراد' : '🔍 Preview & Validate Questions')}
+                </button>
+              </div>
+
+              {/* Preview Results Section */}
+              {refExamPreview && (
+                <div style={{ borderTop: '2px solid #E2E8F0', paddingTop: '1.5rem' }}>
+                  {/* Summary Counters */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                    <div style={{ background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '0.75rem', padding: '0.75rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1E293B' }}>{refExamPreview.totalRows}</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748B' }}>{language === 'ar' ? 'إجمالي الأسطر' : 'Total Rows'}</div>
+                    </div>
+                    <div style={{ background: '#F0FDF4', border: '1.5px solid #BBF7D0', borderRadius: '0.75rem', padding: '0.75rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#166534' }}>{refExamPreview.validCount}</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#15803D' }}>{language === 'ar' ? 'أسئلة صالحة' : 'Valid Questions'}</div>
+                    </div>
+                    <div style={{ background: refExamPreview.invalidCount > 0 ? '#FEF2F2' : '#F8FAFC', border: '1.5px solid #FECACA', borderRadius: '0.75rem', padding: '0.75rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: refExamPreview.invalidCount > 0 ? '#991B1B' : '#64748B' }}>{refExamPreview.invalidCount}</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: refExamPreview.invalidCount > 0 ? '#B91C1C' : '#64748B' }}>{language === 'ar' ? 'أسئلة غير صالحة' : 'Invalid Rows'}</div>
+                    </div>
+                    <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: '0.75rem', padding: '0.75rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1E40AF' }}>{refExamPreview.duplicatesCount}</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1D4ED8' }}>{language === 'ar' ? 'مكررات سابقة' : 'Duplicates'}</div>
+                    </div>
+                  </div>
+
+                  {/* Invalid Rows Warning Box */}
+                  {refExamPreview.invalidRows && refExamPreview.invalidRows.length > 0 && (
+                    <div style={{ background: '#FEF2F2', border: '1.5px solid #F87171', borderRadius: '0.75rem', padding: '1rem', marginBottom: '1.25rem' }}>
+                      <div style={{ fontWeight: 800, color: '#991B1B', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                        ⚠️ {language === 'ar' ? 'تنبيهات وأخطاء في بعض أسطر الملف (لن يتم استيرادها):' : 'Validation errors in some rows:'}
+                      </div>
+                      <div style={{ maxHeight: '120px', overflowY: 'auto', fontSize: '0.8rem', color: '#7F1D1D' }}>
+                        {refExamPreview.invalidRows.map((inv: any, idx: number) => (
+                          <div key={idx} style={{ marginBottom: '0.35rem' }}>
+                            • <strong>{language === 'ar' ? `السطر ${inv.rowNumber}` : `Row ${inv.rowNumber}`}:</strong> {inv.reason}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Questions Preview Table */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: '0.75rem', color: '#1E293B' }}>
+                      {language === 'ar' ? `معاينة الأسئلة الصالحة (${refExamPreview.questions?.length || 0} أسئلة):` : `Valid Questions Preview (${refExamPreview.questions?.length || 0}):`}
+                    </div>
+                    <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1.5px solid #E2E8F0', borderRadius: '0.75rem' }}>
+                      {refExamPreview.questions?.map((q: any, qIdx: number) => (
+                        <div key={qIdx} style={{ padding: '1rem', borderBottom: '1px solid #E2E8F0', background: qIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 900, color: '#059669', fontSize: '0.85rem' }}>#{qIdx + 1}</span>
+                            {q.question_type && (
+                              <span className="badge" style={{ background: '#EEF2FF', color: '#4338CA', fontSize: '0.75rem', fontWeight: 800 }}>
+                                {q.question_type}
+                              </span>
+                            )}
+                            <span className="badge" style={{ background: '#F1F5F9', color: '#475569', fontSize: '0.75rem' }}>
+                              📖 {language === 'ar' ? `ص ${q.page_reference}` : `p. ${q.page_reference}`}
+                            </span>
+                          </div>
+
+                          {/* Passage if present */}
+                          {q.passage_text && (
+                            <div style={{ background: '#EFF6FF', borderLeft: '4px solid #2563EB', padding: '0.75rem 1rem', borderRadius: '0.5rem', marginBottom: '0.75rem', fontSize: '0.85rem', color: '#1E3A8A', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                              <strong>📖 {language === 'ar' ? 'قطعة القراءة:' : 'Passage:'}</strong> {q.passage_text}
+                            </div>
+                          )}
+
+                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#1E293B', marginBottom: '0.6rem' }}>
+                            {q.question_text}
+                          </div>
+
+                          {/* Options */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.4rem' }}>
+                            {q.options?.map((opt: any, oIdx: number) => (
+                              <div
+                                key={oIdx}
+                                style={{
+                                  padding: '0.4rem 0.6rem',
+                                  borderRadius: '0.4rem',
+                                  fontSize: '0.8rem',
+                                  fontWeight: opt.is_correct ? 800 : 500,
+                                  background: opt.is_correct ? '#DCFCE7' : '#FFFFFF',
+                                  border: opt.is_correct ? '1.5px solid #22C55E' : '1px solid #E2E8F0',
+                                  color: opt.is_correct ? '#15803D' : '#334155',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem'
+                                }}
+                              >
+                                <span>{opt.is_correct ? '✓' : '○'}</span>
+                                <span>{opt.option_text}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Final Confirm Button */}
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleConfirmRefExamImport}
+                      disabled={refExamIsImporting || !refExamPreview.validCount}
+                      className="btn btn-primary"
+                      style={{
+                        width: '100%',
+                        padding: '0.85rem',
+                        fontSize: '1rem',
+                        fontWeight: 900,
+                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                        borderColor: '#059669',
+                        boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)',
+                        cursor: refExamIsImporting ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {refExamIsImporting
+                        ? (language === 'ar' ? '⏳ جاري الحفظ والاعتماد في بنك المراجع...' : 'Saving to Reference Bank...')
+                        : (language === 'ar' ? `📥 تأكيد واعتماد ${refExamPreview.validCount} سؤال في بنك الامتحانات الذكية` : `📥 Confirm & Save ${refExamPreview.validCount} Reference Questions`)}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ background: '#F8FAFC', borderTop: '1px solid #E2E8F0', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setIsRefExamModalOpen(false)}
+                style={{ padding: '0.5rem 1.25rem', fontWeight: 700 }}
+              >
+                {language === 'ar' ? 'إلغاء' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+            {/* Reference Import Summary Modal */}
       {showRefSummaryModal && refImportSummary && (
         <div style={{
           position: 'fixed',

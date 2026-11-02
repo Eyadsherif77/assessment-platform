@@ -343,7 +343,11 @@ class DatabaseManager {
             'ALTER TABLE teacher_profiles ADD COLUMN assigned_grades TEXT NULL',
             'ALTER TABLE teacher_profiles ADD COLUMN teaching_assignments TEXT NULL',
             'ALTER TABLE users ADD COLUMN initial_password VARCHAR(255) NULL',
-            'ALTER TABLE student_profiles ADD COLUMN max_devices INT DEFAULT 2'
+            'ALTER TABLE student_profiles ADD COLUMN max_devices INT DEFAULT 2',
+            'ALTER TABLE question_bank_items ADD COLUMN passage_text TEXT NULL',
+            'ALTER TABLE question_bank_items ADD COLUMN is_reference INT DEFAULT 0',
+            'ALTER TABLE exam_questions ADD COLUMN passage_text TEXT NULL',
+            'ALTER TABLE exams ADD COLUMN is_ai_reference TINYINT DEFAULT 0'
           ];
           for (const colSql of hierarchyUserCols) {
             try {

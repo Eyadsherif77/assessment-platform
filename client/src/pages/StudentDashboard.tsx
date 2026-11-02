@@ -1603,12 +1603,59 @@ export const StudentDashboard: React.FC = () => {
                             <span className="badge badge-primary">
                               {isAr ? `مستوى الصعوبة: ${currentQ.difficulty || 'متوسط'}` : `Difficulty: ${currentQ.difficulty || 'Medium'}`}
                             </span>
+                            {currentQ.question_type && (
+                              <span className="badge" style={{ background: '#EEF2FF', color: '#4338CA', fontWeight: 700 }}>
+                                🏷️ {currentQ.question_type}
+                              </span>
+                            )}
                             {currentQ.source_page && (
                               <span className="badge" style={{ background: '#F1F5F9', color: '#475569' }}>
                                 📖 {isAr ? `صفحة ${currentQ.source_page}` : `Page ${currentQ.source_page}`}
                               </span>
                             )}
                           </div>
+
+                          {/* Reading Comprehension Passage */}
+                          {currentQ.passage_text && (
+                            <div style={{
+                              background: '#F8FAFC',
+                              borderRadius: 'var(--radius-lg)',
+                              border: '1.5px solid #CBD5E1',
+                              borderRight: isQEn ? '1.5px solid #CBD5E1' : '5px solid #2563EB',
+                              borderLeft: isQEn ? '5px solid #2563EB' : '1.5px solid #CBD5E1',
+                              padding: '1.25rem 1.5rem',
+                              marginBottom: '1.5rem',
+                              boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
+                            }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                color: '#1E3A8A',
+                                fontWeight: 800,
+                                fontSize: '0.95rem',
+                                marginBottom: '0.75rem',
+                                borderBottom: '1px solid #E2E8F0',
+                                paddingBottom: '0.5rem'
+                              }}>
+                                <span style={{ fontSize: '1.2rem' }}>📖</span>
+                                <span>{isQEn ? 'Reading Comprehension Passage (Read carefully to answer the question):' : 'قطعة الفهم القرائي (اقرأ النص التالي بعناية للإجابة على السؤال):'}</span>
+                              </div>
+                              <div style={{
+                                fontSize: '1.02rem',
+                                lineHeight: '1.85',
+                                color: '#1E293B',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                direction: isQEn ? 'ltr' : 'rtl',
+                                textAlign: isQEn ? 'left' : 'right',
+                                fontFamily: isQEn ? 'inherit' : 'var(--font-arabic, inherit)',
+                                fontWeight: 500
+                              }}>
+                                {currentQ.passage_text}
+                              </div>
+                            </div>
+                          )}
 
                           <h3 style={{
                             fontSize: '1.2rem',
@@ -2556,6 +2603,26 @@ export const StudentDashboard: React.FC = () => {
                           direction: isQEn ? 'ltr' : 'rtl',
                           textAlign: isQEn ? 'left' : 'right'
                         }}>
+                          {q.passage_text && (
+                            <div style={{
+                              background: '#F8FAFC',
+                              borderRadius: 'var(--radius-md)',
+                              border: '1.5px solid #CBD5E1',
+                              borderRight: isQEn ? '1.5px solid #CBD5E1' : '4px solid #2563EB',
+                              borderLeft: isQEn ? '4px solid #2563EB' : '1.5px solid #CBD5E1',
+                              padding: '1rem 1.25rem',
+                              marginBottom: '1rem',
+                              whiteSpace: 'pre-wrap',
+                              lineHeight: '1.75',
+                              fontSize: '0.95rem',
+                              color: '#1E293B'
+                            }}>
+                              <div style={{ fontWeight: 800, color: '#1E3A8A', fontSize: '0.88rem', marginBottom: '0.4rem' }}>
+                                📖 {isQEn ? 'Reading Passage:' : 'نص قطعة القراءة:'}
+                              </div>
+                              {q.passage_text}
+                            </div>
+                          )}
                           <div style={{ fontWeight: 800, fontSize: '1rem', marginBottom: '0.75rem' }}>
                             {idx + 1}. {q.question_text} ({q.points} {isAr ? 'نقاط' : 'pts'})
                           </div>

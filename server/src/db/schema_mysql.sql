@@ -207,6 +207,8 @@ CREATE TABLE IF NOT EXISTS question_bank_items (
     difficulty VARCHAR(32) DEFAULT 'MEDIUM',
     bloom_level VARCHAR(64) DEFAULT 'COMPREHENSION',
     explanation TEXT,
+    passage_text TEXT,
+    is_reference INT DEFAULT 0,
     source_chunk_id VARCHAR(64),
     page_reference INT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -255,6 +257,7 @@ CREATE TABLE IF NOT EXISTS exam_questions (
     question_type VARCHAR(64) DEFAULT 'MULTIPLE_CHOICE',
     points INT DEFAULT 1,
     page_reference VARCHAR(64),
+    passage_text TEXT,
     explanation TEXT,
     order_index INT DEFAULT 1,
     FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
