@@ -1,11 +1,11 @@
 {
   "version": 2,
-
   "services": {
     "web": {
       "root": ".",
       "entrypoint": "dist/server.js",
-      "buildCommand": "npm run build"
+      "buildCommand": "npm run build",
+      "maxDuration": 60
     }
   },
   "rewrites": [

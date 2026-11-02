@@ -711,6 +711,22 @@ export class ReferenceImportService {
     const invalidRows: Array<{ rowNumber: number; questionText: string; reason: string }> = [];
     let duplicatesCount = 0;
 
+    // High performance bulk pre-fetch of existing question texts (avoids N sequential roundtrips)
+    const existingTexts = new Set<string>();
+    try {
+      const existingRes = await db.query(
+        chapterId
+          ? `SELECT question_text FROM question_bank_items WHERE chapter_id = $1`
+          : `SELECT question_text FROM question_bank_items LIMIT 5000`,
+        chapterId ? [chapterId] : []
+      );
+      for (const row of existingRes.rows) {
+        if (row.question_text) {
+          existingTexts.add(row.question_text.trim().toLowerCase());
+        }
+      }
+    } catch (_) {}
+
     for (const q of parsedRows) {
       if (!q.isValid) {
         invalidRows.push({
@@ -721,15 +737,7 @@ export class ReferenceImportService {
         continue;
       }
 
-      // Check duplicate against existing question items
-      const dupRes = await db.query(
-        chapterId
-          ? `SELECT id FROM question_bank_items WHERE (chapter_id = $1 AND question_text = $2) LIMIT 1`
-          : `SELECT id FROM question_bank_items WHERE question_text = $1 LIMIT 1`,
-        chapterId ? [chapterId, q.questionText] : [q.questionText]
-      );
-
-      if (dupRes.rows.length > 0) {
+      if (existingTexts.has(q.questionText.trim().toLowerCase())) {
         duplicatesCount++;
       }
 
@@ -1401,11 +1409,16 @@ export class ReferenceImportService {
         ]
       );
 
-      for (const opt of q.options) {
+      if (q.options && q.options.length > 0) {
+        const optValues: any[] = [];
+        const optClauses = q.options.map((opt, idx) => {
+          const offset = idx * 4;
+          optValues.push(uuidv4(), questionItemId, opt.text, opt.is_correct ? 1 : 0);
+          return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`;
+        });
         await db.query(
-          `INSERT INTO question_bank_options (id, question_item_id, option_text, is_correct)
-           VALUES ($1, $2, $3, $4)`,
-          [uuidv4(), questionItemId, opt.text, opt.is_correct ? 1 : 0]
+          `INSERT INTO question_bank_options (id, question_item_id, option_text, is_correct) VALUES ${optClauses.join(', ')}`,
+          optValues
         );
       }
 

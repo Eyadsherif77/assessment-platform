@@ -242,8 +242,26 @@ export const AdminDashboard: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
         body: formData
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل فحص ومعاينة الأسئلة');
+      let data: any = null;
+      const rawText = await res.text();
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        if (res.status === 504 || rawText.includes('504') || rawText.includes('FUNCTION_INVOCATION_TIMEOUT') || rawText.includes('TIMEOUT')) {
+          throw new Error(language === 'ar'
+            ? 'استغرقت معالجة الملف وقتاً طويلاً من الخادم (504 Timeout). يرجى التأكد من الملف والمحاولة مجدداً.'
+            : 'Processing took too long (504 Timeout). Please try again.');
+        }
+        if (res.status === 413 || rawText.includes('413')) {
+          throw new Error(language === 'ar'
+            ? 'حجم الملف المرفوع أكبر من الحد المسموح به.'
+            : 'Uploaded file exceeds size limits.');
+        }
+        throw new Error(language === 'ar'
+          ? `خطأ من الخادم (رمز ${res.status}): ${rawText.slice(0, 100)}`
+          : `Server error (${res.status}): ${rawText.slice(0, 100)}`);
+      }
+      if (!res.ok) throw new Error(data?.error || (language === 'ar' ? 'فشل فحص ومعاينة الأسئلة' : 'Failed to preview questions'));
       setRefExamPreview(data);
     } catch (err: any) {
       setRefExamError(err.message || 'حدث خطأ أثناء فحص الملف');
@@ -268,8 +286,26 @@ export const AdminDashboard: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
         body: formData
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل استيراد الأسئلة المرجعية');
+      let data: any = null;
+      const rawText = await res.text();
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        if (res.status === 504 || rawText.includes('504') || rawText.includes('FUNCTION_INVOCATION_TIMEOUT') || rawText.includes('TIMEOUT')) {
+          throw new Error(language === 'ar'
+            ? 'استغرق استيراد الأسئلة وقتاً طويلاً من الخادم (504 Timeout). يرجى المحاولة مجدداً.'
+            : 'Import operation timed out (504 Timeout). Please try again.');
+        }
+        if (res.status === 413 || rawText.includes('413')) {
+          throw new Error(language === 'ar'
+            ? 'حجم الملف المرفوع أكبر من الحد المسموح به.'
+            : 'Uploaded file exceeds size limits.');
+        }
+        throw new Error(language === 'ar'
+          ? `خطأ من الخادم (رمز ${res.status}): ${rawText.slice(0, 100)}`
+          : `Server error (${res.status}): ${rawText.slice(0, 100)}`);
+      }
+      if (!res.ok) throw new Error(data?.error || (language === 'ar' ? 'فشل استيراد الأسئلة المرجعية' : 'Failed to import reference questions'));
 
       showAlert(
         language === 'ar'
