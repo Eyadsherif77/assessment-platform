@@ -1104,13 +1104,22 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
       throw evalErr;
     }
 
-    // If reference exam or registered attempt, update exam_attempts record to COMPLETED
+    // If reference exam or registered attempt, update exam_attempts record to COMPLETED with canonical earned marks and total possible points
     const nowIso = new Date().toISOString();
+    const resolvedScore = typeof report.score === 'number' ? report.score : (report.provisional_score ?? 0);
+    const resolvedTotal = typeof report.max_score === 'number' && report.max_score > 0
+      ? report.max_score
+      : (typeof report.provisional_max_score === 'number' && report.provisional_max_score > 0
+        ? report.provisional_max_score
+        : (Array.isArray(authoritativeQuestions) && authoritativeQuestions.length > 0
+          ? authoritativeQuestions.length
+          : (Array.isArray(payload.question_ids) && payload.question_ids.length > 0 ? payload.question_ids.length : 5)));
+
     await db.query(
       `UPDATE exam_attempts
-       SET score = $1, status = 'COMPLETED', completed_at = $2
-       WHERE (id = $3 OR (exam_id = $4 AND student_id = $5)) AND status = 'IN_PROGRESS'`,
-      [report.score || report.provisional_score || 0, nowIso, payload.attempt_id, payload.cached_exam_id, req.user!.id]
+       SET score = $1, total_points = $2, status = 'COMPLETED', completed_at = $3
+       WHERE (id = $4 OR (exam_id = $5 AND student_id = $6)) AND status = 'IN_PROGRESS'`,
+      [resolvedScore, resolvedTotal, nowIso, payload.attempt_id, payload.cached_exam_id, req.user!.id]
     ).catch(() => {});
 
     // Mark student exam assignment as COMPLETED

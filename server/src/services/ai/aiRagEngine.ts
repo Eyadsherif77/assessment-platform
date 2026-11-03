@@ -3239,8 +3239,8 @@ ${contextText}
         bookId,
         chapterId,
         subjectId,
-        authoritativeMaxScore > 0 ? authoritativeScore : 0,
-        authoritativeMaxScore,
+        authoritativeMaxScore > 0 ? authoritativeScore : (provisionalScore ?? 0),
+        authoritativeMaxScore > 0 ? authoritativeMaxScore : (provisionalMaxScore || (Array.isArray(questions) && questions.length > 0 ? questions.length : 5)),
         JSON.stringify(questions),
         JSON.stringify(studentAnswersList),
         JSON.stringify(fullReport)
