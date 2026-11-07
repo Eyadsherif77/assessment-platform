@@ -24,7 +24,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.PORT || 5000;
 
 // Uploads directory safe for serverless /tmp and multi-root execution
 const uploadsDir = process.env.VERCEL
@@ -163,8 +163,8 @@ async function startServer() {
       console.warn('Initial DB connect/seed warning:', dbErr);
     }
 
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✨ Server running on 0.0.0.0:${PORT}`);
+    app.listen(PORT, () => {
+      console.log(`✨ Server running on port ${PORT}`);
       console.log(`📡 Health check ready`);
     });
   } catch (err) {
@@ -172,6 +172,6 @@ async function startServer() {
   }
 }
 
-if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+if (!process.env.VERCEL) {
   startServer();
 }
