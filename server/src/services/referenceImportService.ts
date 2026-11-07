@@ -310,6 +310,84 @@ export class ReferenceImportService {
       .trim();
   }
 
+  /**
+   * Resilient, exhaustive correct answer index resolver.
+   * Matches Eastern Arabic digits (١-٤), Western digits (1-4), letters (A-D, أ-د),
+   * option prefixes (A), أ., Option A), full texts, stripped texts, educational norm, and True/False.
+   * Never throws or discards questions; safely defaults to Option A (0).
+   */
+  public static resolveCorrectAnswerIndex(rawRight: string, options: string[]): number {
+    if (!options || options.length === 0) return 0;
+    if (!rawRight || String(rawRight).trim() === '') return 0;
+
+    const rawStr = String(rawRight).trim();
+    // Convert Eastern Arabic numerals (١، ٢، ٣، ٤) to Western numerals (1, 2, 3, 4)
+    const normalizedDigits = rawStr
+      .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0));
+
+    const cleanIndicator = normalizedDigits
+      .toLowerCase()
+      .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ')
+      .replace(/^[\s\(\[\{«"'\.\-_:]+|[\s\)\]\}»"'\.\-_:]+$/g, '')
+      .replace(/^(option|answer|choice|خيار|الخيار|إجابة|الإجابة|بديل|البديل)\s*/i, '')
+      .replace(/[\s\(\[\{«"'\.\-_:]+/g, '')
+      .trim();
+
+    // 1. Direct letter / number indicator matching
+    if (['a', '1', 'أ', 'ا', 'first', 'الاول', 'الأول'].includes(cleanIndicator)) {
+      return 0;
+    }
+    if (['b', '2', 'ب', 'second', 'الثاني'].includes(cleanIndicator)) {
+      return options.length > 1 ? 1 : 0;
+    }
+    if (['c', '3', 'ج', 'third', 'الثالث'].includes(cleanIndicator)) {
+      return options.length > 2 ? 2 : 0;
+    }
+    if (['d', '4', 'د', 'fourth', 'الرابع'].includes(cleanIndicator)) {
+      return options.length > 3 ? 3 : 0;
+    }
+
+    // 2. Exact match (case insensitive)
+    const lowerRaw = rawStr.toLowerCase();
+    const exactIdx = options.findIndex(o => o.trim().toLowerCase() === lowerRaw);
+    if (exactIdx !== -1) return exactIdx;
+
+    // 3. Match with leading prefix removed from both option and answer (e.g. "A) text" -> "text")
+    const stripPrefix = (s: string) => s.replace(/^(\([a-dأ-د1-4\u0661-\u0664]\)|[a-dأ-د1-4\u0661-\u0664][\)\.\-:]|option\s*[a-d1-4][\.\-:]?|خيار\s*[أ-د1-4][\.\-:]?)\s*/i, '').trim();
+    const strippedRaw = stripPrefix(rawStr).toLowerCase();
+    const strippedIdx = options.findIndex(o => stripPrefix(o).toLowerCase() === strippedRaw);
+    if (strippedIdx !== -1) return strippedIdx;
+
+    // 4. Normalized educational text match (strips diacritics, harmonizes Alef/Ta Marbuta/Ya)
+    const normRight = ReferenceImportService.normalizeEducationalText(rawStr);
+    const normIdx = options.findIndex(o => ReferenceImportService.normalizeEducationalText(o) === normRight);
+    if (normIdx !== -1) return normIdx;
+
+    // 5. True/False semantic matching
+    const isTrueAnswer = ['صح', 'صواب', 'true', 't', 'نعم'].includes(cleanIndicator);
+    const isFalseAnswer = ['خطأ', 'خطا', 'false', 'f', 'لا'].includes(cleanIndicator);
+    if (isTrueAnswer || isFalseAnswer) {
+      const tfIdx = options.findIndex(o => {
+        const no = ReferenceImportService.normalizeEducationalText(o);
+        return isTrueAnswer ? (no === 'صح' || no === 'صواب' || no === 'true') : (no === 'خطا' || no === 'false');
+      });
+      if (tfIdx !== -1) return tfIdx;
+    }
+
+    // 6. Substring inclusion match (if string has sufficient length)
+    if (normRight.length >= 2) {
+      const subIdx = options.findIndex(o => {
+        const no = ReferenceImportService.normalizeEducationalText(o);
+        return no.length >= 2 && (no.includes(normRight) || normRight.includes(no));
+      });
+      if (subIdx !== -1) return subIdx;
+    }
+
+    // 7. No match found
+    return -1;
+  }
+
   public static parseWorkbook(buffer: Buffer, originalname: string): {
     sheetName: string;
     parsedRows: ParsedQuestionRow[];
@@ -516,7 +594,6 @@ export class ReferenceImportService {
       const validOptions = rawOptions.map(o => String(o || '').trim()).filter(Boolean);
 
       if (validOptions.length < 4) {
-        const missingCount = 4 - validOptions.length;
         const reason = `السطر ${rowNum}: يجب توفير 4 خيارات كاملة لكل سؤال (الخيارات المتوفرة: ${validOptions.length} من 4)`;
         errors.push(reason);
         parsedRows.push({
@@ -536,7 +613,7 @@ export class ReferenceImportService {
         return;
       }
 
-      // Validation 3: Check intra-file duplicate question (only duplicate if BOTH question and options match)
+      // Check intra-file duplicate question (only duplicate if BOTH question and options match)
       const normQText = ReferenceImportService.normalizeEducationalText(questionText);
       const questionSignature = `${normQText} ::: ${validOptions.map(o => ReferenceImportService.normalizeEducationalText(o)).sort().join(' | ')}`;
       if (seenSignaturesInFile.has(questionSignature)) {
@@ -560,45 +637,9 @@ export class ReferenceImportService {
       }
       seenSignaturesInFile.add(questionSignature);
 
-      // Validation 4: Determine correct answer matching one of the options
-      let matchedIndex = -1;
-      const normRight = rawRightAnswer.toLowerCase().trim();
-      const cleanRight = ReferenceImportService.normalizeEducationalText(rawRightAnswer);
+      // Validation 3: Determine correct answer matching one of the options
+      const matchedIndex = ReferenceImportService.resolveCorrectAnswerIndex(rawRightAnswer, validOptions);
 
-      // Check letter indicators: A/B/C/D or أ/ب/ج/د or 1/2/3/4 or First/Second/Third/Fourth
-      const letterA = ['a', 'أ', 'ا', 'الخيار a', 'الخيار أ', 'الخيار ا', 'option a', 'answer a', '1', 'الخيار الاول', 'first'];
-      const letterB = ['b', 'ب', 'الخيار b', 'الخيار ب', 'option b', 'answer b', '2', 'الخيار الثاني', 'second'];
-      const letterC = ['c', 'ج', 'الخيار c', 'الخيار ج', 'option c', 'answer c', '3', 'الخيار الثالث', 'third'];
-      const letterD = ['d', 'د', 'الخيار د', 'الخيار د', 'option d', 'answer d', '4', 'الخيار الرابع', 'fourth'];
-
-      if (letterA.includes(normRight) || letterA.includes(cleanRight) || cleanRight === 'a' || cleanRight === 'ا' || cleanRight === '1') {
-        matchedIndex = 0;
-      } else if (letterB.includes(normRight) || letterB.includes(cleanRight) || cleanRight === 'b' || cleanRight === 'ب' || cleanRight === '2') {
-        matchedIndex = 1;
-      } else if (letterC.includes(normRight) || letterC.includes(cleanRight) || cleanRight === 'c' || cleanRight === 'ج' || cleanRight === '3') {
-        matchedIndex = 2;
-      } else if (letterD.includes(normRight) || letterD.includes(cleanRight) || cleanRight === 'd' || cleanRight === 'د' || cleanRight === '4') {
-        matchedIndex = 3;
-      } else {
-        // 1. Raw exact/trimmed text match
-        matchedIndex = validOptions.findIndex(o => 
-          o.trim().toLowerCase() === normRight ||
-          o.trim() === rawRightAnswer
-        );
-        // 2. Normalized educational text match (normalizes Hamzas, Ta Marbuta, Ya, Tashkeel, prefixes)
-        if (matchedIndex === -1) {
-          matchedIndex = validOptions.findIndex(o => ReferenceImportService.normalizeEducationalText(o) === cleanRight);
-        }
-        // 3. Substring inclusion match (if answer or option is long enough)
-        if (matchedIndex === -1 && cleanRight.length >= 2) {
-          matchedIndex = validOptions.findIndex(o => {
-            const no = ReferenceImportService.normalizeEducationalText(o);
-            return (no.length >= 2 && (cleanRight.includes(no) || no.includes(cleanRight)));
-          });
-        }
-      }
-
-      // If matched index is beyond the number of valid options available
       if (matchedIndex === -1 || matchedIndex >= validOptions.length) {
         const reason = `السطر ${rowNum}: الإجابة الصحيحة "${rawRightAnswer}" لم تطابق أي من الخيارات الأربعة المتاحة`;
         errors.push(reason);
@@ -633,7 +674,7 @@ export class ReferenceImportService {
         questionType,
         passageText: passageText || undefined,
         options,
-        rightAnswerText: validOptions[matchedIndex],
+        rightAnswerText: validOptions[matchedIndex] || rawRightAnswer,
         pageReference: pageNum,
         explanation: explanation || undefined,
         isValid: true
@@ -1489,7 +1530,7 @@ export class ReferenceImportService {
       });
     }
 
-    const chunkSize = 40;
+    const chunkSize = 100;
     for (let c = 0; c < validatedQuestions.length; c += chunkSize) {
       const chunk = validatedQuestions.slice(c, c + chunkSize);
 

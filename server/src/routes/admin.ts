@@ -240,7 +240,7 @@ router.post('/teachers', async (req: AuthenticatedRequest, res) => {
  */
 router.put('/teachers/:id/permissions', async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { permissions, is_active } = req.body;
 
     const teacherCheck = await db.query("SELECT id, permissions FROM users WHERE id = $1 AND role = 'TEACHER'", [id]);
@@ -294,7 +294,7 @@ router.put('/teachers/:id/permissions', async (req: AuthenticatedRequest, res) =
  */
 router.post('/impersonate/teacher/:id', async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const teacherRes = await db.query(
       `SELECT u.id, u.hybrid_id, u.email, u.full_name, u.role, u.permissions,
@@ -464,7 +464,7 @@ router.get('/students', async (req: AuthenticatedRequest, res) => {
  */
 router.get('/students/:id/details', async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const studentRes = await db.query(
       `SELECT u.id, u.email, u.full_name, u.created_at,
@@ -586,7 +586,7 @@ router.get('/students/:id/details', async (req: AuthenticatedRequest, res) => {
  */
 router.post('/impersonate/student/:id', async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const studentRes = await db.query(
       `SELECT u.id, u.email, u.full_name, u.role,
@@ -782,7 +782,7 @@ router.get('/books', async (req: AuthenticatedRequest, res) => {
 
 router.delete('/books/:id', async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     // Verify book exists
     const bookRes = await db.query('SELECT id, file_url FROM books WHERE id = $1', [id]);
@@ -841,7 +841,7 @@ router.delete('/books/:id', async (req: AuthenticatedRequest, res) => {
 
 router.put('/books/:id', async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const {
       title_ar,
       title_en,
@@ -1327,40 +1327,80 @@ router.get('/reference-questions', async (req: AuthenticatedRequest, res) => {
  */
 router.delete('/reference-questions/:id', async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
+    let chapterId: string | null = null;
+    let gradeId: string | null = null;
+    let subjectId: string | null = null;
+    const examIds: string[] = [];
+
+    // 1. Check if id matches an exam
     const examRes = await db.query(`SELECT id, chapter_id, grade_id, subject_id FROM exams WHERE id = $1`, [id]);
-    if (examRes.rows.length === 0) {
+    if (examRes.rows.length > 0) {
+      examIds.push(examRes.rows[0].id);
+      chapterId = examRes.rows[0].chapter_id;
+      gradeId = examRes.rows[0].grade_id;
+      subjectId = examRes.rows[0].subject_id;
+    } else {
+      // 2. Check if id matches a chapter directly
+      const chRes = await db.query(`SELECT id FROM book_chapters WHERE id = $1`, [id]);
+      if (chRes.rows.length > 0) {
+        chapterId = id;
+      }
+    }
+
+    if (!chapterId && examIds.length === 0) {
       return res.status(404).json({ error: 'المرجع المنهجي غير موجود' });
     }
-    const row = examRes.rows[0];
 
-    // 1. Delete all options belonging to reference questions of this chapter
-    if (row.chapter_id) {
+    // 2. If chapterId is known, find all reference exams container for this chapter
+    if (chapterId) {
+      const allRefExams = await db.query(
+        `SELECT id, grade_id, subject_id FROM exams WHERE chapter_id = $1 AND is_ai_reference = 1`,
+        [chapterId]
+      );
+      for (const ex of allRefExams.rows) {
+        if (!examIds.includes(ex.id)) examIds.push(ex.id);
+        if (!gradeId) gradeId = ex.grade_id;
+        if (!subjectId) subjectId = ex.subject_id;
+      }
+
+      // 3. Delete question bank options for this chapter's reference items
       await db.query(`
         DELETE FROM question_bank_options 
         WHERE question_item_id IN (
-          SELECT id FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1
+          SELECT id FROM question_bank_items 
+          WHERE chapter_id = $1 AND (is_reference = 1 OR quarantine_reason = 'VERIFIED:ADMIN_REFERENCE')
         )
-      `, [row.chapter_id]);
+      `, [chapterId]);
 
-      // 2. Delete all reference question items for this chapter
-      await db.query(`DELETE FROM question_bank_items WHERE chapter_id = $1 AND is_reference = 1`, [row.chapter_id]);
+      // 4. Delete reference items from question_bank_items
+      await db.query(
+        `DELETE FROM question_bank_items 
+         WHERE chapter_id = $1 AND (is_reference = 1 OR quarantine_reason = 'VERIFIED:ADMIN_REFERENCE')`,
+        [chapterId]
+      );
 
-      // 3. Invalidate cached AI exams
-      await db.query(`DELETE FROM shared_cached_exams WHERE grade_id = $1 AND subject_id = $2 AND (unit_ids LIKE $3 OR unit_ids = $4)`,
-        [row.grade_id, row.subject_id, `%${row.chapter_id}%`, row.chapter_id]);
+      // 5. Invalidate cached AI exams for this unit
+      if (gradeId && subjectId) {
+        await db.query(
+          `DELETE FROM shared_cached_exams WHERE grade_id = $1 AND subject_id = $2 AND (unit_ids LIKE $3 OR unit_ids = $4)`,
+          [gradeId, subjectId, `%${chapterId}%`, chapterId]
+        );
+      }
     }
 
-    // 4. Delete questions linked to this exam
-    await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [id]);
-
-    // 5. Delete exam submissions if any exist
-    try {
-      await db.query(`DELETE FROM exam_submissions WHERE exam_id = $1`, [id]);
-    } catch (_) {}
-
-    // 6. Delete the reference exam container from exams table
-    await db.query(`DELETE FROM exams WHERE id = $1`, [id]);
+    // 6. Delete exam questions options and questions for each exam container
+    for (const exId of examIds) {
+      await db.query(`
+        DELETE FROM exam_question_options 
+        WHERE question_id IN (SELECT id FROM exam_questions WHERE exam_id = $1)
+      `, [exId]);
+      try {
+        await db.query(`DELETE FROM exam_submissions WHERE exam_id = $1`, [exId]);
+      } catch (_) {}
+      await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [exId]);
+      await db.query(`DELETE FROM exams WHERE id = $1`, [exId]);
+    }
 
     return res.json({ 
       success: true, 

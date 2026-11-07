@@ -189,7 +189,7 @@ export const AdminDashboard: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => []);
         setActiveReferenceBanks(Array.isArray(data) ? data : []);
       }
     } catch (e) {
@@ -206,7 +206,7 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     if (refExamGradeId) {
       fetch(apiUrl(`/api/meta/grades/${refExamGradeId}/subjects`))
-        .then(r => r.json())
+        .then(r => r.json().catch(() => []))
         .then(data => { if (Array.isArray(data)) setRefExamSubjects(data); })
         .catch(console.error);
     } else {
@@ -224,7 +224,7 @@ export const AdminDashboard: React.FC = () => {
         fetch(apiUrl(`/api/books/${b.id}/chapters`), {
           headers: { Authorization: `Bearer ${token}` }
         })
-          .then(r => r.json())
+          .then(r => r.json().catch(() => []))
           .then(data => { if (Array.isArray(data)) setRefExamChapters(data); })
           .catch(console.error);
       } else {
@@ -351,7 +351,7 @@ export const AdminDashboard: React.FC = () => {
         showAlert(language === 'ar' ? 'تم حذف المرجع المنهجي وكافة أسئلته وخياراته بالكامل من قاعدة البيانات بنجاح' : 'Reference and all its questions deleted successfully from database', 'success');
         fetchActiveReferenceBanks();
       } else {
-        const d = await res.json();
+        const d = await res.json().catch(() => ({}));
         showAlert(d.error || 'فشل الحذف', 'error');
       }
     } catch (err: any) {

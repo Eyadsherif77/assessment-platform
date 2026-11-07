@@ -172,6 +172,9 @@ async function startServer() {
   }
 }
 
-if (!process.env.VERCEL) {
+const isDirectExecution = Boolean(process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]));
+const isServiceOrStandalone = isDirectExecution || Boolean(process.env.PORT) || (!process.env.VERCEL && process.env.NODE_ENV !== 'test');
+
+if (isServiceOrStandalone && process.env.NODE_ENV !== 'test' && process.env.VERCEL !== 'test') {
   startServer();
 }
