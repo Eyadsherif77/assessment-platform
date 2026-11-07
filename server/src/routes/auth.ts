@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { generateToken, authenticateToken, AuthenticatedRequest } from '../middleware/auth.js';
+import { DeviceLimitService } from '../services/deviceLimitService.js';
 
 const router = Router();
 
@@ -171,11 +172,13 @@ router.post('/register', async (req, res) => {
       [userId, cleanEmail, cleanUsername, passwordHash, displayName, password]
     );
 
+    const globalLimit = await DeviceLimitService.getGlobalDeviceLimit();
+
     await db.query(
       `INSERT INTO student_profiles (
         user_id, full_name, governorate_id, school_name,
-        academic_stage_id, grade_id, school_type, student_code
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        academic_stage_id, grade_id, school_type, student_code, max_devices
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         userId,
         displayName,
@@ -184,7 +187,8 @@ router.post('/register', async (req, res) => {
         resolvedStageId,
         gradeId || null,
         effectiveSchoolType,
-        autoStudentCode
+        autoStudentCode,
+        globalLimit
       ]
     );
 
@@ -194,18 +198,20 @@ router.post('/register', async (req, res) => {
     const initialDeviceId = regDeviceId || ('fp_' + Buffer.from(regClientIp + '_' + (req.headers['user-agent'] || '')).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24));
 
     try {
-      await db.query(
-        `INSERT INTO user_active_devices (id, user_id, device_id, device_name, ip_address, last_active_at)
-         VALUES ($1, $2, $3, $4, $5, datetime('now'))`,
-        [uuidv4(), userId, initialDeviceId, regDeviceName, regClientIp]
-      );
+      await DeviceLimitService.registerOrValidateDevice({
+        userId,
+        deviceId: initialDeviceId,
+        deviceName: regDeviceName,
+        clientIp: regClientIp
+      });
     } catch (_) {}
 
     const token = generateToken({
       id: userId,
       email: cleanEmail,
       role: 'STUDENT',
-      fullName: displayName
+      fullName: displayName,
+      deviceId: initialDeviceId
     });
 
     return res.status(201).json({
@@ -405,6 +411,7 @@ router.post('/login', async (req, res) => {
     }
 
     let profileData: any = null;
+    let effectiveDeviceId: string | undefined = undefined;
     if (user.role === 'STUDENT') {
       const sp = await db.query(
         `SELECT sp.*, s.name_ar as stage_name_ar, s.name_en as stage_name_en,
@@ -417,7 +424,7 @@ router.post('/login', async (req, res) => {
       );
       profileData = sp.rows[0];
 
-      // Student Device Session Limiting (Max devices allowed per student, default 2)
+      // Student Device Session Limiting & Concurrency-Safe Registration
       let rawDeviceId = (req.body?.deviceId || req.body?.device_id || req.headers['x-device-id'] || '').toString().trim();
       const rawDeviceName = (req.body?.deviceName || req.body?.device_name || req.headers['user-agent'] || 'متصفح الطالب').toString().slice(0, 100);
       const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim().slice(0, 45);
@@ -426,43 +433,28 @@ router.post('/login', async (req, res) => {
         // Fallback fingerprint to prevent bypassing device limiting
         rawDeviceId = 'fp_' + Buffer.from(clientIp + '_' + (req.headers['user-agent'] || '')).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 24);
       }
+      effectiveDeviceId = rawDeviceId;
 
-      const allowedMax = profileData?.max_devices ? Math.max(1, Number(profileData.max_devices)) : 2;
-      const currentDevices = await db.query(
-        `SELECT id, device_id, device_name, ip_address, last_active_at FROM user_active_devices WHERE user_id = $1`,
-        [user.id]
-      );
+      const deviceRegResult = await DeviceLimitService.registerOrValidateDevice({
+        userId: user.id,
+        deviceId: rawDeviceId,
+        deviceName: rawDeviceName,
+        clientIp
+      });
 
-      const existingDevice = currentDevices.rows.find((d: any) => d.device_id === rawDeviceId);
-      if (existingDevice) {
-        // Update device activity timestamp & IP
-        await db.query(
-          `UPDATE user_active_devices SET last_active_at = datetime('now'), ip_address = $1 WHERE user_id = $2 AND device_id = $3`,
-          [clientIp, user.id, rawDeviceId]
-        );
-      } else {
-        // New device attempting to log in
-        if (currentDevices.rows.length >= allowedMax) {
-          return res.status(403).json({
-            error: `تم بلوغ الحد الأقصى للأجهزة المسموح بها لهذا الحساب (${allowedMax} أجهزة كحد أقصى). يرجى تسجيل الخروج من أحد أجهزتك السابقة أو مراجعة إدارة المنصة لزيادة حد الأجهزة المصرح بها.`,
-            code: 'DEVICE_LIMIT_EXCEEDED',
-            max_devices: allowedMax,
-            current_devices_count: currentDevices.rows.length,
-            active_devices: currentDevices.rows.map((d: any) => ({
-              id: d.id,
-              device_id: d.device_id,
-              device_name: d.device_name,
-              last_active_at: d.last_active_at
-            }))
-          });
-        }
-
-        // Register new active device
-        await db.query(
-          `INSERT INTO user_active_devices (id, user_id, device_id, device_name, ip_address, last_active_at)
-           VALUES ($1, $2, $3, $4, $5, datetime('now'))`,
-          [uuidv4(), user.id, rawDeviceId, rawDeviceName, clientIp]
-        );
+      if (!deviceRegResult.success) {
+        return res.status(403).json({
+          error: deviceRegResult.error,
+          code: 'DEVICE_LIMIT_EXCEEDED',
+          max_devices: deviceRegResult.allowedMax,
+          current_devices_count: deviceRegResult.currentDevicesCount,
+          active_devices: deviceRegResult.activeDevices.map((d: any) => ({
+            id: d.id,
+            device_id: d.device_id,
+            device_name: d.device_name,
+            last_active_at: d.last_active_at
+          }))
+        });
       }
     } else if (user.role === 'TEACHER') {
       const tp = await db.query(
@@ -504,7 +496,8 @@ router.post('/login', async (req, res) => {
       fullName: user.full_name,
       governorateId: user.governorate_id || undefined,
       subjectId: user.subject_id || undefined,
-      permissions: permissionsObj || undefined
+      permissions: permissionsObj || undefined,
+      deviceId: user.role === 'STUDENT' ? effectiveDeviceId : undefined
     });
 
     return res.json({
@@ -676,13 +669,7 @@ router.get('/devices', authenticateToken, async (req: AuthenticatedRequest, res)
       [req.user!.id]
     );
 
-    let maxDevices = 2;
-    if (req.user!.role === 'STUDENT') {
-      const sp = await db.query(`SELECT max_devices FROM student_profiles WHERE user_id = $1`, [req.user!.id]);
-      if (sp.rows[0]?.max_devices) {
-        maxDevices = Number(sp.rows[0].max_devices);
-      }
-    }
+    const maxDevices = await DeviceLimitService.getUserEffectiveLimit(req.user!.id);
 
     return res.json({
       devices: devices.rows,
@@ -690,21 +677,33 @@ router.get('/devices', authenticateToken, async (req: AuthenticatedRequest, res)
       count: devices.rows.length
     });
   } catch (err: any) {
-    return res.status(500).json({ error: 'خطأ في جلب بيانات الأجهزة المسجلة' });
+    return res.status(500).json({ error: 'خطأ في جلب بيانات الأجهزة المسجلة: ' + err.message });
   }
 });
 
 // Logout / Disconnect a device
 router.delete('/devices/:deviceId', authenticateToken, async (req: AuthenticatedRequest, res) => {
   try {
-    const { deviceId } = req.params;
-    await db.query(
-      `DELETE FROM user_active_devices WHERE user_id = $1 AND (device_id = $2 OR id = $2)`,
-      [req.user!.id, deviceId]
-    );
-    return res.json({ message: 'تم إلغاء تفعيل وتسجيل الخروج من الجهاز بنجاح' });
+    const deviceId = String(req.params.deviceId);
+    await DeviceLimitService.revokeDevice(req.user!.id, deviceId);
+    return res.json({ message: 'تم إلغاء تفعيل وتسجيل الخروج من الجهاز بنجاح', success: true });
   } catch (err: any) {
-    return res.status(500).json({ error: 'خطأ في حذف الجهاز' });
+    return res.status(500).json({ error: 'خطأ في حذف الجهاز: ' + err.message });
+  }
+});
+
+// Explicit user logout route (revokes current device session if provided)
+router.post('/logout', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const xDevHeader = req.headers['x-device-id'];
+    const xDevStr = Array.isArray(xDevHeader) ? xDevHeader[0] : (xDevHeader || '');
+    const rawDeviceId = (req.body?.deviceId || req.body?.device_id || req.user?.deviceId || xDevStr || '').toString().trim();
+    if (rawDeviceId) {
+      await DeviceLimitService.revokeDevice(req.user!.id, rawDeviceId);
+    }
+    return res.json({ message: 'تم تسجيل الخروج بنجاح', success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ أثناء تسجيل الخروج: ' + err.message });
   }
 });
 

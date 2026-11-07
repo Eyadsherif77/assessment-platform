@@ -8,6 +8,7 @@ export interface PlatformSettings {
   active_grades: string[] | 'ALL';
   platform_logo: string;
   monthly_exam_limit: number;
+  max_devices_per_user: number;
 }
 
 interface PlatformSettingsContextType {
@@ -18,9 +19,11 @@ interface PlatformSettingsContextType {
   allowSubordinateVisibility: boolean;
   activeGrades: string[] | 'ALL';
   monthlyExamLimit: number;
+  maxDevicesPerUser: number;
   isLoading: boolean;
   refreshSettings: () => Promise<void>;
   updateSettings: (updates: Partial<PlatformSettings>, token?: string) => Promise<boolean>;
+  updateDeviceLimit: (limit: number, token?: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const defaultSettings: PlatformSettings = {
@@ -29,7 +32,8 @@ const defaultSettings: PlatformSettings = {
   allow_subordinate_visibility: true,
   active_grades: 'ALL',
   platform_logo: '/logo.png',
-  monthly_exam_limit: 10
+  monthly_exam_limit: 10,
+  max_devices_per_user: 2
 };
 
 const PlatformSettingsContext = createContext<PlatformSettingsContextType>({
@@ -40,9 +44,11 @@ const PlatformSettingsContext = createContext<PlatformSettingsContextType>({
   allowSubordinateVisibility: true,
   activeGrades: 'ALL',
   monthlyExamLimit: 10,
+  maxDevicesPerUser: 2,
   isLoading: false,
   refreshSettings: async () => {},
-  updateSettings: async () => false
+  updateSettings: async () => false,
+  updateDeviceLimit: async () => ({ success: false, error: 'Not implemented' })
 });
 
 export const PlatformSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -60,7 +66,8 @@ export const PlatformSettingsProvider: React.FC<{ children: React.ReactNode }> =
           allow_subordinate_visibility: data.allow_subordinate_visibility !== false,
           active_grades: data.active_grades || 'ALL',
           platform_logo: data.platform_logo || '/logo.png',
-          monthly_exam_limit: parseInt(data.monthly_exam_limit, 10) || 10
+          monthly_exam_limit: parseInt(data.monthly_exam_limit, 10) || 10,
+          max_devices_per_user: parseInt(data.max_devices_per_user, 10) || 2
         });
       }
     } catch (err) {
@@ -76,7 +83,7 @@ export const PlatformSettingsProvider: React.FC<{ children: React.ReactNode }> =
 
   const updateSettings = async (updates: Partial<PlatformSettings>, token?: string): Promise<boolean> => {
     try {
-      const authToken = token || localStorage.getItem('auth_token');
+      const authToken = token || localStorage.getItem('edu_auth_token') || localStorage.getItem('auth_token');
       if (!authToken) return false;
 
       const res = await fetch(apiUrl('/api/admin/settings'), {
@@ -99,6 +106,31 @@ export const PlatformSettingsProvider: React.FC<{ children: React.ReactNode }> =
     }
   };
 
+  const updateDeviceLimit = async (limit: number, token?: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const authToken = token || localStorage.getItem('edu_auth_token') || localStorage.getItem('auth_token');
+      if (!authToken) return { success: false, error: 'غير مصرح (Missing token)' };
+
+      const res = await fetch(apiUrl('/api/admin/device-limit'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ max_devices_per_user: limit })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        await fetchSettings();
+        return { success: true };
+      }
+      return { success: false, error: data.error || 'فشل تحديث الحد الأقصى للأجهزة' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'خطأ في الاتصال بالسيرفر' };
+    }
+  };
+
   return (
     <PlatformSettingsContext.Provider
       value={{
@@ -109,9 +141,11 @@ export const PlatformSettingsProvider: React.FC<{ children: React.ReactNode }> =
         allowSubordinateVisibility: settings.allow_subordinate_visibility,
         activeGrades: settings.active_grades,
         monthlyExamLimit: settings.monthly_exam_limit,
+        maxDevicesPerUser: settings.max_devices_per_user || 2,
         isLoading,
         refreshSettings: fetchSettings,
-        updateSettings
+        updateSettings,
+        updateDeviceLimit
       }}
     >
       {children}

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations, type Language } from '../i18n/translations';
 import { apiUrl } from '../utils/api';
+import { getDeviceId } from '../utils/device';
 
 export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'CENTRAL_ADMIN' | 'GOVERNORATE_ADMIN' | 'GOVERNORATE_SUPERVISOR' | 'SUPERVISOR';
 
@@ -158,6 +159,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    const currentToken = token || localStorage.getItem('edu_auth_token');
+    const deviceId = getDeviceId();
+    if (currentToken) {
+      try {
+        fetch(apiUrl('/api/auth/logout'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${currentToken}`
+          },
+          body: JSON.stringify({ deviceId })
+        }).catch(() => {});
+      } catch (_) {}
+    }
+
     setToken(null);
     setUser(null);
     setIsImpersonating(false);

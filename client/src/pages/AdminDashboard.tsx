@@ -83,8 +83,22 @@ export const AdminDashboard: React.FC = () => {
     allowSubordinateVisibility,
     activeGrades,
     platformLogo,
-    updateSettings
+    maxDevicesPerUser,
+    updateSettings,
+    updateDeviceLimit
   } = usePlatformSettings();
+
+  // Global Device Limit Setting State
+  const [selectedGlobalLimit, setSelectedGlobalLimit] = useState<number>(maxDevicesPerUser || 2);
+  const [isSavingDeviceLimit, setIsSavingDeviceLimit] = useState(false);
+  const [deviceLimitSaveSuccess, setDeviceLimitSaveSuccess] = useState(false);
+  const [deviceLimitError, setDeviceLimitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (maxDevicesPerUser) {
+      setSelectedGlobalLimit(maxDevicesPerUser);
+    }
+  }, [maxDevicesPerUser]);
 
   const [activeTab, setActiveTab] = useState<'hierarchy' | 'curriculum' | 'settings' | 'teachers' | 'students'>('curriculum');
 
@@ -627,16 +641,49 @@ export const AdminDashboard: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ max_devices: newLimit })
+        body: JSON.stringify({ max_devices: newLimit, maxDevices: newLimit })
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setStudentMaxDevices(newLimit);
         showAlert(language === 'ar' ? `تم تحديث الحد الأقصى للأجهزة إلى ${newLimit}` : `Device limit updated to ${newLimit}`, 'success');
+      } else {
+        showAlert(data.error || (language === 'ar' ? 'فشل تحديث الحد الأقصى للأجهزة' : 'Failed to update device limit'), 'error');
       }
     } catch (err: any) {
       showAlert(err.message, 'error');
     } finally {
       setDeviceActionLoading(false);
+    }
+  };
+
+  const handleSaveGlobalDeviceLimit = async (limitToSave?: number) => {
+    const limit = limitToSave !== undefined ? limitToSave : selectedGlobalLimit;
+    if (![1, 2, 3, 5].includes(limit)) return;
+    setIsSavingDeviceLimit(true);
+    setDeviceLimitError(null);
+    setDeviceLimitSaveSuccess(false);
+    try {
+      const res = await updateDeviceLimit(limit, token || undefined);
+      if (res.success) {
+        setSelectedGlobalLimit(limit);
+        setDeviceLimitSaveSuccess(true);
+        showAlert(
+          language === 'ar'
+            ? `تم حفظ واعتماد الحد الأقصى للأجهزة (${limit} أجهزة لكل مستخدم) بنجاح.`
+            : `Global device limit saved to ${limit} devices per user.`,
+          'success'
+        );
+        setTimeout(() => setDeviceLimitSaveSuccess(false), 3500);
+      } else {
+        setDeviceLimitError(res.error || (language === 'ar' ? 'فشل حفظ حد الأجهزة' : 'Failed to save device limit'));
+        showAlert(res.error || (language === 'ar' ? 'فشل حفظ حد الأجهزة' : 'Failed to save device limit'), 'error');
+      }
+    } catch (err: any) {
+      setDeviceLimitError(err.message || (language === 'ar' ? 'حدث خطأ أثناء الحفظ' : 'An error occurred'));
+      showAlert(err.message || (language === 'ar' ? 'حدث خطأ أثناء الحفظ' : 'An error occurred'), 'error');
+    } finally {
+      setIsSavingDeviceLimit(false);
     }
   };
 
@@ -2750,6 +2797,119 @@ export const AdminDashboard: React.FC = () => {
                     ? '👁️ ' + (language === 'ar' ? 'مسموح برؤية التابعين' : 'Visibility Allowed')
                     : '🔒 ' + (language === 'ar' ? 'محجوبة (المدير العام فقط)' : 'Restricted to Super Admin')}
                 </span>
+              </button>
+            </div>
+          </div>
+
+          {/* 6. Global Device Limit Policy Selector */}
+          <div className="card" style={{ padding: '1.75rem', borderRadius: '1rem', border: '1.5px solid var(--border-light)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div style={{ maxWidth: '650px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Smartphone size={20} color="var(--primary-600)" />
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0 }}>
+                    {language === 'ar' ? 'الحد الأقصى للأجهزة المصرح بها لكل مستخدم' : 'Maximum Devices Allowed Per User'}
+                  </h3>
+                </div>
+                <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  {language === 'ar'
+                    ? 'يحدد الحد الأقصى لعدد الأجهزة النشطة المصرح بها لكل حساب طالب لتسجيل الدخول في نفس الوقت. الأجهزة المسجلة مسبقاً تظل نشطة، ويتم رفض أي جهاز جديد يتجاوز هذا الحد حتى يقوم الطالب أو الإدارة بتسجيل الخروج من أحد أجهزته.'
+                    : 'Controls the global maximum number of simultaneous active devices allowed per student. Previously registered devices remain active, and new devices are rejected once the limit is reached until an old session is revoked or logged out.'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <span style={{
+                  fontSize: '0.825rem',
+                  fontWeight: 900,
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '2rem',
+                  background: '#EEF2FF',
+                  color: '#4F46E5',
+                  border: '1px solid #C7D2FE'
+                }}>
+                  {language === 'ar'
+                    ? `المعتمد حالياً في النظام: ${maxDevicesPerUser} ${maxDevicesPerUser === 1 ? 'جهاز' : 'أجهزة'}`
+                    : `Active in System: ${maxDevicesPerUser} ${maxDevicesPerUser === 1 ? 'device' : 'devices'}`}
+                </span>
+              </div>
+            </div>
+
+            {/* Selector Options Grid: 1, 2, 3, 5 devices */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
+              {[1, 2, 3, 5].map((opt) => {
+                const isSelected = selectedGlobalLimit === opt;
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setSelectedGlobalLimit(opt)}
+                    disabled={isSavingDeviceLimit}
+                    style={{
+                      padding: '1rem',
+                      borderRadius: '0.75rem',
+                      border: isSelected ? '2.5px solid #4F46E5' : '1.5px solid #E2E8F0',
+                      background: isSelected ? '#EEF2FF' : '#F8FAFC',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isSelected ? '0 4px 12px rgba(79, 70, 229, 0.15)' : 'none'
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: isSelected ? '#4F46E5' : '#1E293B' }}>
+                      {opt}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isSelected ? '#4338CA' : '#64748B' }}>
+                      {language === 'ar'
+                        ? (opt === 1 ? 'جهاز واحد' : opt === 2 ? 'جهازان (2)' : opt === 3 ? '3 أجهزة' : '5 أجهزة')
+                        : (opt === 1 ? '1 Device' : `${opt} Devices`)}
+                    </div>
+                    {isSelected && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: 900, color: '#10B981', marginTop: '0.15rem' }}>
+                        ✓ {language === 'ar' ? 'محدد حالياً' : 'Selected'}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Save Action & Status Indicators */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-light)' }}>
+              <div>
+                {deviceLimitSaveSuccess && (
+                  <span style={{ color: '#166534', background: '#DCFCE7', padding: '0.4rem 0.85rem', borderRadius: '0.5rem', fontSize: '0.85rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                    ✓ {language === 'ar' ? 'تم اعتماد وحفظ الحد الأقصى الجديد للأجهزة بنجاح' : 'Device limit successfully saved and enforced'}
+                  </span>
+                )}
+                {deviceLimitError && (
+                  <span style={{ color: '#991B1B', background: '#FEE2E2', padding: '0.4rem 0.85rem', borderRadius: '0.5rem', fontSize: '0.85rem', fontWeight: 800 }}>
+                    ✕ {deviceLimitError}
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSaveGlobalDeviceLimit()}
+                disabled={isSavingDeviceLimit || selectedGlobalLimit === maxDevicesPerUser}
+                className="btn btn-primary"
+                style={{
+                  fontWeight: 800,
+                  padding: '0.65rem 1.5rem',
+                  fontSize: '0.9rem',
+                  opacity: (selectedGlobalLimit === maxDevicesPerUser && !isSavingDeviceLimit) ? 0.75 : 1,
+                  cursor: isSavingDeviceLimit ? 'wait' : (selectedGlobalLimit === maxDevicesPerUser ? 'default' : 'pointer')
+                }}
+              >
+                {isSavingDeviceLimit ? (
+                  <span>{language === 'ar' ? '⏳ جاري الحفظ والاعتماد...' : 'Saving...'}</span>
+                ) : (
+                  <span>💾 {language === 'ar' ? 'حفظ واعتماد حد الأجهزة' : 'Save Device Limit'}</span>
+                )}
               </button>
             </div>
           </div>

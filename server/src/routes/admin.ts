@@ -11,6 +11,7 @@ import path from 'path';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
 import { ReferenceImportService } from '../services/referenceImportService.js';
+import { DeviceLimitService } from '../services/deviceLimitService.js';
 
 const XLSX = (xlsx as any).default || xlsx;
 const excelUpload = multer({
@@ -652,7 +653,8 @@ router.get('/settings', async (req: AuthenticatedRequest, res) => {
       active_grades: 'ALL',
       platform_logo: '/logo.png',
       monthly_exam_limit: 10,
-      allow_subordinate_visibility: true
+      allow_subordinate_visibility: true,
+      max_devices_per_user: await DeviceLimitService.getGlobalDeviceLimit()
     };
 
     for (const r of rows.rows) {
@@ -672,6 +674,8 @@ router.get('/settings', async (req: AuthenticatedRequest, res) => {
         settings.platform_logo = r.setting_value;
       } else if (r.setting_key === 'monthly_exam_limit') {
         settings.monthly_exam_limit = parseInt(r.setting_value, 10) || 10;
+      } else if (r.setting_key === 'max_devices_per_user') {
+        settings.max_devices_per_user = parseInt(r.setting_value, 10) || 2;
       } else {
         settings[r.setting_key] = r.setting_value;
       }
@@ -685,9 +689,18 @@ router.get('/settings', async (req: AuthenticatedRequest, res) => {
 
 router.post('/settings', async (req: AuthenticatedRequest, res) => {
   try {
-    const { active_term, allow_student_registration, allow_subordinate_visibility, active_grades, platform_logo, monthly_exam_limit } = req.body;
+    const { active_term, allow_student_registration, allow_subordinate_visibility, active_grades, platform_logo, monthly_exam_limit, max_devices_per_user } = req.body;
     const now = new Date().toISOString();
     const updatedBy = req.user!.email;
+
+    const rawDevLimit = max_devices_per_user ?? req.body?.maxDevicesPerUser ?? req.body?.max_devices;
+    if (rawDevLimit !== undefined) {
+      const devLim = parseInt(String(rawDevLimit), 10);
+      if (!DeviceLimitService.isValidLimit(devLim)) {
+        return res.status(400).json({ error: 'الحد الأقصى للأجهزة يجب أن يكون رقماً صحيحاً من بين: 1، 2، 3، أو 5 فقط.' });
+      }
+      await DeviceLimitService.setGlobalDeviceLimit(devLim, updatedBy);
+    }
 
     const updates: Array<{ key: string; val: string }> = [];
 
@@ -1023,16 +1036,45 @@ router.get('/students/:userId/devices', async (req: AuthenticatedRequest, res) =
 router.put('/students/:userId/max-devices', async (req: AuthenticatedRequest, res) => {
   try {
     const { userId } = req.params;
-    const { maxDevices } = req.body;
-    const num = parseInt(String(maxDevices), 10);
-    if (isNaN(num) || num < 1 || num > 20) {
-      return res.status(400).json({ error: 'الرجاء إدخال رقم صحيح بين 1 و 20 للأجهزة المسموح بها' });
+    const rawLimit = req.body?.max_devices ?? req.body?.maxDevices ?? req.body?.limit;
+    const num = parseInt(String(rawLimit), 10);
+    if (!DeviceLimitService.isValidLimit(num)) {
+      return res.status(400).json({ error: 'الحد الأقصى للأجهزة يجب أن يكون رقماً صحيحاً من بين: 1، 2، 3، أو 5 فقط.' });
     }
 
     await db.query(`UPDATE student_profiles SET max_devices = $1 WHERE user_id = $2`, [num, userId]);
-    return res.json({ message: `تم تحديث الحد الأقصى للأجهزة إلى (${num}) بنجاح`, max_devices: num });
+    return res.json({ message: `تم تحديث الحد الأقصى للأجهزة إلى (${num}) بنجاح`, max_devices: num, success: true });
   } catch (err: any) {
-    return res.status(500).json({ error: 'فشل تحديث الحد الأقصى للأجهزة' });
+    return res.status(500).json({ error: 'فشل تحديث الحد الأقصى للأجهزة: ' + err.message });
+  }
+});
+
+// Dedicated global device-limit endpoints for the Admin Dashboard
+router.get('/device-limit', async (req: AuthenticatedRequest, res) => {
+  try {
+    const limit = await DeviceLimitService.getGlobalDeviceLimit();
+    return res.json({ max_devices_per_user: limit, success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'خطأ في جلب الحد العام للأجهزة: ' + err.message });
+  }
+});
+
+router.put('/device-limit', async (req: AuthenticatedRequest, res) => {
+  try {
+    const rawLimit = req.body?.max_devices_per_user ?? req.body?.maxDevices ?? req.body?.limit ?? req.body?.max_devices;
+    const num = parseInt(String(rawLimit), 10);
+    if (!DeviceLimitService.isValidLimit(num)) {
+      return res.status(400).json({ error: 'الحد الأقصى للأجهزة يجب أن يكون رقماً صحيحاً من بين: 1، 2، 3، أو 5 فقط.' });
+    }
+
+    const saved = await DeviceLimitService.setGlobalDeviceLimit(num, req.user!.email);
+    return res.json({
+      message: `تم اعتماد وتحديث الحد الأقصى للأجهزة إلى (${saved} أجهزة لكل مستخدم) بنجاح.`,
+      max_devices_per_user: saved,
+      success: true
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'فشل تحديث الحد الأقصى للأجهزة' });
   }
 });
 

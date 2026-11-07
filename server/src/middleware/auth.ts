@@ -14,6 +14,7 @@ export interface AuthUser {
   governorateId?: string;
   subjectId?: string;
   permissions?: Record<string, any>;
+  deviceId?: string;
 }
 
 export interface StudentProfileInfo {
@@ -72,6 +73,20 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
         try {
           req.user.permissions = typeof uRow.permissions === 'string' ? JSON.parse(uRow.permissions) : uRow.permissions;
         } catch (_) {}
+      }
+    }
+
+    // If student token carries a deviceId, ensure this specific device session is still actively registered
+    if (decoded.role === 'STUDENT' && decoded.deviceId) {
+      const devCheck = await db.query(
+        `SELECT id FROM user_active_devices WHERE user_id = $1 AND device_id = $2 LIMIT 1`,
+        [decoded.id, decoded.deviceId]
+      );
+      if (devCheck.rows.length === 0) {
+        return res.status(401).json({
+          error: 'تم تسجيل الخروج من هذا الجهاز أو إلغاء ربطه من قِبل الإدارة. يُرجى تسجيل الدخول مجدداً.',
+          code: 'DEVICE_REVOKED'
+        });
       }
     }
 

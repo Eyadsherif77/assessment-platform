@@ -86,8 +86,20 @@ CREATE TABLE IF NOT EXISTS student_profiles (
     section TEXT,
     school_type TEXT,
     student_code TEXT,
+    max_devices INTEGER DEFAULT 2,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_active_devices (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    device_name TEXT,
+    ip_address TEXT,
+    last_active_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (user_id, device_id)
 );
 
 CREATE TABLE IF NOT EXISTS teacher_profiles (

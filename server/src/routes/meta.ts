@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db/db.js';
+import { DeviceLimitService } from '../services/deviceLimitService.js';
 
 const router = Router();
 
@@ -121,7 +122,8 @@ router.get('/platform-settings', async (req, res) => {
       active_grades: 'ALL',
       platform_logo: '/logo.png',
       monthly_exam_limit: 10,
-      allow_subordinate_visibility: true
+      allow_subordinate_visibility: true,
+      max_devices_per_user: await DeviceLimitService.getGlobalDeviceLimit()
     };
 
     for (const r of rows.rows) {
@@ -141,6 +143,8 @@ router.get('/platform-settings', async (req, res) => {
         settings.platform_logo = r.setting_value;
       } else if (r.setting_key === 'monthly_exam_limit') {
         settings.monthly_exam_limit = parseInt(r.setting_value, 10) || 10;
+      } else if (r.setting_key === 'max_devices_per_user') {
+        settings.max_devices_per_user = parseInt(r.setting_value, 10) || 2;
       } else {
         settings[r.setting_key] = r.setting_value;
       }

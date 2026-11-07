@@ -161,9 +161,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const data = await res.json();
         if (!res.ok) {
           if (data.code === 'DEVICE_LIMIT_EXCEEDED' || data.error?.includes('الحد الأقصى للأجهزة') || data.error === 'DEVICE_LIMIT_EXCEEDED') {
+            const limit = data.max_devices || 2;
             throw new Error(data.error || data.message || (isAr 
-              ? 'عذراً، لقد تجاوزت الحد الأقصى للأجهزة المسموح بها لهذا الحساب (جهازان فقط). يُرجى تسجيل الخروج من جهازك السابق أو مراجعة إدارة المنصة.' 
-              : 'Maximum active devices limit reached (max 2 devices). Please logout from other devices or contact support.'));
+              ? `عذراً، لقد تجاوزت الحد الأقصى للأجهزة المصرح بها لهذا الحساب (${limit} أجهزة كحد أقصى). يُرجى تسجيل الخروج من أحد أجهزتك السابقة أو مراجعة إدارة المنصة.` 
+              : `Maximum active devices limit reached (max ${limit} devices). Please logout from other devices or contact support.`));
           }
           throw new Error(data.error || (isAr ? 'البيانات غير صحيحة' : 'Invalid credentials'));
         }
