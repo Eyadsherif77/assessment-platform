@@ -9,52 +9,7 @@
   },
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "missing": [
-        {
-          "type": "header",
-          "key": "x-matched-path"
-        }
-      ],
-      "destination": {
-        "type": "service",
-        "service": "web"
-      }
-    },
-    {
-      "source": "/uploads/(.*)",
-      "missing": [
-        {
-          "type": "header",
-          "key": "x-matched-path"
-        }
-      ],
-      "destination": {
-        "type": "service",
-        "service": "web"
-      }
-    },
-    {
-      "source": "/health",
-      "missing": [
-        {
-          "type": "header",
-          "key": "x-matched-path"
-        }
-      ],
-      "destination": {
-        "type": "service",
-        "service": "web"
-      }
-    },
-    {
-      "source": "/",
-      "missing": [
-        {
-          "type": "header",
-          "key": "x-matched-path"
-        }
-      ],
+      "source": "/(.*)",
       "destination": {
         "type": "service",
         "service": "web"
