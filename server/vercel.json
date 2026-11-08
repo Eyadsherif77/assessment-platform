@@ -10,14 +10,7 @@
   "rewrites": [
     {
       "source": "/(.*)",
-      "missing": [
-        {
-          "type": "header",
-          "key": "x-matched-path"
-        }
-      ],
       "destination": {
-        "type": "service",
         "service": "web"
       }
     }
