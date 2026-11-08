@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import { waitUntil } from '@vercel/functions';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
 import { jobQueue } from '../services/jobs/jobQueue.js';
@@ -406,9 +407,9 @@ router.post(
         });
       }
 
-      // Async background progression: Launch worker and return 202 immediately to frontend
+      // Async background progression: Launch worker with waitUntil lifecycle preservation and return 202 immediately to frontend
       const targetBookId = resolvedBookId;
-      setImmediate(async () => {
+      const backgroundWorkerPromise = (async () => {
         try {
           const report = await BookIngestionService.ingestTextbook({
             bookId: targetBookId,
@@ -429,7 +430,14 @@ router.post(
         } catch (bgErr: any) {
           console.error(`🚨 [Background Ingestion] Job for book ${targetBookId} notice:`, bgErr.message);
         }
-      });
+      })();
+
+      // Retain execution context in Vercel Serverless environment so background work completes independently of HTTP client
+      try {
+        waitUntil(backgroundWorkerPromise);
+      } catch (_) {
+        // In local/test environments where waitUntil is a no-op, event loop handles the background promise
+      }
 
       return res.status(202).json({
         success: true,

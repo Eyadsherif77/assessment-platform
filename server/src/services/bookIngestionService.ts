@@ -476,8 +476,8 @@ export class BookIngestionService {
       const ocrResults: Record<number, string> = checkpoint.ocrResults || {};
       const failedFatalPages: number[] = [];
 
-      // Concurrency-controlled worker pool for OCR extraction (concurrency 3 for fast throughput)
-      const OCR_CONCURRENCY = 3;
+      // Safe, rate-limit bounded OCR worker pool (sequential concurrency 1 to strictly respect Gemini RPM and prevent circuit breaker trips)
+      const OCR_CONCURRENCY = 1;
       let currentIndex = 0;
 
       const processPage = async (lp: typeof lowTextPages[0]) => {
@@ -568,8 +568,8 @@ export class BookIngestionService {
             await processPage(lp);
             processedCount++;
 
-            // Extend worker lease and save checkpoint periodically
-            if (jobRecord && (processedCount % 3 === 0 || processedCount === lowTextPages.length)) {
+            // Extend worker lease and save durable checkpoint for every processed page
+            if (jobRecord) {
               await DurableIngestionJobService.heartbeat(jobRecord.id, workerId, 180).catch(() => {});
               await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
                 ocrResults,
