@@ -7,10 +7,24 @@
       "buildCommand": "npm run build"
     }
   },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "web"
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "web"
+      }
+    },
+    {
+      "source": "/health",
+      "destination": {
+        "service": "web"
+      }
+    },
+    {
+      "source": "/",
+      "destination": {
+        "service": "web"
+      }
     }
   ]
 }
