@@ -473,18 +473,88 @@ export class BookIngestionService {
 
     if (lowTextPages.length > 0) {
       console.log(`⚠️ [BookIngestionService] Detected ${lowTextPages.length} low-text/scanned pages needing OCR fallback (isDigitalDoc=${isDocDigital}).`);
-      const ocrResults: Record<number, string> = checkpoint.ocrResults || {};
-      const failedFatalPages: number[] = [];
 
-      // Safe, rate-limit bounded OCR worker pool (sequential concurrency 1 to strictly respect Gemini RPM and prevent circuit breaker trips)
-      const OCR_CONCURRENCY = 1;
-      let currentIndex = 0;
+      // 1. Load prior OCR results from durable page results table and checkpoint
+      let ocrResults: Record<number, string> = { ...(checkpoint.ocrResults || {}) };
+      if (jobRecord) {
+        try {
+          const tableResults = await DurableIngestionJobService.getOcrPageResults(jobRecord.id, bookId);
+          ocrResults = { ...tableResults, ...ocrResults };
+        } catch (loadErr: any) {
+          console.warn('[BookIngestionService] Notice: could not load from book_ocr_page_results:', loadErr.message);
+        }
+      }
+
+      const isVerifiedBlankOrNonContent = (rawText: string): boolean => {
+        if (!rawText) return false;
+        const t = rawText.toLowerCase().trim();
+        if (t === '[blank_page]' || t === '[cover_page]') return true;
+        const blankPatterns = [
+          'صفحة فارغة',
+          'صفحة بيضاء',
+          'لا يوجد محتوى',
+          'بدون محتوى',
+          'غلاف الكتاب',
+          'غلاف خارجي',
+          'غلاف داخلي',
+          'صفحة مخصصة للملاحظات',
+          'blank page',
+          'intentionally blank',
+          'book cover',
+          'cover page',
+          'notes page'
+        ];
+        return blankPatterns.some(pat => t.includes(pat));
+      };
+
+      const hasMeaningfulContent = (rawText: string): boolean => {
+        if (!rawText) return false;
+        const trimmed = rawText.trim();
+        if (isVerifiedBlankOrNonContent(trimmed)) return false;
+        // Substantial text content
+        if (trimmed.length >= 15) return true;
+        // Short mathematical notation, formulas, equations, or geometric labels (e.g. f(x) = y, A × B)
+        if (trimmed.length >= 3 && /[=+\-×÷√∈⊂∪∩^\\$/<>]/.test(trimmed)) return true;
+        return false;
+      };
+
+      // 2. Populate text for pages that were already OCR'd in previous worker executions
+      for (const lp of lowTextPages) {
+        const existingText = ocrResults[lp.pageNumber];
+        if (existingText) {
+          if (hasMeaningfulContent(existingText)) {
+            lp.text = existingText;
+            lp.charCount = existingText.length;
+            lp.isNonTextualOrBlank = false;
+          } else if (isVerifiedBlankOrNonContent(existingText)) {
+            lp.text = '';
+            lp.charCount = 0;
+            lp.isNonTextualOrBlank = true;
+          }
+        }
+      }
+
+      const isPageResolved = (p: typeof lowTextPages[0]) => {
+        const resultText = ocrResults[p.pageNumber];
+        if (resultText) {
+          if (hasMeaningfulContent(resultText)) return true;
+          if (isVerifiedBlankOrNonContent(resultText)) return true;
+        }
+        return Boolean(p.isNonTextualOrBlank);
+      };
+
+      const pendingPages = lowTextPages.filter(p => !isPageResolved(p));
+
+      console.log(`📊 [BookIngestionService] OCR Status: ${Object.keys(ocrResults).length}/${lowTextPages.length} already processed. ${pendingPages.length} pending.`);
+
+      const failedFatalPages: number[] = [];
+      const OCR_BATCH_PAGE_LIMIT = parseInt(process.env.OCR_BATCH_PAGE_LIMIT || '20', 10);
+      const OCR_TIME_BUDGET_MS = parseInt(process.env.OCR_TIME_BUDGET_MS || '180000', 10); // 180s = 3 minutes safe margin before 300s
+      const batchStartTime = Date.now();
+      let pagesProcessedThisBatch = 0;
 
       const processPage = async (lp: typeof lowTextPages[0]) => {
-        // Reuse checkpoint if page was already OCR'd in previous worker attempt
-        if (ocrResults[lp.pageNumber] && ocrResults[lp.pageNumber].length >= 20) {
-          lp.text = ocrResults[lp.pageNumber];
-          lp.charCount = lp.text.length;
+        if (isPageResolved(lp)) {
           return;
         }
 
@@ -528,18 +598,30 @@ export class BookIngestionService {
               }
             }
 
-            if (ocrText && ocrText.trim().length >= 15) {
+            if (hasMeaningfulContent(ocrText)) {
               const cleanedOcr = cleanArabicText(ocrText.trim());
               lp.text = cleanedOcr;
               lp.charCount = cleanedOcr.length;
+              lp.isNonTextualOrBlank = false;
               ocrResults[lp.pageNumber] = cleanedOcr;
               console.log(`📄 [OCR] Page ${lp.pageNumber}/${totalPages} extracted (${cleanedOcr.length} chars).`);
               success = true;
-            } else {
-              // Page is visually confirmed blank or contains no discernible text
+            } else if (isVerifiedBlankOrNonContent(ocrText)) {
+              lp.text = '';
+              lp.charCount = 0;
               lp.isNonTextualOrBlank = true;
-              console.log(`📄 [OCR] Page ${lp.pageNumber}/${totalPages} marked blank/non-textual.`);
+              ocrResults[lp.pageNumber] = '[BLANK_PAGE]';
+              console.log(`📄 [OCR] Page ${lp.pageNumber}/${totalPages} verified blank/cover.`);
               success = true;
+            } else {
+              // Ambiguous, truncated, or unverified short snippet (< 15 chars without math or blank indicator)
+              console.warn(`⚠️ [OCR] Page ${lp.pageNumber}/${totalPages} returned unverified short/incomplete text (${ocrText.length} chars). Retrying...`);
+              retries++;
+              if (retries > maxRetries) {
+                console.warn(`❌ [OCR] Page ${lp.pageNumber}/${totalPages} failed quality resolution after ${maxRetries} retries.`);
+                failedFatalPages.push(lp.pageNumber);
+                break;
+              }
             }
 
             // Pacing delay between pages
@@ -556,52 +638,113 @@ export class BookIngestionService {
         }
       };
 
-      // Execute in concurrent pool with heartbeats
-      const workers: Promise<void>[] = [];
-      let processedCount = Object.keys(ocrResults).length;
+      // 3. Process pending pages with bounded time and page budget
+      for (const lp of pendingPages) {
+        const elapsedMs = Date.now() - batchStartTime;
+        if (pagesProcessedThisBatch >= OCR_BATCH_PAGE_LIMIT || elapsedMs >= (OCR_TIME_BUDGET_MS - 15000)) {
+          console.log(`⏸️ [BookIngestionService] Bounded OCR limit reached: processed ${pagesProcessedThisBatch} pages in this invocation (${Math.round(elapsedMs / 1000)}s elapsed). Pausing batch.`);
+          break;
+        }
 
-      for (let w = 0; w < OCR_CONCURRENCY; w++) {
-        workers.push((async () => {
-          while (currentIndex < lowTextPages.length) {
-            const pageIndex = currentIndex++;
-            const lp = lowTextPages[pageIndex];
-            await processPage(lp);
-            processedCount++;
+        await processPage(lp);
+        pagesProcessedThisBatch++;
 
-            // Extend worker lease and save durable checkpoint for every processed page
-            if (jobRecord) {
-              await DurableIngestionJobService.heartbeat(jobRecord.id, workerId, 180).catch(() => {});
-              await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
-                ocrResults,
-                processedPages: processedCount,
-                totalLowTextPages: lowTextPages.length
-              }).catch(() => {});
-            }
+        // Durably persist per-page result immediately into dedicated table
+        if (jobRecord && lp.text && lp.text.length >= 15) {
+          try {
+            await DurableIngestionJobService.saveOcrPageResult(jobRecord.id, bookId, lp.pageNumber, lp.text);
+          } catch (pageSaveErr: any) {
+            console.error(`🚨 [BookIngestionService] Error persisting OCR page ${lp.pageNumber}:`, pageSaveErr.message);
           }
-        })());
+        }
+
+        // Extend worker lease heartbeat and update checkpoint
+        if (jobRecord) {
+          await DurableIngestionJobService.heartbeat(jobRecord.id, workerId, 180).catch(() => {});
+          try {
+            await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
+              processedPages: Object.keys(ocrResults).length,
+              totalLowTextPages: lowTextPages.length,
+              lastProcessedPage: lp.pageNumber
+            });
+          } catch (cpErr: any) {
+            console.error(`🚨 [BookIngestionService] Error saving checkpoint:`, cpErr.message);
+          }
+        }
       }
 
-      await Promise.all(workers);
+      // 4. Check if pages remain to be OCR'd across subsequent batches
+      const stillPendingPages = lowTextPages.filter(p => !isPageResolved(p));
 
-      // Save final OCR checkpoint
+      if (stillPendingPages.length > 0) {
+        console.log(`🔄 [BookIngestionService] Bounded batch completed: ${Object.keys(ocrResults).length}/${lowTextPages.length} pages processed. ${stillPendingPages.length} pages pending. Disagreeing invocation and triggering continuation...`);
+
+        if (jobRecord) {
+          try {
+            await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
+              processedPages: Object.keys(ocrResults).length,
+              totalLowTextPages: lowTextPages.length,
+              hasMoreBatches: true,
+              nextPageNumber: stillPendingPages[0].pageNumber
+            });
+
+            // Release lease so next worker / step can claim immediately
+            await DurableIngestionJobService.releaseLease(jobRecord.id, workerId);
+
+            // Asynchronously dispatch the next batch execution
+            await DurableIngestionJobService.dispatchNextStep(jobRecord.id);
+          } catch (handoffErr: any) {
+            console.error(`🚨 [BookIngestionService] Error during batch handoff:`, handoffErr.message);
+          }
+        }
+
+        return {
+          bookId,
+          titleAr,
+          titleEn,
+          fileChecksum,
+          fileSizeBytes: pdfBuffer.length,
+          totalPages,
+          status: 'PROCESSING',
+          isPublished: false,
+          storageDurable: false,
+          storageUrl: '',
+          units: [],
+          issues: [],
+          processingDurationMs: Date.now() - startTime
+        };
+      }
+
+      // If all lowTextPages are complete, save final OCR checkpoint before chapter detection
       if (jobRecord) {
-        await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
-          ocrResults,
-          processedPages: lowTextPages.length,
-          totalLowTextPages: lowTextPages.length
-        }).catch(() => {});
+        try {
+          await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
+            processedPages: lowTextPages.length,
+            totalLowTextPages: lowTextPages.length,
+            hasMoreBatches: false
+          });
+        } catch (finalOcrCpErr: any) {
+          console.error(`🚨 [BookIngestionService] Error saving final OCR checkpoint:`, finalOcrCpErr.message);
+        }
       }
 
-      // If significant fatal provider errors occurred across curriculum pages
-      if (failedFatalPages.length > 0 && extractedPages.every(p => p.charCount < 20)) {
+      // 4. Strict Quality Audit: Ensure 100% of scanned / low-text pages are resolved
+      const unresolvedPages = lowTextPages.filter(p => !isPageResolved(p));
+      if (unresolvedPages.length > 0 || failedFatalPages.length > 0) {
+        const failedNumbers = Array.from(new Set([...unresolvedPages.map(p => p.pageNumber), ...failedFatalPages])).sort((a, b) => a - b);
         issues.push({
           stage: 'OCR_HANDLING',
-          code: 'OCR_PROVIDER_TEMPORARILY_UNAVAILABLE',
-          message: `مزود التعرف الضوئي OCR غير متاح للصفحات [${failedFatalPages.slice(0, 10).join(', ')}]. تم حفظ تقدم المعالجة لاستئنافها آلياً.`,
-          remediationGuidance: 'سيتم استئناف قراءة الصفحات المتبقية آلياً عند توفر الحصة.'
+          code: 'UNRESOLVED_CONTENT_PAGES',
+          message: `توجد ${failedNumbers.length} صفحة تعليمية لم تكتمل معالجتها بالتعرف الضوئي OCR (الصفحات: [${failedNumbers.slice(0, 15).join(', ')}${failedNumbers.length > 15 ? '...' : ''}]). لا يمكن اعتماد الكتاب حتى تكتمل جميع الصفحات.`,
+          remediationGuidance: 'سيتم استئناف قراءة الصفحات غير المكتملة عبر آلية الاستئناف المجدولة.'
         });
         if (jobRecord) {
-          await DurableIngestionJobService.markFailed(jobRecord.id, workerId, `OCR fatal on pages: ${failedFatalPages.join(', ')}`, true).catch(() => {});
+          await DurableIngestionJobService.markFailed(
+            jobRecord.id,
+            workerId,
+            `Incomplete OCR: ${failedNumbers.length} pages unresolved ([${failedNumbers.slice(0, 10).join(', ')}])`,
+            true
+          ).catch(() => {});
         }
         return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'REQUIRES_REMEDIATION', issues, startTime);
       }

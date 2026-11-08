@@ -28,3 +28,11 @@ server/src/scratch_*.mjs
 server/src/migrate_*.mjs
 backups/
 server/backups/
+.env.worker
+tools/local-ingestion-worker/.env.worker
+tools/local-ingestion-worker/storage/
+tools/local-ingestion-worker/node_modules/
+*.pem
+keys/
+server/keys/
+tools/local-ingestion-worker/keys/

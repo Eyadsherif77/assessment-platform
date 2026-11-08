@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
@@ -12,6 +13,8 @@ import multer from 'multer';
 import * as xlsx from 'xlsx';
 import { ReferenceImportService } from '../services/referenceImportService.js';
 import { DeviceLimitService } from '../services/deviceLimitService.js';
+import { IngestionWorkerSessionService } from '../services/jobs/ingestionWorkerSessionService.js';
+import { WorkerKeyService } from '../services/security/workerKeyService.js';
 
 const XLSX = (xlsx as any).default || xlsx;
 const excelUpload = multer({
@@ -21,9 +24,9 @@ const excelUpload = multer({
 
 const router = Router();
 
-// All admin routes require ADMIN role
+// All admin routes require ADMIN or CENTRAL_ADMIN role
 router.use(authenticateToken);
-router.use(requireRole(['ADMIN']));
+router.use(requireRole(['ADMIN', 'CENTRAL_ADMIN']));
 
 /**
  * 1. Overview Statistics
@@ -1435,6 +1438,155 @@ router.get('/reference-questions/template', (req: AuthenticatedRequest, res) => 
     return res.send(buffer);
   } catch (err: any) {
     return res.status(500).json({ error: 'فشل إنشاء قالب Excel: ' + err.message });
+  }
+});
+
+/**
+ * POST /api/admin/books/:id/worker-session
+ * Issues a bound, revocable worker session token for the local ingestion worker,
+ * along with an Asymmetric RS256 JWT authorization token for the local Windows worker.
+ */
+router.post('/books/:id/worker-session', async (req: AuthenticatedRequest, res) => {
+  const bookId = String(req.params.id);
+  const adminUserId = req.user?.id || 'admin';
+  const adminEmail = req.user?.email || 'admin@farabi-ai.com';
+  const adminRole = req.user?.role || 'CENTRAL_ADMIN';
+
+  let fileChecksum = req.body.file_checksum || req.body.fileChecksum;
+  const jobId = req.body.job_id || req.body.jobId;
+  let totalPages = req.body.total_pages || req.body.totalPages;
+
+  // Verify book exists in canonical database
+  const bookRes = await db.query('SELECT id, title_ar, total_pages FROM books WHERE id = $1', [bookId]);
+  if (bookRes.rows.length === 0) {
+    return res.status(400).json({ error: `Book with id ${bookId} not found in database.` });
+  }
+
+  if (!totalPages && bookRes.rows[0].total_pages) {
+    totalPages = bookRes.rows[0].total_pages;
+  }
+
+  // If checksum not supplied by client, resolve from existing ingestion jobs or PDF chunks
+  if (!fileChecksum) {
+    const jobRes = await db.query(
+      'SELECT file_checksum FROM book_ingestion_jobs WHERE book_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [bookId]
+    );
+    if (jobRes.rows.length > 0 && jobRes.rows[0].file_checksum) {
+      fileChecksum = jobRes.rows[0].file_checksum;
+    } else {
+      // Check if raw PDF chunks exist and compute real checksum
+      const rawPdf = await IngestionWorkerSessionService.getRawPdfChunks(bookId);
+      if (rawPdf && rawPdf.length > 0) {
+        fileChecksum = crypto.createHash('sha256').update(rawPdf).digest('hex');
+      } else {
+        fileChecksum = crypto.createHash('sha256').update(`book_${bookId}_initial`).digest('hex');
+      }
+    }
+  }
+
+  try {
+    const session = await IngestionWorkerSessionService.createSession({
+      adminUserId,
+      bookId,
+      fileChecksum,
+      requestedJobId: jobId,
+      totalPages: totalPages ? parseInt(String(totalPages), 10) : 0
+    });
+
+    // Mint RS256 token for the local worker
+    const workerAuthToken = WorkerKeyService.signWorkerAuthToken({
+      adminUserId,
+      email: adminEmail,
+      role: adminRole,
+      bookId: session.bookId,
+      jobId: session.jobId,
+      generationId: session.generationId
+    });
+
+    return res.json({
+      success: true,
+      sessionId: session.sessionId,
+      sessionToken: session.sessionToken,
+      workerAuthToken,
+      bookId: session.bookId,
+      jobId: session.jobId,
+      generationId: session.generationId,
+      expiresAt: session.expiresAt
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'فشل إنشاء جلسة العامل المحلي: ' + err.message });
+  }
+});
+
+/**
+ * POST /api/admin/books/:id/worker-session/revoke
+ * Immediately revokes active worker sessions for a given book.
+ */
+router.post('/books/:id/worker-session/revoke', async (req: AuthenticatedRequest, res) => {
+  const bookId = String(req.params.id);
+  try {
+    const sessionsRes = await db.query(
+      'SELECT id FROM ingestion_worker_sessions WHERE book_id = $1 AND is_revoked = 0',
+      [bookId]
+    );
+    for (const row of sessionsRes.rows) {
+      await IngestionWorkerSessionService.revokeSession(row.id);
+    }
+    return res.json({ success: true, message: `Revoked ${sessionsRes.rows.length} session(s) for book ${bookId}.` });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to revoke worker session: ' + err.message });
+  }
+});
+
+/**
+ * GET /api/admin/books/:id/worker-session/status
+ * Queries active worker session and checkpoint data for a given book.
+ */
+router.get('/books/:id/worker-session/status', async (req: AuthenticatedRequest, res) => {
+  const bookId = String(req.params.id);
+  try {
+    const sessionRes = await db.query(
+      `SELECT id, job_id, generation_id, expires_at, is_revoked, processed_pages_count, total_pages, created_at
+       FROM ingestion_worker_sessions 
+       WHERE book_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [bookId]
+    );
+
+    const jobRes = await db.query(
+      `SELECT id, current_stage, status, checkpoint_data, last_error, updated_at
+       FROM book_ingestion_jobs 
+       WHERE book_id = $1 
+       ORDER BY updated_at DESC 
+       LIMIT 1`,
+      [bookId]
+    );
+
+    const bookRes = await db.query(
+      'SELECT id, title_ar, active_generation_id, processing_status, total_pages FROM books WHERE id = $1',
+      [bookId]
+    );
+
+    if (bookRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+
+    let checkpoint: any = null;
+    if (jobRes.rows[0]?.checkpoint_data) {
+      try {
+        checkpoint = JSON.parse(jobRes.rows[0].checkpoint_data);
+      } catch (_) {}
+    }
+
+    return res.json({
+      book: bookRes.rows[0],
+      session: sessionRes.rows[0] || null,
+      job: jobRes.rows[0] ? { ...jobRes.rows[0], checkpoint_data: checkpoint } : null
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to query session status: ' + err.message });
   }
 });
 

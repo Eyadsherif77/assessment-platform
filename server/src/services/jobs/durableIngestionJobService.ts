@@ -133,7 +133,6 @@ export class DurableIngestionJobService {
          SET status = 'IN_PROGRESS',
              lease_owner = $1,
              lease_expires_at = DATE_ADD(NOW(), INTERVAL $2 SECOND),
-             attempt_count = attempt_count + 1,
              updated_at = NOW()
          WHERE id = $3
            AND (status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_expires_at IS NULL OR lease_expires_at < NOW() OR lease_owner = $1)))`,
@@ -147,7 +146,6 @@ export class DurableIngestionJobService {
          SET status = 'IN_PROGRESS',
              lease_owner = $1,
              lease_expires_at = datetime('now', '+' || $2 || ' seconds'),
-             attempt_count = attempt_count + 1,
              updated_at = datetime('now')
          WHERE id = $3
            AND (status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_expires_at IS NULL OR lease_expires_at < datetime('now') OR lease_owner = $1)))`,
@@ -192,6 +190,142 @@ export class DurableIngestionJobService {
    * Persist verified stage output into durable checkpoints.
    * If a restart occurs, the job will resume from this checkpoint rather than repeating completed work.
    */
+
+  /**
+   * Durably persist an individual OCR page extraction result into book_ocr_page_results.
+   * Eliminates monolithic JSON bloat and enables atomic per-page checkpointing.
+   */
+  public static async saveOcrPageResult(
+    jobId: string,
+    bookId: string,
+    pageNumber: number,
+    extractedText: string
+  ): Promise<void> {
+    const isMysql = this.isMySql();
+    const charCount = (extractedText || '').length;
+
+    try {
+      if (isMysql) {
+        await db.query(
+          `INSERT INTO book_ocr_page_results (job_id, book_id, page_number, extracted_text, char_count, created_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())
+           ON DUPLICATE KEY UPDATE extracted_text = VALUES(extracted_text), char_count = VALUES(char_count), created_at = NOW()`,
+          [jobId, bookId, pageNumber, extractedText, charCount]
+        );
+      } else {
+        await db.query(
+          `INSERT OR REPLACE INTO book_ocr_page_results (job_id, book_id, page_number, extracted_text, char_count, created_at)
+           VALUES ($1, $2, $3, $4, $5, datetime('now'))`,
+          [jobId, bookId, pageNumber, extractedText, charCount]
+        );
+      }
+    } catch (saveErr: any) {
+      console.error(`🚨 [DurableIngestionJobService] Failed to save OCR page result for job ${jobId} page ${pageNumber}:`, saveErr.message);
+      throw saveErr;
+    }
+  }
+
+  /**
+   * Retrieve all durably persisted OCR page results for a job/book.
+   * Returns a map of pageNumber -> extractedText.
+   */
+  public static async getOcrPageResults(jobId: string, bookId?: string): Promise<Record<number, string>> {
+    let rows: any[] = [];
+    try {
+      const res = await db.query(
+        `SELECT page_number, extracted_text FROM book_ocr_page_results WHERE job_id = $1 ORDER BY page_number ASC`,
+        [jobId]
+      );
+      rows = res.rows;
+
+      if (rows.length === 0 && bookId) {
+        const bookRes = await db.query(
+          `SELECT page_number, extracted_text FROM book_ocr_page_results WHERE book_id = $1 ORDER BY page_number ASC`,
+          [bookId]
+        );
+        rows = bookRes.rows;
+      }
+    } catch (err: any) {
+      console.warn(`[DurableIngestionJobService] Could not read book_ocr_page_results:`, err.message);
+    }
+
+    const results: Record<number, string> = {};
+    for (const r of rows) {
+      results[Number(r.page_number)] = String(r.extracted_text || '');
+    }
+    return results;
+  }
+
+  /**
+   * Explicitly release a worker lease so the next worker or step can claim it immediately without waiting for timeout.
+   */
+  public static async releaseLease(jobId: string, workerId: string): Promise<void> {
+    const isMysql = this.isMySql();
+    const nowExpr = isMysql ? 'NOW()' : "datetime('now')";
+
+    await db.query(
+      `UPDATE book_ingestion_jobs
+       SET lease_owner = NULL,
+           lease_expires_at = NULL,
+           updated_at = ${nowExpr}
+       WHERE id = $1 AND (lease_owner = $2 OR lease_owner IS NULL)`,
+      [jobId, workerId]
+    );
+  }
+
+  /**
+   * Asynchronously trigger the next ingestion batch step.
+   * Uses HTTP self-invocation with waitUntil in serverless, with an opportunistic fallback for local/test environments.
+   */
+  public static async dispatchNextStep(jobId: string): Promise<void> {
+    if (process.env.NODE_ENV === 'test') {
+      return; // Do not trigger external network steps during automated testing
+    }
+    const port = process.env.PORT || 3000;
+    const baseUrl = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : `http://localhost:${port}`);
+    const internalSecret = process.env.INTERNAL_JOB_KEY || process.env.JWT_SECRET || 'secret_assessment_platform_jwt_key_2026';
+
+    const triggerHttpPromise = (async () => {
+      let attempts = 0;
+      const maxAttempts = 3;
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          const resp = await fetch(`${baseUrl}/api/books/jobs/step`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-job-key': internalSecret
+            },
+            body: JSON.stringify({ jobId })
+          });
+          if (resp.ok || resp.status === 202) {
+            return;
+          }
+          console.warn(`[DurableIngestionJobService] Self-step HTTP returned status ${resp.status} (attempt ${attempts}/${maxAttempts})`);
+        } catch (httpErr: any) {
+          console.warn(`[DurableIngestionJobService] Self-step HTTP dispatch notice (attempt ${attempts}/${maxAttempts}): ${httpErr.message}`);
+        }
+        if (attempts < maxAttempts) {
+          await new Promise(r => setTimeout(r, 800 * attempts));
+        }
+      }
+    })();
+
+    try {
+      const { waitUntil } = await import('@vercel/functions');
+      waitUntil(triggerHttpPromise);
+    } catch (_) {
+      // Event loop handles in non-serverless
+    }
+
+    if (!process.env.VERCEL) {
+      setImmediate(() => {
+        this.executeJobResumption(jobId).catch(() => {});
+      });
+    }
+  }
+
   public static async saveCheckpoint(
     jobId: string,
     workerId: string,
@@ -286,8 +420,8 @@ export class DurableIngestionJobService {
     const isMysql = this.isMySql();
 
     const whereClause = isMysql
-      ? `(status = 'RETRYING' OR (status = 'IN_PROGRESS' AND lease_expires_at < NOW())) AND attempt_count < max_attempts`
-      : `(status = 'RETRYING' OR (status = 'IN_PROGRESS' AND (lease_expires_at IS NULL OR lease_expires_at < datetime('now')))) AND attempt_count < max_attempts`;
+      ? `(status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_owner IS NULL OR lease_expires_at < NOW()))) AND attempt_count < max_attempts`
+      : `(status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_owner IS NULL OR lease_expires_at IS NULL OR lease_expires_at < datetime('now')))) AND attempt_count < max_attempts`;
 
     const res = await db.query(
       `SELECT id, book_id, file_checksum, current_stage, status, attempt_count,
@@ -344,6 +478,9 @@ export class DurableIngestionJobService {
     const job = await this.getJobById(jobId);
     if (!job) return { success: false, error: 'Job not found' };
 
+    if (job.status === 'COMPLETED' || job.currentStage === 'COMPLETED') {
+      return { success: true, stage: 'COMPLETED' };
+    }
     const workerId = `worker_resume_${uuidv4().slice(0, 8)}`;
     const claimed = await this.claimJob(jobId, workerId, 120);
     if (!claimed) {
@@ -389,7 +526,7 @@ export class DurableIngestionJobService {
       });
 
       return {
-        success: report.status === 'VERIFIED_READY',
+        success: report.status === 'VERIFIED_READY' || report.status === 'PROCESSING',
         stage: report.status
       };
     } catch (err: any) {

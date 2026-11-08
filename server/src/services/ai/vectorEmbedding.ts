@@ -1,10 +1,18 @@
 // In-memory embedding cache for sub-millisecond retrieval of repeated queries
 const embeddingCache = new Map<string, number[]>();
+const embeddingMetaCache = new Map<string, EmbeddingResult>();
 
-export async function generateEmbedding(text: string): Promise<number[]> {
+export interface EmbeddingResult {
+  values: number[];
+  model: string;
+  version: string;
+  dimensions: number;
+}
+
+export async function generateEmbeddingWithMeta(text: string): Promise<EmbeddingResult> {
   const cacheKey = text.trim().slice(0, 500);
-  if (embeddingCache.has(cacheKey)) {
-    return embeddingCache.get(cacheKey)!;
+  if (embeddingMetaCache.has(cacheKey)) {
+    return embeddingMetaCache.get(cacheKey)!;
   }
 
   const geminiKey = process.env.GEMINI_API_KEY;
@@ -25,8 +33,15 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       if (response.ok) {
         const data = await response.json();
         if (data.embedding?.values) {
+          const result: EmbeddingResult = {
+            values: data.embedding.values,
+            model: 'models/gemini-embedding-001',
+            version: '001',
+            dimensions: data.embedding.values.length
+          };
+          embeddingMetaCache.set(cacheKey, result);
           embeddingCache.set(cacheKey, data.embedding.values);
-          return data.embedding.values;
+          return result;
         }
       }
     } catch (e) {
@@ -36,8 +51,20 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   // Robust educational vectorizer (768 dimensions)
   const fallbackVec = createSemanticVector(text, 768);
+  const result: EmbeddingResult = {
+    values: fallbackVec,
+    model: 'semantic-hash-768',
+    version: '1.0',
+    dimensions: 768
+  };
+  embeddingMetaCache.set(cacheKey, result);
   embeddingCache.set(cacheKey, fallbackVec);
-  return fallbackVec;
+  return result;
+}
+
+export async function generateEmbedding(text: string): Promise<number[]> {
+  const meta = await generateEmbeddingWithMeta(text);
+  return meta.values;
 }
 
 // Normalized 768-dim semantic hash vectorizer

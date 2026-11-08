@@ -107,9 +107,10 @@ router.get('/fixed/hierarchy', authenticateToken, enforceStudentGrade, async (re
       if (book) {
         const chaptersRes = await db.query(
           `SELECT bc.id, bc.chapter_number, bc.title_ar, bc.title_en, bc.start_page, bc.end_page,
-                  (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id) as chunks_count
+                  (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id AND bk.generation_id = bc.generation_id) as chunks_count
            FROM book_chapters bc
            WHERE bc.book_id = $1
+             AND bc.generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
            ORDER BY bc.chapter_number ASC`,
           [book.id]
         );

@@ -568,7 +568,9 @@ export class ExamCacheService {
     if (selectedUnitOrChapterIds && Array.isArray(selectedUnitOrChapterIds) && selectedUnitOrChapterIds.length > 0) {
       hasChapterScopeFilter = true;
       const chaptersRes = await db.query(
-        'SELECT id, start_page, end_page FROM book_chapters WHERE book_id = $1',
+        `SELECT id, start_page, end_page FROM book_chapters 
+         WHERE book_id = $1 
+           AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')`,
         [bookId]
       );
       const allBookChapters = chaptersRes.rows;
@@ -604,11 +606,13 @@ export class ExamCacheService {
       // 1. Validate chunk_id if present
       if (chunkId) {
         const cRes = await db.query(
-          'SELECT id, book_id, chapter_id, page_number FROM book_chunks WHERE book_id = $1 AND id = $2',
+          `SELECT id, book_id, chapter_id, page_number FROM book_chunks 
+           WHERE book_id = $1 AND id = $2 
+             AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')`,
           [bookId, chunkId]
         );
         if (cRes.rows.length === 0) {
-          return { isVerified: false, reason: `CHUNK_NOT_FOUND: Chunk ${chunkId} does not belong to book ${bookId}` };
+          return { isVerified: false, reason: `CHUNK_NOT_FOUND: Chunk ${chunkId} does not belong to active book ${bookId}` };
         }
         chunkRow = cRes.rows[0];
         verifiedPageNumber = Number(chunkRow.page_number);
@@ -617,7 +621,9 @@ export class ExamCacheService {
       // 2. Validate page_reference if present
       if (pageRef && pageRef > 0) {
         const pRes = await db.query(
-          'SELECT page_number FROM book_pages WHERE book_id = $1 AND page_number = $2',
+          `SELECT page_number FROM book_pages 
+           WHERE book_id = $1 AND page_number = $2 
+             AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')`,
           [bookId, pageRef]
         );
         if (pRes.rows.length === 0) {

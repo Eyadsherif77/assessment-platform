@@ -28,9 +28,11 @@ import {
   Smartphone,
   Edit3,
   FileSpreadsheet,
-  Download
+  Download,
+  Laptop
 } from 'lucide-react';
 import { HierarchyDashboard } from './HierarchyDashboard';
+import { LocalWorkerIngestionModal } from '../components/admin/LocalWorkerIngestionModal';
 
 interface TeacherItem {
   id: string;
@@ -136,6 +138,10 @@ export const AdminDashboard: React.FC = () => {
   const [editBookSchoolType, setEditBookSchoolType] = useState<'كلاهما' | 'عربي' | 'لغات'>('كلاهما');
   const [editBookSubjects, setEditBookSubjects] = useState<any[]>([]);
   const [editBookChapters, setEditBookChapters] = useState<any[]>([]);
+
+  // Local Machine Worker Ingestion modal state
+  const [isLocalWorkerModalOpen, setIsLocalWorkerModalOpen] = useState<boolean>(false);
+  const [selectedLocalWorkerBook, setSelectedLocalWorkerBook] = useState<any | null>(null);
   const [isLoadingChapters, setIsLoadingChapters] = useState(false);
   const [isSavingBook, setIsSavingBook] = useState(false);
   const [newChapterTitle, setNewChapterTitle] = useState('');
@@ -878,8 +884,10 @@ export const AdminDashboard: React.FC = () => {
 
   // Poll background processing status for textbook ingestion
   const pollBookStatus = (bookId: string, bookTitle: string, bookTerm: number) => {
-    const maxPollAttempts = 240; // up to 6 minutes of polling (1.5s interval)
+    const maxPollAttempts = 240; // up to 6 minutes of silence without progress (1.5s interval)
     let attempts = 0;
+    let lastSeenProgress = -1;
+    let lastProcessedPages = -1;
 
     const interval = setInterval(async () => {
       attempts++;
@@ -905,6 +913,16 @@ export const AdminDashboard: React.FC = () => {
         }
 
         const data = await res.json();
+
+        // Active progress watchdog: if progress or processedPages advanced, reset stall counter
+        if (
+          (typeof data.processedPages === 'number' && data.processedPages !== lastProcessedPages) ||
+          (typeof data.progress === 'number' && data.progress !== lastSeenProgress)
+        ) {
+          lastProcessedPages = typeof data.processedPages === 'number' ? data.processedPages : lastProcessedPages;
+          lastSeenProgress = typeof data.progress === 'number' ? data.progress : lastSeenProgress;
+          attempts = 0;
+        }
 
         if (data.status === 'COMPLETED' || data.status === 'VERIFIED_READY') {
           clearInterval(interval);
@@ -2607,7 +2625,32 @@ export const AdminDashboard: React.FC = () => {
                           ✓ {language === 'ar' ? 'مفهرس بالذكاء الاصطناعي' : 'Indexed'}
                         </span>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedLocalWorkerBook(book);
+                              setIsLocalWorkerModalOpen(true);
+                            }}
+                            style={{
+                              border: '1px solid #BFDBFE',
+                              background: '#EFF6FF',
+                              color: '#1D4ED8',
+                              padding: '0.3rem 0.65rem',
+                              borderRadius: '0.4rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}
+                            title={language === 'ar' ? 'معالجة وفهرسة الكتاب على الجهاز المحلي لتفادي استهلاك السحابة' : 'Process and index textbook on local machine'}
+                          >
+                            <Laptop size={13} />
+                            <span>{language === 'ar' ? 'معالجة على الجهاز المحلي' : 'Process on Local Machine'}</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleOpenEditBook(book)}
@@ -5234,6 +5277,23 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* LOCAL MACHINE INGESTION WORKER MODAL */}
+      <LocalWorkerIngestionModal
+        isOpen={isLocalWorkerModalOpen}
+        onClose={() => {
+          setIsLocalWorkerModalOpen(false);
+          setSelectedLocalWorkerBook(null);
+        }}
+        book={selectedLocalWorkerBook}
+        token={token || ''}
+        apiUrl={apiUrl}
+        language={language}
+        onSuccess={() => {
+          fetchAdminBooks();
+          fetchOverview();
+        }}
+      />
 
     </div>
   );

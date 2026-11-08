@@ -426,10 +426,34 @@ class DatabaseManager {
                 book_id VARCHAR(64) NOT NULL,
                 chunk_index INT NOT NULL,
                 chunk_data LONGBLOB NOT NULL,
+                generation_id VARCHAR(64) NOT NULL DEFAULT 'v1',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (book_id, chunk_index)
+                PRIMARY KEY (book_id, generation_id, chunk_index)
               )
             `);
+          } catch (_) {}
+
+          // Ensure generation isolation columns on TiDB
+          try {
+            await this.tidbConn.execute(`ALTER TABLE book_pdf_chunks ADD COLUMN generation_id VARCHAR(64) NOT NULL DEFAULT 'v1'`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`ALTER TABLE book_pages ADD COLUMN generation_id VARCHAR(64) NOT NULL DEFAULT 'v1'`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`ALTER TABLE book_pages ADD COLUMN page_type VARCHAR(64) NOT NULL DEFAULT 'CONTENT'`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`ALTER TABLE book_pages ADD COLUMN metadata TEXT NULL`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`ALTER TABLE book_chapters ADD COLUMN generation_id VARCHAR(64) NOT NULL DEFAULT 'v1'`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`ALTER TABLE book_chunks ADD COLUMN embedding_model VARCHAR(64) NOT NULL DEFAULT 'semantic-hash-768'`);
+          } catch (_) {}
+          try {
+            await this.tidbConn.execute(`ALTER TABLE book_chunks ADD COLUMN embedding_version VARCHAR(32) NOT NULL DEFAULT '1.0'`);
           } catch (_) {}
 
           // Ensure platform settings table and default monthly exam limit
@@ -590,10 +614,34 @@ class DatabaseManager {
               book_id TEXT NOT NULL,
               chunk_index INTEGER NOT NULL,
               chunk_data BLOB NOT NULL,
+              generation_id TEXT NOT NULL DEFAULT 'v1',
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-              PRIMARY KEY (book_id, chunk_index)
+              PRIMARY KEY (book_id, generation_id, chunk_index)
             )
           `);
+        } catch (_) {}
+
+        // Ensure generation isolation columns on SQLite
+        try {
+          await this.query(`ALTER TABLE book_pdf_chunks ADD COLUMN generation_id TEXT NOT NULL DEFAULT 'v1'`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE book_pages ADD COLUMN generation_id TEXT NOT NULL DEFAULT 'v1'`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE book_pages ADD COLUMN page_type TEXT NOT NULL DEFAULT 'CONTENT'`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE book_pages ADD COLUMN metadata TEXT NULL`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE book_chapters ADD COLUMN generation_id TEXT NOT NULL DEFAULT 'v1'`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE book_chunks ADD COLUMN embedding_model TEXT NOT NULL DEFAULT 'semantic-hash-768'`);
+        } catch (_) {}
+        try {
+          await this.query(`ALTER TABLE book_chunks ADD COLUMN embedding_version TEXT NOT NULL DEFAULT '1.0'`);
         } catch (_) {}
 
         // Add term column to books and exams

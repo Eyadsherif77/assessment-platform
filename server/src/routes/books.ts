@@ -1,3 +1,4 @@
+import jwt from 'jsonwebtoken';
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -540,9 +541,9 @@ router.get('/status/:id', authenticateToken, async (req, res) => {
     }
   }
 
-  // Opportunistic auto-resumption: If worker was terminated or lease expired, drive the next execution batch
+  // Opportunistic auto-resumption: If worker was terminated, lease released, or lease expired, drive the next execution batch
   if (job && (job.status === 'PENDING' || job.status === 'RETRYING' ||
-     (job.status === 'IN_PROGRESS' && job.lease_expires_at && new Date(job.lease_expires_at).getTime() < Date.now()))) {
+     (job.status === 'IN_PROGRESS' && (!job.lease_owner || !job.lease_expires_at || new Date(job.lease_expires_at).getTime() < Date.now())))) {
     DurableIngestionJobService.executeJobResumption(job.id).catch(err => {
       console.warn(`[Status Polling] Opportunistic resume for job ${job.id} notice:`, err.message);
     });
@@ -584,6 +585,107 @@ router.post('/jobs/recover', authenticateToken, requireRole(['ADMIN']), async (r
   } catch (err: any) {
     return res.status(500).json({ error: 'فشل استئناف المهام: ' + err.message });
   }
+});
+
+
+// Vercel Cron-triggered recovery endpoint: recovers unheld/stalled jobs independently of browser activity
+router.get('/jobs/cron-recover', async (req, res) => {
+  const cronHeader = req.headers['x-vercel-cron'];
+  const internalKey = req.headers['x-internal-job-key'];
+  const authHeader = req.headers['authorization'];
+  const cronSecret = process.env.CRON_SECRET;
+  const internalSecret = process.env.INTERNAL_JOB_KEY || process.env.JWT_SECRET || 'secret_assessment_platform_jwt_key_2026';
+
+  let isAuthorized = false;
+
+  // 1. Official Vercel Cron Bearer authentication
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    isAuthorized = true;
+  } else if (internalKey && internalKey === internalSecret) {
+    // 2. Direct internal job service key
+    isAuthorized = true;
+  } else if (authHeader) {
+    // 3. Central admin / Admin JWT verification
+    try {
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, internalSecret);
+      if (decoded && (decoded.role === 'ADMIN' || decoded.role === 'CENTRAL_ADMIN')) {
+        isAuthorized = true;
+      }
+    } catch (_) {}
+  } else if (!cronSecret && cronHeader && process.env.NODE_ENV !== 'production') {
+    // 4. Local dev / testing environment fallback without CRON_SECRET configured
+    isAuthorized = true;
+  }
+
+  if (!isAuthorized) {
+    return res.status(401).json({ error: 'Unauthorized cron recovery trigger' });
+  }
+
+  try {
+    const stalledJobs = await DurableIngestionJobService.recoverStalledJobs(3);
+    const triggeredJobs: string[] = [];
+    for (const job of stalledJobs) {
+      triggeredJobs.push(job.id);
+      const stepPromise = DurableIngestionJobService.executeJobResumption(job.id);
+      try {
+        waitUntil(stepPromise);
+      } catch (_) {}
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Vercel cron inspected stalled jobs. Triggered ${triggeredJobs.length} jobs.`,
+      triggeredJobs
+    });
+  } catch (err: any) {
+    console.error('Error in cron-recover:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Trigger next bounded step for an ingestion job (Internal continuation + Admin)
+router.post('/jobs/step', async (req, res) => {
+  const internalKey = req.headers['x-internal-job-key'];
+  const authHeader = req.headers['authorization'];
+  const expectedSecret = process.env.INTERNAL_JOB_KEY || process.env.JWT_SECRET || 'secret_assessment_platform_jwt_key_2026';
+
+  let isAuthorized = internalKey === expectedSecret;
+  if (!isAuthorized && authHeader) {
+    try {
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, expectedSecret);
+      if (decoded && (decoded.role === 'ADMIN' || decoded.role === 'CENTRAL_ADMIN')) {
+        isAuthorized = true;
+      }
+    } catch (_) {}
+  }
+
+  if (!isAuthorized) {
+    return res.status(401).json({ error: 'غير مصرح للوصول إلى محرك متابعة المهام' });
+  }
+
+  const { jobId } = req.body;
+  if (!jobId) {
+    return res.status(400).json({ error: 'jobId is required' });
+  }
+
+  const stepPromise = (async () => {
+    try {
+      await DurableIngestionJobService.executeJobResumption(jobId);
+    } catch (stepErr: any) {
+      console.error(`🚨 [Job Step Endpoint] Execution failure for job ${jobId}:`, stepErr.message);
+    }
+  })();
+
+  try {
+    waitUntil(stepPromise);
+  } catch (_) {}
+
+  return res.status(202).json({
+    success: true,
+    message: `تم إطلاق الخطوة التالية للمعالجة للمهمة ${jobId}`
+  });
 });
 
 // List Books (Filtered by Stage and Grade strictly for students)
@@ -837,9 +939,10 @@ router.get('/:id', authenticateToken, enforceStudentGrade, async (req: Authentic
 
     const chaptersRes = await db.query(
       `SELECT bc.*, 
-              (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id) as chunks_count
+              (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id AND bk.generation_id = bc.generation_id) as chunks_count
        FROM book_chapters bc 
        WHERE bc.book_id = $1 
+         AND bc.generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
        ORDER BY bc.chapter_number ASC`,
       [id]
     );
@@ -920,7 +1023,10 @@ router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res)
 
     // Check TiDB book_pdf_chunks (high-speed streaming with HTTP Range requests & batched queries)
     const countRes = await db.query(
-      `SELECT COUNT(*) as cnt, SUM(LENGTH(chunk_data)) as total_len FROM book_pdf_chunks WHERE book_id = $1`,
+      `SELECT COUNT(*) as cnt, SUM(LENGTH(chunk_data)) as total_len 
+       FROM book_pdf_chunks 
+       WHERE book_id = $1 
+         AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')`,
       [id]
     );
     const totalChunks = parseInt(countRes.rows[0]?.cnt || '0', 10);
@@ -964,7 +1070,9 @@ router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res)
         const chunkBatch = await db.query(
           `SELECT chunk_index, chunk_data 
            FROM book_pdf_chunks 
-           WHERE book_id = $1 AND chunk_index BETWEEN $2 AND $3 
+           WHERE book_id = $1 
+             AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
+             AND chunk_index BETWEEN $2 AND $3 
            ORDER BY chunk_index ASC`,
           [id, startChunkIdx, endChunkIdx]
         );
@@ -994,7 +1102,9 @@ router.get('/:id/pdf', authenticateToken, async (req: AuthenticatedRequest, res)
         const batchRows = await db.query(
           `SELECT chunk_index, chunk_data 
            FROM book_pdf_chunks 
-           WHERE book_id = $1 AND chunk_index BETWEEN $2 AND $3 
+           WHERE book_id = $1 
+             AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
+             AND chunk_index BETWEEN $2 AND $3 
            ORDER BY chunk_index ASC`,
           [id, c, endC]
         );
@@ -1264,9 +1374,10 @@ router.get('/:id/chapters', authenticateToken, async (req, res) => {
     const id = String(req.params.id);
     const chaptersRes = await db.query(
       `SELECT bc.*, 
-              (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id) as chunks_count
+              (SELECT COUNT(*) FROM book_chunks bk WHERE bk.chapter_id = bc.id AND bk.generation_id = bc.generation_id) as chunks_count
        FROM book_chapters bc
        WHERE bc.book_id = $1
+         AND bc.generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
        ORDER BY bc.chapter_number ASC`,
       [id]
     );
@@ -1398,7 +1509,10 @@ router.post('/:id/auto-detect-chapters', authenticateToken, requireRole(['TEACHE
     const book = bookRes.rows[0];
 
     const pagesRes = await db.query(
-      'SELECT page_number, raw_text as text FROM book_pages WHERE book_id = $1 ORDER BY page_number ASC LIMIT 30',
+      `SELECT page_number, raw_text as text FROM book_pages 
+       WHERE book_id = $1 
+         AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
+       ORDER BY page_number ASC LIMIT 30`,
       [id]
     );
 
@@ -1444,7 +1558,10 @@ router.post('/:id/reprocess', authenticateToken, requireRole(['ADMIN']), async (
 
     // Check book_pdf_chunks first
     const chunkRows = await db.query(
-      `SELECT chunk_data FROM book_pdf_chunks WHERE book_id = $1 ORDER BY chunk_index ASC`,
+      `SELECT chunk_data FROM book_pdf_chunks 
+       WHERE book_id = $1 
+         AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
+       ORDER BY chunk_index ASC`,
       [id]
     );
     if (chunkRows.rows.length > 0) {

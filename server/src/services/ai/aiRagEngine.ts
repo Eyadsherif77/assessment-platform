@@ -2,7 +2,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/db.js';
-import { generateEmbedding, cosineSimilarity, computeEducationalBM25Score } from './vectorEmbedding.js';
+import { generateEmbedding, generateEmbeddingWithMeta, cosineSimilarity, computeEducationalBM25Score } from './vectorEmbedding.js';
 import { cleanArabicText, stripDocumentMetadataAndStructure } from '../../utils/arabicTextNormalizer.js';
 import { GeminiClient, GeminiProviderError } from './geminiClient.js';
 import { AnswerValidationService, normalizeArabicLevel1 } from '../answerValidationService.js';
@@ -843,7 +843,9 @@ export async function verifyQuestionProvenance(
   // 3. Chapter scope validation if chapter_id is specified
   if (q.chapter_id) {
     const chRes = await db.query(
-      'SELECT id, start_page, end_page FROM book_chapters WHERE id = $1 AND book_id = $2',
+      `SELECT id, start_page, end_page FROM book_chapters 
+       WHERE id = $1 AND book_id = $2
+         AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $2), 'v1')`,
       [q.chapter_id, bookId]
     );
     if (chRes.rows.length === 0) {
@@ -890,7 +892,10 @@ export async function verifyQuestionProvenance(
 
   // 5. Source Page existence verification
   const pageRes = await db.query(
-    'SELECT raw_text FROM book_pages WHERE book_id = $1 AND page_number = $2',
+    `SELECT raw_text FROM book_pages 
+     WHERE book_id = $1 AND page_number = $2
+       AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1')
+     LIMIT 1`,
     [bookId, q.page_reference]
   );
 
@@ -1787,13 +1792,14 @@ Return valid JSON with exact keys:
       );
     } else {
       res = await db.query(
-        `SELECT id, book_id, chapter_id, page_number, chunk_index, content, metadata, embedding
+        `SELECT id, book_id, chapter_id, page_number, chunk_index, content, metadata, embedding, generation_id
          FROM book_chunks
          WHERE academic_stage_id = $1 
            AND grade_id = $2 
            AND subject_id = $3 
            AND book_id = $4 
            AND chapter_id = $5
+           AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $4), 'v1')
          ORDER BY chunk_index ASC`,
         [academicStageId, gradeId, subjectId, bookId, chapterId]
       );
@@ -1808,7 +1814,9 @@ Return valid JSON with exact keys:
     let unitEndPage = 0;
     try {
       const chRow = await db.query(
-        'SELECT start_page, end_page FROM book_chapters WHERE id = $1 AND book_id = $2',
+        `SELECT start_page, end_page FROM book_chapters 
+         WHERE id = $1 AND book_id = $2 
+           AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $2), 'v1')`,
         [chapterId, bookId]
       );
       if (chRow.rows.length > 0) {
@@ -1847,7 +1855,8 @@ Return valid JSON with exact keys:
         chunk_index: row.chunk_index,
         content: stripDocumentMetadataAndStructure(row.content),
         metadata: row.metadata,
-        embedding: row.embedding
+        embedding: row.embedding,
+        generation_id: row.generation_id
       }));
 
     // Filter out boilerplate chunks (indexes, table of contents, copyright, committee info)
@@ -1898,28 +1907,68 @@ Return valid JSON with exact keys:
       return shuffled.slice(0, limit);
     }
 
-    // Perform vector ranking using query embedding
-    const queryVec = await generateEmbedding(queryText);
+    // Perform vector ranking using query embedding and metadata
+    const queryMeta = await generateEmbeddingWithMeta(queryText);
+    const queryVec = queryMeta.values;
+    const queryModel = queryMeta.model;
+    const queryVersion = queryMeta.version;
+
     const scoredChunks = candidateChunks.map((row: any) => {
       let sim = 0;
+      let modelCompatible = false;
+
+      // Extract chunk embedding model and version from metadata or properties
+      let chunkModel = '';
+      let chunkVersion = '';
+      if (row.metadata) {
+        try {
+          const m = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+          chunkModel = m.embedding_model || m.embeddingModel || '';
+          chunkVersion = m.embedding_version || m.embeddingVersion || '';
+        } catch (_) {}
+      }
+
       if (row.embedding) {
         try {
           const chunkVec = typeof row.embedding === 'string' ? JSON.parse(row.embedding) : row.embedding;
-          sim = cosineSimilarity(queryVec, chunkVec);
+          if (Array.isArray(chunkVec) && Array.isArray(queryVec)) {
+            // Strict Model Compatibility: Model identity, version, and dimensions MUST all match.
+            // If model metadata is missing, or models differ (e.g. hash-768 vs gemini-embedding-001), vectors must NEVER be compared.
+            const isModelMatch = Boolean(chunkModel && queryModel && chunkModel === queryModel);
+            const isVersionMatch = Boolean(!chunkVersion || !queryVersion || chunkVersion === queryVersion);
+            const isDimMatch = Boolean(chunkVec.length === queryVec.length && chunkVec.length > 0);
+
+            if (isModelMatch && isVersionMatch && isDimMatch) {
+              modelCompatible = true;
+              sim = cosineSimilarity(queryVec, chunkVec);
+            } else {
+              modelCompatible = false;
+              sim = 0;
+            }
+          }
         } catch (e) {
           sim = 0;
+          modelCompatible = false;
         }
       }
-      // If embedding is missing or 0, fallback to educational BM25 lexical ranking
-      if (!row.embedding || sim === 0) {
-        const bm25 = computeEducationalBM25Score(queryText, row.content);
-        if (bm25 > 0) {
-          sim = bm25;
-        }
+
+      // Compute lexical educational BM25 score
+      const bm25 = computeEducationalBM25Score(queryText, row.content);
+
+      let finalScore = 0;
+      if (!modelCompatible || sim < 0.25) {
+        // Fall back to lexical educational BM25 ranking when models are incompatible,
+        // model metadata is missing, or semantic similarity is noisy/below threshold (< 0.25)
+        finalScore = bm25;
+      } else {
+        // Deterministic hybrid ranking: 60% semantic similarity + 40% lexical BM25
+        finalScore = Number((0.6 * sim + 0.4 * bm25).toFixed(4));
       }
+
       return {
         ...row,
-        similarity: sim
+        similarity: finalScore,
+        modelCompatible
       };
     });
 

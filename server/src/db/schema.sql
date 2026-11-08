@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS books (
     total_pages INTEGER DEFAULT 0,
     processing_status TEXT DEFAULT 'COMPLETED' CHECK (processing_status IN ('PENDING', 'EXTRACTING', 'EMBEDDING', 'COMPLETED', 'FAILED')),
     processing_error TEXT,
+    active_generation_id TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -146,6 +147,7 @@ CREATE TABLE IF NOT EXISTS book_chapters (
     description TEXT,
     start_page INTEGER DEFAULT 1,
     end_page INTEGER DEFAULT 1,
+    generation_id TEXT DEFAULT 'v1',
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -155,7 +157,19 @@ CREATE TABLE IF NOT EXISTS book_pages (
     page_number INTEGER NOT NULL,
     raw_text TEXT NOT NULL,
     char_count INTEGER DEFAULT 0,
-    CONSTRAINT uq_book_page UNIQUE (book_id, page_number)
+    page_type TEXT DEFAULT 'CONTENT',
+    metadata TEXT,
+    generation_id TEXT DEFAULT 'v1',
+    CONSTRAINT uq_book_page_gen UNIQUE (book_id, generation_id, page_number)
+);
+
+CREATE TABLE IF NOT EXISTS book_pdf_chunks (
+    book_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    chunk_data BLOB NOT NULL,
+    generation_id TEXT NOT NULL DEFAULT 'v1',
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (book_id, generation_id, chunk_index)
 );
 
 CREATE TABLE IF NOT EXISTS book_chunks (
@@ -170,6 +184,9 @@ CREATE TABLE IF NOT EXISTS book_chunks (
     content TEXT NOT NULL,
     metadata TEXT DEFAULT '{}',
     embedding TEXT,
+    embedding_model TEXT DEFAULT 'semantic-hash-768',
+    embedding_version TEXT DEFAULT '1.0',
+    generation_id TEXT DEFAULT 'v1',
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -420,3 +437,47 @@ CREATE TABLE IF NOT EXISTS book_ingestion_jobs (
 CREATE INDEX IF NOT EXISTS idx_bij_book ON book_ingestion_jobs(book_id);
 CREATE INDEX IF NOT EXISTS idx_bij_stage_status ON book_ingestion_jobs(current_stage, status);
 CREATE INDEX IF NOT EXISTS idx_bij_lease ON book_ingestion_jobs(status, lease_expires_at);
+
+CREATE TABLE IF NOT EXISTS book_ocr_page_results (
+    job_id TEXT NOT NULL,
+    book_id TEXT NOT NULL,
+    page_number INTEGER NOT NULL,
+    extracted_text TEXT NOT NULL,
+    char_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (job_id, page_number)
+);
+CREATE INDEX IF NOT EXISTS idx_ocr_book_page ON book_ocr_page_results(book_id, page_number);
+
+CREATE INDEX IF NOT EXISTS idx_book_chunks_gen ON book_chunks(book_id, generation_id);
+
+CREATE TABLE IF NOT EXISTS ingestion_worker_sessions (
+    id TEXT PRIMARY KEY,
+    session_token_hash TEXT NOT NULL,
+    book_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    file_checksum TEXT NOT NULL,
+    generation_id TEXT NOT NULL,
+    admin_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    is_revoked INTEGER DEFAULT 0,
+    last_batch_sequence INTEGER DEFAULT 0,
+    total_pages INTEGER DEFAULT 0,
+    processed_pages_count INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_iws_book ON ingestion_worker_sessions(book_id);
+CREATE INDEX IF NOT EXISTS idx_iws_token_hash ON ingestion_worker_sessions(session_token_hash);
+
+CREATE TABLE IF NOT EXISTS ingestion_batch_idempotency (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    batch_sequence INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    payload_checksum TEXT NOT NULL,
+    response_body TEXT,
+    created_at INTEGER NOT NULL,
+    UNIQUE (session_id, idempotency_key),
+    UNIQUE (session_id, endpoint, batch_sequence)
+);

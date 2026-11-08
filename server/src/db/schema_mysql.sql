@@ -449,3 +449,11 @@ CREATE TABLE IF NOT EXISTS book_ingestion_jobs (
     INDEX idx_bij_stage_status (current_stage, status),
     INDEX idx_bij_lease (status, lease_expires_at)
 );
+
+CREATE TABLE IF NOT EXISTS book_pdf_chunks (
+    book_id VARCHAR(64) NOT NULL,
+    chunk_index INT NOT NULL,
+    chunk_data LONGBLOB NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (book_id, chunk_index)
+);
