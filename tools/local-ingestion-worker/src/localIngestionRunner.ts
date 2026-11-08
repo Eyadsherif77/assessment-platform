@@ -6,6 +6,7 @@ import { workerConfig } from './config.js';
 import { WorkerGatewayClient } from './workerGatewayClient.js';
 import { BookIngestionService } from '../../../server/src/services/bookIngestionService.js';
 import { DurableIngestionJobService } from '../../../server/src/services/jobs/durableIngestionJobService.js';
+import { db } from '../../../server/src/db/db.js';
 
 export interface LocalIngestionJobRequest {
   bookId?: string;
@@ -310,7 +311,7 @@ export class LocalIngestionRunner {
           term,
           options: {
             ocrProvider,
-            forceReingest: false
+            forceReingest: true
           }
         });
 
@@ -326,6 +327,74 @@ export class LocalIngestionRunner {
 
           // Sync completion to cloud gateway if active
           if (gatewayClient) {
+            console.log(`☁️ [Cloud Gateway Sync] Streaming extracted artifacts to Cloud Gateway...`);
+            const sourceBookId = finalReport.bookId || bookId;
+
+            // 1. Sync Pages
+            try {
+              const pagesRes = await db.query(
+                'SELECT page_number, raw_text, char_count FROM book_pages WHERE book_id = $1 ORDER BY page_number ASC',
+                [sourceBookId]
+              );
+              if (pagesRes.rows.length > 0) {
+                const pagesPayload = pagesRes.rows.map((r: any) => ({
+                  pageNumber: Number(r.page_number),
+                  text: String(r.raw_text || ''),
+                  charCount: Number(r.char_count || 0),
+                  pageType: 'CONTENT'
+                }));
+                await gatewayClient.syncPages(pagesPayload);
+                console.log(`✅ [Cloud Gateway Sync] Synced ${pagesPayload.length} pages to Cloud Gateway.`);
+              }
+            } catch (pErr: any) {
+              console.warn('⚠️ [Cloud Gateway Sync] Pages sync warning:', pErr.message);
+            }
+
+            // 2. Sync Chapters
+            try {
+              const chaptersRes = await db.query(
+                'SELECT chapter_number, title_ar, title_en, start_page, end_page FROM book_chapters WHERE book_id = $1 ORDER BY chapter_number ASC',
+                [sourceBookId]
+              );
+              if (chaptersRes.rows.length > 0) {
+                const chaptersPayload = chaptersRes.rows.map((r: any) => ({
+                  chapterNumber: Number(r.chapter_number),
+                  titleAr: String(r.title_ar || ''),
+                  titleEn: String(r.title_en || ''),
+                  startPage: Number(r.start_page || 1),
+                  endPage: Number(r.end_page || 1)
+                }));
+                await gatewayClient.syncChapters(chaptersPayload);
+                console.log(`✅ [Cloud Gateway Sync] Synced ${chaptersPayload.length} chapters to Cloud Gateway.`);
+              }
+            } catch (cErr: any) {
+              console.warn('⚠️ [Cloud Gateway Sync] Chapters sync warning:', cErr.message);
+            }
+
+            // 3. Sync Semantic Chunks
+            try {
+              const chunksRes = await db.query(
+                'SELECT id, chapter_id, page_number, content, embedding, embedding_model, embedding_version FROM book_chunks WHERE book_id = $1 ORDER BY page_number ASC',
+                [sourceBookId]
+              );
+              if (chunksRes.rows.length > 0) {
+                const chunksPayload = chunksRes.rows.map((r: any, idx: number) => ({
+                  chunkIndex: idx,
+                  pageNumber: Number(r.page_number || 1),
+                  content: String(r.content || ''),
+                  chapterId: r.chapter_id || undefined,
+                  embedding: r.embedding ? (typeof r.embedding === 'string' ? JSON.parse(r.embedding) : r.embedding) : undefined,
+                  embeddingModel: r.embedding_model || 'semantic-hash-768',
+                  embeddingVersion: r.embedding_version || '1.0'
+                }));
+                await gatewayClient.syncSemanticChunks(chunksPayload);
+                console.log(`✅ [Cloud Gateway Sync] Synced ${chunksPayload.length} semantic chunks to Cloud Gateway.`);
+              }
+            } catch (chunkErr: any) {
+              console.warn('⚠️ [Cloud Gateway Sync] Chunks sync warning:', chunkErr.message);
+            }
+
+            // 4. Complete session on Cloud Gateway
             await gatewayClient.complete({
               totalPages: finalReport.totalPages,
               totalChunks: finalReport.totalChunks || 10,

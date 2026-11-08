@@ -769,6 +769,15 @@ export class BookIngestionService {
       return this.buildFailureReport(bookId, titleAr, titleEn, fileChecksum, pdfBuffer.length, totalPages, 'REQUIRES_REMEDIATION', issues, startTime);
     }
 
+    // Ensure referenced stage, grade, subject exist on local SQLite so foreign keys are satisfied
+    if (db.getDialect() === 'sqlite') {
+      try {
+        await db.query(`INSERT OR IGNORE INTO academic_stages (id, code, name_ar, name_en) VALUES ($1, $1, $1, $1)`, [academicStageId]);
+        await db.query(`INSERT OR IGNORE INTO grades (id, stage_id, code, name_ar, name_en) VALUES ($1, $2, $1, $1, $1)`, [gradeId, academicStageId]);
+        await db.query(`INSERT OR IGNORE INTO subjects (id, grade_id, code, name_ar, name_en) VALUES ($1, $2, $1, $1, $1)`, [subjectId, gradeId]);
+      } catch (_) {}
+    }
+
     // Ensure book record exists before chapter detection so foreign keys resolve
     try {
       const existing = await db.query('SELECT id FROM books WHERE id = $1', [bookId]);

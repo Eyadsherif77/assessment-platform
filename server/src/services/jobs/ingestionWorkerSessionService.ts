@@ -273,7 +273,7 @@ export class IngestionWorkerSessionService {
 
     await db.query(
       `UPDATE ingestion_worker_sessions 
-       SET last_batch_sequence = MAX(last_batch_sequence, $1) 
+       SET last_batch_sequence = CASE WHEN last_batch_sequence > $1 THEN last_batch_sequence ELSE $1 END 
        WHERE id = $2`,
       [batchSequence, sessionId]
     );
@@ -299,7 +299,7 @@ export class IngestionWorkerSessionService {
 
     await db.query(
       `INSERT INTO book_pdf_chunks (book_id, chunk_index, chunk_data, generation_id) VALUES ($1, $2, $3, $4)
-       ON DUPLICATE KEY UPDATE chunk_data = VALUES(chunk_data)`,
+       ON DUPLICATE KEY UPDATE chunk_data = VALUES(chunk_data), generation_id = VALUES(generation_id)`,
       [session.book_id, chunkIndex, chunkData, session.generation_id]
     ).catch(async () => {
       // SQLite fallback for testing
