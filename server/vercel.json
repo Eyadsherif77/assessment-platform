@@ -1,30 +1,9 @@
 {
   "version": 2,
-  "services": {
-    "web": {
-      "root": ".",
-      "entrypoint": "dist/server.js",
-      "buildCommand": "npm run build"
-    }
-  },
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": {
-        "service": "web"
-      }
-    },
-    {
-      "source": "/health",
-      "destination": {
-        "service": "web"
-      }
-    },
-    {
-      "source": "/",
-      "destination": {
-        "service": "web"
-      }
+      "source": "/(.*)",
+      "destination": "/api"
     }
   ]
 }
