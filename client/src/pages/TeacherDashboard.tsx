@@ -733,7 +733,10 @@ export const TeacherDashboard: React.FC = () => {
     setExcelPreviewError(null);
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      const safeExt = file.name.includes('.') ? `.${file.name.split('.').pop()}` : '.xlsx';
+      const safeAsciiName = `teacher_ref_${Date.now()}${safeExt}`;
+      formData.append('file', file, safeAsciiName);
+      formData.append('original_filename', file.name);
       if (selectedSubjectId) formData.append('subject_id', selectedSubjectId);
       if (selectedGradeId) formData.append('grade_id', selectedGradeId);
       formData.append('duration_minutes', examDuration || '30');
@@ -821,7 +824,10 @@ export const TeacherDashboard: React.FC = () => {
     setIsDirectImporting(true);
     try {
       const formData = new FormData();
-      formData.append('file', excelFile);
+      const safeExt = excelFile.name.includes('.') ? `.${excelFile.name.split('.').pop()}` : '.xlsx';
+      const safeAsciiName = `teacher_import_${Date.now()}${safeExt}`;
+      formData.append('file', excelFile, safeAsciiName);
+      formData.append('original_filename', excelFile.name);
       if (selectedSubjectId) formData.append('subject_id', selectedSubjectId);
       if (selectedGradeId) formData.append('grade_id', selectedGradeId);
       formData.append('duration_minutes', examDuration || '30');

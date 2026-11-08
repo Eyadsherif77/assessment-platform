@@ -246,7 +246,11 @@ export const AdminDashboard: React.FC = () => {
     setRefExamError(null);
     try {
       const formData = new FormData();
-      formData.append('file', refExamFile);
+      // Ensure ASCII safe filename for WebKit / Safari compatibility (prevents SyntaxError: The string did not match the expected pattern)
+      const safeExt = refExamFile.name.includes('.') ? `.${refExamFile.name.split('.').pop()}` : '.xlsx';
+      const safeAsciiName = `ref_${Date.now()}${safeExt}`;
+      formData.append('file', refExamFile, safeAsciiName);
+      formData.append('original_filename', refExamFile.name);
       formData.append('grade_id', refExamGradeId);
       formData.append('subject_id', refExamSubjectId);
       formData.append('chapter_id', refExamChapterId);
@@ -278,7 +282,15 @@ export const AdminDashboard: React.FC = () => {
       if (!res.ok) throw new Error(data?.error || (language === 'ar' ? 'فشل فحص ومعاينة الأسئلة' : 'Failed to preview questions'));
       setRefExamPreview(data);
     } catch (err: any) {
-      setRefExamError(err.message || 'حدث خطأ أثناء فحص الملف');
+      let msg = err.message || '';
+      if (msg.includes('did not match the expected pattern') || msg.includes('SYNTAX_ERR')) {
+        msg = language === 'ar'
+          ? 'تعذر قراءة ترميز اسم الملف في المتصفح. يرجى إعادة اختيار الملف والمحاولة مرة أخرى.'
+          : 'Browser file encoding issue. Please re-select the file and try again.';
+      } else if (!msg) {
+        msg = language === 'ar' ? 'حدث خطأ أثناء فحص الملف' : 'An error occurred while inspecting the file';
+      }
+      setRefExamError(msg);
     } finally {
       setRefExamIsPreviewing(false);
     }
@@ -290,7 +302,11 @@ export const AdminDashboard: React.FC = () => {
     setRefExamError(null);
     try {
       const formData = new FormData();
-      formData.append('file', refExamFile);
+      // Ensure ASCII safe filename for WebKit / Safari compatibility (prevents SyntaxError: The string did not match the expected pattern)
+      const safeExt = refExamFile.name.includes('.') ? `.${refExamFile.name.split('.').pop()}` : '.xlsx';
+      const safeAsciiName = `ref_${Date.now()}${safeExt}`;
+      formData.append('file', refExamFile, safeAsciiName);
+      formData.append('original_filename', refExamFile.name);
       formData.append('grade_id', refExamGradeId);
       formData.append('subject_id', refExamSubjectId);
       formData.append('chapter_id', refExamChapterId);
@@ -332,7 +348,15 @@ export const AdminDashboard: React.FC = () => {
       setRefExamFile(null);
       fetchActiveReferenceBanks();
     } catch (err: any) {
-      setRefExamError(err.message || 'حدث خطأ أثناء الاستيراد');
+      let msg = err.message || '';
+      if (msg.includes('did not match the expected pattern') || msg.includes('SYNTAX_ERR')) {
+        msg = language === 'ar'
+          ? 'تعذر قراءة ترميز اسم الملف في المتصفح. يرجى إعادة اختيار الملف والمحاولة مرة أخرى.'
+          : 'Browser file encoding issue. Please re-select the file and try again.';
+      } else if (!msg) {
+        msg = language === 'ar' ? 'حدث خطأ أثناء الاستيراد' : 'An error occurred while importing';
+      }
+      setRefExamError(msg);
     } finally {
       setRefExamIsImporting(false);
     }
@@ -389,7 +413,10 @@ export const AdminDashboard: React.FC = () => {
     setIsImportingRef(true);
     try {
       const formData = new FormData();
-      formData.append('file', refFile);
+      const safeExt = refFile.name.includes('.') ? `.${refFile.name.split('.').pop()}` : '.xlsx';
+      const safeAsciiName = `ref_import_${Date.now()}${safeExt}`;
+      formData.append('file', refFile, safeAsciiName);
+      formData.append('original_filename', refFile.name);
       if (refSubjectId) formData.append('subject_id', refSubjectId);
       if (refGradeId) formData.append('grade_id', refGradeId);
       formData.append('create_fixed_exam', String(refCreateFixedExam));
@@ -875,7 +902,7 @@ export const AdminDashboard: React.FC = () => {
         fd.append('uploadId', uploadId);
         fd.append('chunkIndex', String(i));
         fd.append('totalChunks', String(totalChunks));
-        fd.append('chunk', chunkBlob, `${newBookFile.name}.part_${i}`);
+        fd.append('chunk', chunkBlob, `part_${i}.bin`);
 
         const res = await fetch(apiUrl('/api/books/upload-chunk'), {
           method: 'POST',

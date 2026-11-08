@@ -1391,15 +1391,27 @@ router.delete('/reference-questions/:id', async (req: AuthenticatedRequest, res)
 
     // 6. Delete exam questions options and questions for each exam container
     for (const exId of examIds) {
-      await db.query(`
-        DELETE FROM exam_question_options 
-        WHERE question_id IN (SELECT id FROM exam_questions WHERE exam_id = $1)
-      `, [exId]);
+      try {
+        await db.query(`
+          DELETE FROM exam_question_options 
+          WHERE question_id IN (SELECT id FROM exam_questions WHERE exam_id = $1)
+        `, [exId]);
+      } catch (_) {}
+      try {
+        await db.query(`DELETE FROM student_answers WHERE question_id IN (SELECT id FROM exam_questions WHERE exam_id = $1)`, [exId]);
+      } catch (_) {}
+      try {
+        await db.query(`DELETE FROM exam_attempts WHERE exam_id = $1`, [exId]);
+      } catch (_) {}
       try {
         await db.query(`DELETE FROM exam_submissions WHERE exam_id = $1`, [exId]);
       } catch (_) {}
-      await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [exId]);
-      await db.query(`DELETE FROM exams WHERE id = $1`, [exId]);
+      try {
+        await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [exId]);
+      } catch (_) {}
+      try {
+        await db.query(`DELETE FROM exams WHERE id = $1`, [exId]);
+      } catch (_) {}
     }
 
     return res.json({ 
