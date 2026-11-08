@@ -24,18 +24,56 @@ export class GeminiOcrService {
   }
 
   /**
+   * Evaluates whether a multi-page document is primarily a digital text PDF
+   * (containing extractable fonts and selectable text across majority of pages)
+   * versus a scanned/image-only document.
+   */
+  public static isDocumentPrimarilyDigital(pages: { text: string; charCount?: number }[]): boolean {
+    if (!pages || pages.length === 0) return false;
+    let textPages = 0;
+    let totalChars = 0;
+    for (const p of pages) {
+      const len = p.charCount !== undefined ? p.charCount : (p.text || '').trim().length;
+      totalChars += len;
+      if (len >= 40) {
+        textPages++;
+      }
+    }
+    const ratio = textPages / pages.length;
+    return (ratio >= 0.55 && totalChars >= 1200) || totalChars >= 5000;
+  }
+
+  /**
    * Comprehensive policy: Determine whether page text is unusable, missing,
    * vector-outlined, or too sparse to represent meaningful curriculum content.
+   * Preserves mathematical notation, numbers, variables, and Arabic curriculum terms.
    */
-  public static isUnusableOrLowTextPage(page: { text: string; charCount?: number }): boolean {
+  public static isUnusableOrLowTextPage(
+    page: { text: string; charCount?: number },
+    isDigitalDocument = false
+  ): boolean {
     const text = (page.text || '').trim();
-    if (text.length < this.LOW_TEXT_THRESHOLD_CHARS) {
+    const threshold = isDigitalDocument ? 25 : this.LOW_TEXT_THRESHOLD_CHARS;
+
+    if (text.length < threshold) {
       return true;
+    }
+
+    // In digital textbooks, if a page has at least 25 characters of readable content,
+    // it contains genuine titles, formulas, or problem descriptions and does not require OCR.
+    if (isDigitalDocument && text.length >= 25) {
+      return false;
+    }
+
+    // Mathematical and scientific token regex (preserves numbers, operators, equations, variables, Greek/Arabic symbols)
+    const mathTokens = text.match(/[\d\w\u0621-\u064A\+\-\*\/=><^√∑∫≤≥≠πθ%#@()\[\]{}]+|[a-zA-Z]+/g) || [];
+    if (mathTokens.length >= this.MIN_EDUCATIONAL_WORDS) {
+      return false;
     }
 
     // Check if the extracted text consists only of repetitive page headers, footers, numbers, or punctuation
     const words = text
-      .split(/[\s\d\-–—_.,:;!?'"()\[\]{}«»/\\+=\*&%$#@~<>|]+/)
+      .split(/[\s\-–—_.,:;!?'"()\[\]{}«»/\\+=\*&%$#@~<>|]+/)
       .filter(w => w.length > 1);
 
     if (words.length < this.MIN_EDUCATIONAL_WORDS) {

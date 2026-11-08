@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/db.js';
 import { authenticateToken, requireRole, enforceStudentGrade, AuthenticatedRequest } from '../middleware/auth.js';
@@ -222,7 +223,7 @@ router.post(
   }
 );
 
-// Finalize chunked textbook upload: assemble buffer, parse with pdf-parse, and index
+// Finalize chunked textbook upload: assemble buffer, register durable job, and trigger reliable ingestion
 router.post(
   '/finalize-chunked',
   authenticateToken,
@@ -273,105 +274,186 @@ router.post(
         return Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
       });
       const fullBuffer = Buffer.concat(buffers);
+      const fileChecksum = crypto.createHash('sha256').update(fullBuffer).digest('hex');
 
-      bookId = uuidv4();
       const effectiveSchoolType = school_type || 'كلاهما';
       const cleanTerm = parseInt(String(term), 10) === 2 ? 2 : 1;
 
-      // Save PDF chunks for student/teacher PDF reading
+      // 3. Fast Duplicate & Canonical Ready Check
+      const existingReadyBook = await db.query(
+        `SELECT id, title_ar, total_pages, processing_status FROM books 
+         WHERE academic_stage_id = $1 AND grade_id = $2 AND subject_id = $3 AND term = $4 AND title_ar = $5
+         LIMIT 1`,
+        [academic_stage_id, grade_id, subject_id, cleanTerm, title_ar.trim()]
+      ).catch(() => ({ rows: [] }));
+
+      if (existingReadyBook.rows.length > 0 &&
+          (existingReadyBook.rows[0].processing_status === 'COMPLETED' || existingReadyBook.rows[0].processing_status === 'VERIFIED_READY')) {
+        db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
+        return res.status(200).json({
+          success: true,
+          bookId: existingReadyBook.rows[0].id,
+          status: 'COMPLETED',
+          stage: 'COMPLETED',
+          progress: 100,
+          totalPages: existingReadyBook.rows[0].total_pages || 1,
+          message: 'الكتاب موجود ومعتمد مسبقاً وجاهز للاستخدام الفوري.'
+        });
+      }
+
+      // 4. Resolve Book ID and Durable Ingestion Job (resumes from prior checkpoint if re-uploading identical file)
+      const existingJobRes = await db.query(
+        `SELECT j.id, j.book_id, j.current_stage, j.status, j.checkpoint_data 
+         FROM book_ingestion_jobs j
+         JOIN books b ON b.id = j.book_id
+         WHERE j.file_checksum = $1 
+           AND b.academic_stage_id = $2 
+           AND b.grade_id = $3 
+           AND b.subject_id = $4 
+           AND b.term = $5
+         ORDER BY j.created_at DESC LIMIT 1`,
+        [fileChecksum, academic_stage_id, grade_id, subject_id, cleanTerm]
+      ).catch(() => ({ rows: [] }));
+
+      if (existingJobRes.rows.length > 0 && existingJobRes.rows[0].book_id) {
+        bookId = existingJobRes.rows[0].book_id;
+      } else {
+        bookId = uuidv4();
+      }
+      const resolvedBookId: string = bookId || uuidv4();
+
+      // 5. Store PDF chunks in book_pdf_chunks so student/teacher PDF reading works
       try {
+        const isMysql = (db as any).getDialect?.() === 'mysql' || (db as any).isMySql;
+        const verb = isMysql ? 'REPLACE INTO' : 'INSERT OR REPLACE INTO';
         for (const r of chunkRows.rows) {
           await db.query(
-            `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
-            [bookId, r.chunk_index, r.chunk_data]
+            `${verb} book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
+            [resolvedBookId, r.chunk_index, r.chunk_data]
           );
         }
       } catch (pdfStoreErr) {
         console.warn('Could not store PDF chunks in book_pdf_chunks:', pdfStoreErr);
       }
 
-      // Execute unified automated ingestion pipeline (Stages 1 through 11)
-      const ingestionReport = await BookIngestionService.ingestTextbook({
-        bookId,
-        pdfBuffer: fullBuffer,
-        fileName,
-        titleAr: title_ar.trim(),
-        titleEn: title_en ? title_en.trim() : title_ar.trim(),
-        academicStageId: academic_stage_id,
-        gradeId: grade_id,
-        subjectId: subject_id,
-        schoolType: effectiveSchoolType,
-        term: cleanTerm,
-        teacherId: req.user!.id
-      });
-
-      // If ingestion deduplicated to an existing canonical book, clean up temporary staging upload chunks
-      if (ingestionReport.bookId && ingestionReport.bookId !== bookId) {
-        await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
+      // 6. Ensure book record exists with PENDING status
+      const existingBookRow = await db.query('SELECT id FROM books WHERE id = $1', [resolvedBookId]).catch(() => ({ rows: [] }));
+      if (existingBookRow.rows.length === 0) {
+        await db.query(
+          `INSERT INTO books (
+             id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
+             file_url, file_size, total_pages, school_type, term, processing_status
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDING')`,
+          [
+            resolvedBookId,
+            title_ar.trim(),
+            title_en ? title_en.trim() : title_ar.trim(),
+            academic_stage_id,
+            grade_id,
+            subject_id,
+            req.user!.id,
+            fileName ? `/uploads/${fileName}` : `/uploads/book_${resolvedBookId}.pdf`,
+            fileSize || fullBuffer.length,
+            1,
+            effectiveSchoolType,
+            cleanTerm
+          ]
+        ).catch(() => {});
       }
 
-      if (ingestionReport.status === 'REQUIRES_REMEDIATION' || ingestionReport.status === 'BLOCKED') {
-        // Clean up temporary upload chunks only if book is not canonical
-        const canonicalCheck = await db.query(
-          `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
-          [bookId]
-        ).catch(() => ({ rows: [] }));
-        if (canonicalCheck.rows.length === 0) {
-          await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
+      // 7. Register durable job
+      const durableJob = await DurableIngestionJobService.createOrGetJob({
+        bookId: resolvedBookId,
+        fileChecksum,
+        initialCheckpoint: {
+          titleAr: title_ar.trim(),
+          titleEn: title_en ? title_en.trim() : title_ar.trim(),
+          fileName,
+          fileSize: fileSize || fullBuffer.length
+        }
+      });
+
+      // 8. Handle synchronous execution if explicitly requested (e.g. test suites) vs async background default
+      const isSync = req.query.sync === 'true';
+
+      if (isSync) {
+        const ingestionReport = await BookIngestionService.ingestTextbook({
+          bookId: resolvedBookId,
+          pdfBuffer: fullBuffer,
+          fileName,
+          titleAr: title_ar.trim(),
+          titleEn: title_en ? title_en.trim() : title_ar.trim(),
+          academicStageId: academic_stage_id,
+          gradeId: grade_id,
+          subjectId: subject_id,
+          schoolType: effectiveSchoolType,
+          term: cleanTerm,
+          teacherId: req.user!.id
+        });
+
+        if (ingestionReport.status === 'VERIFIED_READY') {
+          db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
         }
 
-        if (ingestionReport.status === 'REQUIRES_REMEDIATION') {
-          return res.status(422).json({
-            error: 'يتطلب الكتاب معالجة تكميلية أو فحصاً يدوياً (OCR / صفحات ممسوحة).',
-            code: 'REQUIRES_REMEDIATION',
-            report: ingestionReport
-          });
-        }
-
-        return res.status(400).json({
-          error: 'فشلت معالجة الكتاب: تم حظر الكتاب بسبب عدم استيفاء شروط الجودة أو المحتوى.',
-          code: 'BOOK_INGESTION_BLOCKED',
+        return res.status(201).json({
+          message: ingestionReport.status === 'VERIFIED_READY'
+            ? `تم رفع ومعالجة واعتماد الكتاب بنجاح (${ingestionReport.totalPages} صفحة و ${ingestionReport.units.length} وحدات معتمدة).`
+            : `تمت معالجة الكتاب (${ingestionReport.status}).`,
+          bookId: ingestionReport.bookId,
+          totalPages: ingestionReport.totalPages,
+          status: ingestionReport.status,
           report: ingestionReport
         });
       }
 
-      // Only clean up file_upload_chunks once ingestion has verified ready!
-      if (ingestionReport.status === 'VERIFIED_READY') {
-        db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
-      }
+      // Async background progression: Launch worker and return 202 immediately to frontend
+      const targetBookId = resolvedBookId;
+      setImmediate(async () => {
+        try {
+          const report = await BookIngestionService.ingestTextbook({
+            bookId: targetBookId,
+            pdfBuffer: fullBuffer,
+            fileName,
+            titleAr: title_ar.trim(),
+            titleEn: title_en ? title_en.trim() : title_ar.trim(),
+            academicStageId: academic_stage_id,
+            gradeId: grade_id,
+            subjectId: subject_id,
+            schoolType: effectiveSchoolType,
+            term: cleanTerm,
+            teacherId: req.user!.id
+          });
+          if (report.status === 'VERIFIED_READY') {
+            db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
+          }
+        } catch (bgErr: any) {
+          console.error(`🚨 [Background Ingestion] Job for book ${targetBookId} notice:`, bgErr.message);
+        }
+      });
 
-      return res.status(201).json({
-        message: ingestionReport.status === 'VERIFIED_READY'
-          ? `تم رفع ومعالجة واعتماد الكتاب بنجاح (${ingestionReport.totalPages} صفحة و ${ingestionReport.units.length} وحدات معتمدة).`
-          : `تمت معالجة الكتاب، ولكن يتطلب فحص الجاهزية استكمال الأصول البصرية (${ingestionReport.status}).`,
-        bookId: ingestionReport.bookId,
-        totalPages: ingestionReport.totalPages,
-        status: ingestionReport.status,
-        report: ingestionReport
+      return res.status(202).json({
+        success: true,
+        bookId: resolvedBookId,
+        jobId: durableJob.id,
+        status: 'PROCESSING',
+        stage: durableJob.currentStage || 'EXTRACTING_PAGES',
+        progress: 15,
+        message: 'تم استلام أجزاء الكتاب بنجاح وبدء المعالجة والاستخراج والفهرسة الدلالية.'
       });
     } catch (err: any) {
       console.error('Finalize chunked error:', err);
-      // Clean up temporary staging chunks only if bookId is not an existing canonical book
-      if (bookId) {
-        try {
-          const canonicalCheck = await db.query(
-            `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
-            [bookId]
-          );
-          if (canonicalCheck.rows.length === 0) {
-            await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]);
-          }
-        } catch (_) {}
-      }
       return res.status(500).json({ error: 'فشلت معالجة أجزاء الكتاب: ' + err.message });
     }
   }
 );
 
-// Get background processing status
+// Get background processing status with rich stage analytics and opportunistic resumption crank
 router.get('/status/:id', authenticateToken, async (req, res) => {
   const id = String(req.params.id);
-  const dbRes = await db.query('SELECT processing_status, processing_error, total_pages FROM books WHERE id = $1', [id]);
+  const dbRes = await db.query(
+    'SELECT processing_status, processing_error, total_pages, title_ar FROM books WHERE id = $1',
+    [id]
+  );
   
   if (dbRes.rows.length === 0) {
     return res.status(404).json({ error: 'الكتاب غير موجود' });
@@ -379,7 +461,7 @@ router.get('/status/:id', authenticateToken, async (req, res) => {
 
   // Check durable job record in database
   const jobRes = await db.query(
-    `SELECT id, current_stage, status, attempt_count, max_attempts, checkpoint_data, last_error, updated_at
+    `SELECT id, current_stage, status, attempt_count, max_attempts, checkpoint_data, last_error, updated_at, lease_expires_at, lease_owner
      FROM book_ingestion_jobs
      WHERE book_id = $1
      ORDER BY created_at DESC
@@ -390,31 +472,72 @@ router.get('/status/:id', authenticateToken, async (req, res) => {
   const job = jobRes.rows[0];
   const currentDbStatus = dbRes.rows[0].processing_status;
 
-  let progress = currentDbStatus === 'COMPLETED' ? 100 : 20;
-  if (job) {
-    const stageProgress: Record<string, number> = {
-      UPLOADED: 10,
-      EXTRACTING_PAGES: 30,
-      OCR_PROCESSING: 50,
-      DETECTING_CHAPTERS: 70,
-      CHUNKING_AND_EMBEDDING: 85,
-      READINESS_AUDIT: 95,
-      COMPLETED: 100,
-      FAILED: 0,
-      BLOCKED: 0
-    };
-    progress = stageProgress[job.current_stage] !== undefined ? stageProgress[job.current_stage] : progress;
+  let checkpoint: any = {};
+  if (job?.checkpoint_data) {
+    try {
+      checkpoint = typeof job.checkpoint_data === 'string'
+        ? JSON.parse(job.checkpoint_data)
+        : job.checkpoint_data;
+    } catch (_) {}
   }
 
-  // Opportunistic auto-resumption: If worker crashed or timed out and lease expired, resume in background
-  if (job && job.attempt_count < (job.max_attempts || 3)) {
-    const isStalled = job.status === 'RETRYING' ||
-      (job.status === 'IN_PROGRESS' && job.lease_expires_at && new Date(job.lease_expires_at).getTime() < Date.now());
-    if (isStalled) {
-      DurableIngestionJobService.executeJobResumption(job.id).catch(err => {
-        console.warn(`[Status Polling] Opportunistic resume for job ${job.id} failed:`, err.message);
-      });
+  let progress = currentDbStatus === 'COMPLETED' ? 100 : 15;
+  let stageDescription = 'جاري تهيئة معالجة الكتاب...';
+
+  if (currentDbStatus === 'COMPLETED' || job?.current_stage === 'COMPLETED') {
+    progress = 100;
+    stageDescription = 'تمت معالجة وفهرسة واعتماد الكتاب بنجاح!';
+  } else if (job) {
+    switch (job.current_stage) {
+      case 'UPLOADED':
+        progress = 15;
+        stageDescription = 'تم رفع المستند وبدء الاستخراج...';
+        break;
+      case 'EXTRACTING_PAGES':
+        progress = 25;
+        stageDescription = checkpoint.totalPages
+          ? `جاري قراءة واستخراج نصوص صفحات الكتاب (${checkpoint.extractedPageCount || 1} من ${checkpoint.totalPages})...`
+          : 'جاري استخراج صفحات ونصوص الكتاب...';
+        break;
+      case 'OCR_PROCESSING':
+        const ocrTotal = checkpoint.totalLowTextPages || 1;
+        const ocrDone = checkpoint.processedPages || Object.keys(checkpoint.ocrResults || {}).length || 0;
+        const ocrPct = Math.min(45, Math.round((ocrDone / ocrTotal) * 45));
+        progress = 30 + ocrPct;
+        stageDescription = `جاري التعرف الضوئي OCR على الصفحات (${ocrDone} من ${ocrTotal})...`;
+        break;
+      case 'DETECTING_CHAPTERS':
+        progress = 75;
+        stageDescription = 'جاري تحليل الفهرس واكتشاف الوحدات الدراسية بالذكاء الاصطناعي...';
+        break;
+      case 'CHUNKING_AND_EMBEDDING':
+        progress = 85;
+        stageDescription = checkpoint.totalChunks
+          ? `جاري الفهرسة الدلالية وبناء المتجهات للمقاطع (${checkpoint.totalChunks} مقطع)...`
+          : 'جاري تقسيم النصوص والفهرسة الدلالية بالذكاء الاصطناعي...';
+        break;
+      case 'READINESS_AUDIT':
+        progress = 95;
+        stageDescription = 'جاري تدقيق الجودة والتحقق النهائي من جاهزية المحتوى للاختبارات...';
+        break;
+      case 'FAILED':
+      case 'BLOCKED':
+        progress = 0;
+        stageDescription = job.last_error || 'فشلت معالجة الكتاب';
+        break;
+      default:
+        progress = 20;
+        stageDescription = 'جاري المعالجة...';
+        break;
     }
+  }
+
+  // Opportunistic auto-resumption: If worker was terminated or lease expired, drive the next execution batch
+  if (job && (job.status === 'PENDING' || job.status === 'RETRYING' ||
+     (job.status === 'IN_PROGRESS' && job.lease_expires_at && new Date(job.lease_expires_at).getTime() < Date.now()))) {
+    DurableIngestionJobService.executeJobResumption(job.id).catch(err => {
+      console.warn(`[Status Polling] Opportunistic resume for job ${job.id} notice:`, err.message);
+    });
   }
 
   return res.json({
@@ -422,8 +545,11 @@ router.get('/status/:id', authenticateToken, async (req, res) => {
     stage: job?.current_stage || 'UNKNOWN',
     jobStatus: job?.status || 'UNKNOWN',
     progress,
+    stageMessage: stageDescription,
     error: dbRes.rows[0].processing_error || job?.last_error,
-    totalPages: dbRes.rows[0].total_pages,
+    totalPages: dbRes.rows[0].total_pages || checkpoint.totalPages,
+    processedPages: checkpoint.processedPages,
+    totalLowTextPages: checkpoint.totalLowTextPages,
     jobId: job?.id
   });
 });

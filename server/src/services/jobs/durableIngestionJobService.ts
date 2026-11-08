@@ -52,7 +52,7 @@ export class DurableIngestionJobService {
   }): Promise<IngestionJobRecord> {
     const { bookId, fileChecksum, initialCheckpoint = {} } = params;
 
-    // Check if an existing job for this book and checksum is already completed
+    // Check if an existing job for this book and checksum is already completed or in progress
     const existing = await db.query(
       `SELECT id, book_id, file_checksum, current_stage, status, attempt_count,
               max_attempts, lease_owner, lease_expires_at, checkpoint_data, last_error,
@@ -67,8 +67,10 @@ export class DurableIngestionJobService {
     if (existing.rows.length > 0) {
       const existingJob = this.mapRow(existing.rows[0]);
       if (existingJob.status === 'FAILED' || existingJob.status === 'RETRYING' || existingJob.status === 'IN_PROGRESS') {
+        const isMysql = this.isMySql();
+        const nowExpr = isMysql ? 'NOW()' : "datetime('now')";
         await db.query(
-          `UPDATE book_ingestion_jobs SET status = 'PENDING', lease_owner = NULL, lease_expires_at = NULL, attempt_count = 0, last_error = NULL WHERE id = $1`,
+          `UPDATE book_ingestion_jobs SET status = 'PENDING', lease_owner = NULL, lease_expires_at = NULL, attempt_count = 0, last_error = NULL, updated_at = ${nowExpr} WHERE id = $1`,
           [existingJob.id]
         );
         existingJob.status = 'PENDING';
@@ -383,7 +385,7 @@ export class DurableIngestionJobService {
         schoolType: bookData.school_type || 'كلاهما',
         term: bookData.term || 1,
         teacherId: bookData.teacher_id,
-        options: { forceReingest: true }
+        options: { forceReingest: false }
       });
 
       return {

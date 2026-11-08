@@ -876,6 +876,112 @@ export const AdminDashboard: React.FC = () => {
     }
   }, [newBookGradeId]);
 
+  // Poll background processing status for textbook ingestion
+  const pollBookStatus = (bookId: string, bookTitle: string, bookTerm: number) => {
+    const maxPollAttempts = 240; // up to 6 minutes of polling (1.5s interval)
+    let attempts = 0;
+
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > maxPollAttempts) {
+        clearInterval(interval);
+        setIsUploadingBook(false);
+        showAlert(
+          language === 'ar'
+            ? 'المعالجة مستمرة في الخلفية ويمكنك مراجعة قائمة الكتب بعد قليل.'
+            : 'Background processing continues and the book will appear once ready.',
+          'success'
+        );
+        return;
+      }
+
+      try {
+        const res = await fetch(apiUrl(`/api/books/status/${bookId}`), {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) {
+          if (res.status === 404) return;
+          throw new Error('Failed to fetch processing status');
+        }
+
+        const data = await res.json();
+
+        if (data.status === 'COMPLETED' || data.status === 'VERIFIED_READY') {
+          clearInterval(interval);
+          setBookUploadProgress(100);
+          setBookUploadMessage(language === 'ar' ? 'تم رفع ومعالجة وفهرسة واعتماد الكتاب بنجاح!' : 'Textbook processed and activated successfully!');
+          showAlert(
+            language === 'ar'
+              ? `تم رفع ومعالجة كتاب (${bookTitle}) للفصل الدراسي ${bookTerm === 1 ? 'الأول' : 'الثاني'} بنجاح!`
+              : `Book (${bookTitle}) uploaded and verified successfully!`,
+            'success'
+          );
+          try {
+            localStorage.removeItem('farabi_active_book_upload');
+          } catch (_) {}
+          setIsUploadingBook(false);
+          setNewBookTitle('');
+          setNewBookFile(null);
+          fetchAdminBooks();
+          fetchOverview();
+          setTimeout(() => setBookUploadProgress(0), 2500);
+          return;
+        }
+
+        if (data.status === 'FAILED' || data.status === 'BLOCKED') {
+          clearInterval(interval);
+          setIsUploadingBook(false);
+          try {
+            localStorage.removeItem('farabi_active_book_upload');
+          } catch (_) {}
+          showAlert(data.error || (language === 'ar' ? 'فشلت معالجة الكتاب. يرجى مراجعة محتوى الملف.' : 'Textbook processing failed.'), 'error');
+          setTimeout(() => setBookUploadProgress(0), 2000);
+          return;
+        }
+
+        // Live progress mapping
+        const backendProgress = typeof data.progress === 'number' ? data.progress : 50;
+        const displayPct = Math.min(98, Math.max(45, Math.round(40 + (backendProgress * 0.58))));
+        setBookUploadProgress(displayPct);
+
+        if (data.stageMessage) {
+          setBookUploadMessage(data.stageMessage);
+        } else if (data.stage === 'EXTRACTING_PAGES') {
+          setBookUploadMessage(language === 'ar' ? 'جاري استخراج صفحات ونصوص الكتاب...' : 'Extracting textbook pages...');
+        } else if (data.stage === 'OCR_PROCESSING') {
+          setBookUploadMessage(language === 'ar' ? 'جاري التعرف الضوئي OCR على الصفحات...' : 'Running multimodal OCR on pages...');
+        } else if (data.stage === 'DETECTING_CHAPTERS') {
+          setBookUploadMessage(language === 'ar' ? 'جاري اكتشاف الفصول والوحدات بالذكاء الاصطناعي...' : 'Detecting chapters and units with AI...');
+        } else if (data.stage === 'CHUNKING_AND_EMBEDDING') {
+          setBookUploadMessage(language === 'ar' ? 'جاري تقسيم النصوص والفهرسة الدلالية بالذكاء الاصطناعي...' : 'Chunking and generating semantic embeddings...');
+        } else if (data.stage === 'READINESS_AUDIT') {
+          setBookUploadMessage(language === 'ar' ? 'جاري فحص الجودة وتدقيق الجاهزية للاختبارات...' : 'Auditing content readiness and exam eligibility...');
+        } else {
+          setBookUploadMessage(language === 'ar' ? 'جاري استخراج النصوص والفهرسة الدلالية بالذكاء الاصطناعي...' : 'Processing and indexing textbook with AI...');
+        }
+      } catch (err) {
+        console.warn('Status poll error (transient):', err);
+      }
+    }, 1500);
+  };
+
+  // Check for in-progress textbook ingestion job on page load or refresh
+  useEffect(() => {
+    if (!token) return;
+    try {
+      const saved = localStorage.getItem('farabi_active_book_upload');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.bookId && !isUploadingBook) {
+          setIsUploadingBook(true);
+          setBookUploadProgress(50);
+          setBookUploadMessage(language === 'ar' ? 'جاري استئناف متابعة معالجة الكتاب...' : 'Resuming textbook processing monitor...');
+          pollBookStatus(parsed.bookId, parsed.title || 'كتاب مدرسي', parsed.term || 1);
+        }
+      }
+    } catch (_) {}
+  }, [token]);
+
   const handleAdminUploadBook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBookTitle.trim() || !newBookStageId || !newBookGradeId || !newBookSubjectId || !newBookFile) {
@@ -912,13 +1018,21 @@ export const AdminDashboard: React.FC = () => {
         if (!res.ok) throw new Error('فشل رفع أحد أجزاء الكتاب');
 
         completed++;
-        const pct = Math.min(85, Math.round((completed / totalChunks) * 80) + 5);
+        const pct = Math.min(40, Math.round((completed / totalChunks) * 35) + 5);
         setBookUploadProgress(pct);
-        setBookUploadMessage(`جاري رفع الأجزاء: (${completed} من ${totalChunks})...`);
+        setBookUploadMessage(
+          language === 'ar'
+            ? `جاري رفع الأجزاء: (${completed} من ${totalChunks})...`
+            : `Uploading chunks: (${completed} of ${totalChunks})...`
+        );
       }
 
-      setBookUploadProgress(90);
-      setBookUploadMessage('جاري استخراج النصوص والفهرسة الدلالية بالذكاء الاصطناعي...');
+      setBookUploadProgress(45);
+      setBookUploadMessage(
+        language === 'ar'
+          ? 'تم استلام أجزاء الكتاب، جاري بدء المعالجة والاستخراج...'
+          : 'Chunks uploaded, initializing extraction...'
+      );
 
       const finalRes = await fetch(apiUrl('/api/books/finalize-chunked'), {
         method: 'POST',
@@ -946,16 +1060,34 @@ export const AdminDashboard: React.FC = () => {
       const finalData = await finalRes.json();
       if (!finalRes.ok) throw new Error(finalData.error || 'فشلت معالجة الكتاب');
 
-      setBookUploadProgress(100);
-      setBookUploadMessage('تم رفع ومعالجة وفهرسة الكتاب بنجاح!');
-      showAlert(`تم رفع الكتاب (${newBookTitle}) للفصل الدراسي ${newBookTerm === 1 ? 'الأول' : 'الثاني'} بنجاح!`, 'success');
-      setNewBookTitle('');
-      setNewBookFile(null);
-      fetchAdminBooks();
-      fetchOverview();
+      if (finalData.status === 'COMPLETED' || finalData.status === 'VERIFIED_READY') {
+        setBookUploadProgress(100);
+        setBookUploadMessage(language === 'ar' ? 'تم اعتماد الكتاب بنجاح!' : 'Book activated successfully!');
+        showAlert(`تم اعتماد الكتاب (${newBookTitle}) بنجاح!`, 'success');
+        setNewBookTitle('');
+        setNewBookFile(null);
+        fetchAdminBooks();
+        fetchOverview();
+        setIsUploadingBook(false);
+        setTimeout(() => setBookUploadProgress(0), 2000);
+        return;
+      }
+
+      // Persist active job in localStorage for page refresh recovery
+      const activeJob = {
+        bookId: finalData.bookId,
+        jobId: finalData.jobId,
+        title: newBookTitle.trim(),
+        term: newBookTerm
+      };
+      try {
+        localStorage.setItem('farabi_active_book_upload', JSON.stringify(activeJob));
+      } catch (_) {}
+
+      // Start live polling of processing stages
+      pollBookStatus(finalData.bookId, newBookTitle.trim(), newBookTerm);
     } catch (err: any) {
       showAlert(err.message || 'خطأ أثناء رفع الكتاب', 'error');
-    } finally {
       setIsUploadingBook(false);
       setTimeout(() => setBookUploadProgress(0), 2000);
     }

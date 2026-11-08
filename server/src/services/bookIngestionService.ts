@@ -468,15 +468,16 @@ export class BookIngestionService {
     // =========================================================================
     // STAGE 4 & 5: Detect Scanned/Low-Text Pages & Multimodal OCR Handling
     // =========================================================================
-    const lowTextPages = extractedPages.filter(p => GeminiOcrService.isUnusableOrLowTextPage(p));
+    const isDocDigital = GeminiOcrService.isDocumentPrimarilyDigital(extractedPages);
+    const lowTextPages = extractedPages.filter(p => GeminiOcrService.isUnusableOrLowTextPage(p, isDocDigital));
 
     if (lowTextPages.length > 0) {
-      console.log(`⚠️ [BookIngestionService] Detected ${lowTextPages.length} low-text/scanned pages needing OCR fallback.`);
+      console.log(`⚠️ [BookIngestionService] Detected ${lowTextPages.length} low-text/scanned pages needing OCR fallback (isDigitalDoc=${isDocDigital}).`);
       const ocrResults: Record<number, string> = checkpoint.ocrResults || {};
       const failedFatalPages: number[] = [];
 
-      // Concurrency-controlled worker pool for OCR extraction (sequential for deterministic reliability)
-      const OCR_CONCURRENCY = 1;
+      // Concurrency-controlled worker pool for OCR extraction (concurrency 3 for fast throughput)
+      const OCR_CONCURRENCY = 3;
       let currentIndex = 0;
 
       const processPage = async (lp: typeof lowTextPages[0]) => {
@@ -541,8 +542,8 @@ export class BookIngestionService {
               success = true;
             }
 
-            // Pacing delay between pages (1200ms keeps calls within healthy provider rate limits)
-            await new Promise(res => setTimeout(res, 1200));
+            // Pacing delay between pages
+            await new Promise(res => setTimeout(res, 300));
           } catch (ocrErr: any) {
             retries++;
             if (retries > maxRetries) {
@@ -550,14 +551,14 @@ export class BookIngestionService {
               failedFatalPages.push(lp.pageNumber);
               break;
             }
-            await new Promise(res => setTimeout(res, 1500 * retries));
+            await new Promise(res => setTimeout(res, 1000 * retries));
           }
         }
       };
 
       // Execute in concurrent pool with heartbeats
       const workers: Promise<void>[] = [];
-      let processedCount = 0;
+      let processedCount = Object.keys(ocrResults).length;
 
       for (let w = 0; w < OCR_CONCURRENCY; w++) {
         workers.push((async () => {
@@ -568,7 +569,7 @@ export class BookIngestionService {
             processedCount++;
 
             // Extend worker lease and save checkpoint periodically
-            if (jobRecord && processedCount % 5 === 0) {
+            if (jobRecord && (processedCount % 3 === 0 || processedCount === lowTextPages.length)) {
               await DurableIngestionJobService.heartbeat(jobRecord.id, workerId, 180).catch(() => {});
               await DurableIngestionJobService.saveCheckpoint(jobRecord.id, workerId, 'OCR_PROCESSING', {
                 ocrResults,
@@ -1146,8 +1147,8 @@ export class BookIngestionService {
       chapters
     } = params;
 
-    const pageBatchSize = 25;
-    const chunkBatchSize = 10;
+    const pageBatchSize = 50;
+    const chunkBatchSize = 35;
     const dbStatus = status === 'VERIFIED_READY' ? 'COMPLETED' : 'FAILED';
 
     // 1. Invariant Guard: Protect Existing Verified Books
