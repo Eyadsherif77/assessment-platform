@@ -157,23 +157,20 @@ export default app;
 // Initialize DB and launch server
 async function startServer() {
   try {
-    console.log(`🚀 Starting Assessment Platform Server on port: ${PORT}...`);
-    try {
-      await db.init();
-      await seedDatabase();
-    } catch (dbErr) {
-      console.warn('Initial DB connect/seed warning:', dbErr);
-    }
-
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`✨ Server running on 0.0.0.0:${PORT}`);
       console.log(`📡 Health check ready`);
+    });
+
+    // Initialize DB asynchronously without blocking port readiness
+    db.init().then(() => seedDatabase()).catch(dbErr => {
+      console.warn('Initial DB connect/seed warning:', dbErr);
     });
   } catch (err) {
     console.error('Failed to start server:', err);
   }
 }
 
-if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test') {
   startServer();
 }
