@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/api"
+  "services": {
+    "web": {
+      "root": ".",
+      "entrypoint": "dist/server.js",
+      "buildCommand": "npm run build"
     }
-  ]
+  }
 }
