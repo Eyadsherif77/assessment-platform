@@ -162,6 +162,15 @@ async function startServer() {
       console.log(`📡 Health check ready`);
     });
 
+    const effectivePort = process.env.VERCEL ? 3000 : (Number(process.env.PORT) || 5000);
+    if (effectivePort !== PORT) {
+      try {
+        app.listen(effectivePort, '0.0.0.0', () => {
+          console.log(`✨ Secondary listener on 0.0.0.0:${effectivePort}`);
+        });
+      } catch (_) {}
+    }
+
     // Initialize DB asynchronously without blocking port readiness
     db.init().then(() => seedDatabase()).catch(dbErr => {
       console.warn('Initial DB connect/seed warning:', dbErr);
