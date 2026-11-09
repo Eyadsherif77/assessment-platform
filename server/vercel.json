@@ -11,6 +11,7 @@
     {
       "source": "/(.*)",
       "destination": {
+        "type": "service",
         "service": "web"
       }
     }
