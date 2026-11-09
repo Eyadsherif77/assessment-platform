@@ -8,6 +8,7 @@ import { GeminiClient, GeminiProviderError } from './geminiClient.js';
 import { AnswerValidationService, normalizeArabicLevel1 } from '../answerValidationService.js';
 import { createBoundedSolverAdapter, RawSolverInvoker } from './boundedSolverAdapter.js';
 import { VisualAssetExtractor } from './visualAssetExtractor.js';
+import { ReadinessValidator } from '../readinessValidator.js';
 
 export interface RetrievedChunk {
   id: string;
@@ -2381,6 +2382,12 @@ Return valid JSON with exact keys:
     const book = bookCheck.rows[0];
     if (book.academic_stage_id !== params.academicStageId || book.grade_id !== params.gradeId) {
       throw new Error('غير مصرح: لا يمكن توليد أسئلة لكتاب خارج مرحلتك وصفك الدراسي المعتمد.');
+    }
+
+    // 0. Defense-in-depth: Assert unit readiness before Question Bank lookup or LLM generation
+    const readiness = await ReadinessValidator.getUnitReadinessAsync(params.bookId, params.chapterId);
+    if (!readiness.isEligibleForAI) {
+      throw new Error(`UNIT_READINESS_BLOCKED: Unit ${params.chapterId} of book ${params.bookId} is not approved or ready for exam generation (${readiness.reason})`);
     }
 
     const subjectCode = (book.subject_code || '').toUpperCase();

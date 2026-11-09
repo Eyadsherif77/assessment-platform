@@ -15,6 +15,7 @@ import { ReferenceImportService } from '../services/referenceImportService.js';
 import { DeviceLimitService } from '../services/deviceLimitService.js';
 import { IngestionWorkerSessionService } from '../services/jobs/ingestionWorkerSessionService.js';
 import { WorkerKeyService } from '../services/security/workerKeyService.js';
+import { CurriculumApprovalService } from '../services/curriculumApprovalService.js';
 
 const XLSX = (xlsx as any).default || xlsx;
 const excelUpload = multer({
@@ -1587,6 +1588,87 @@ router.get('/books/:id/worker-session/status', async (req: AuthenticatedRequest,
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to query session status: ' + err.message });
+  }
+});
+
+/**
+ * 12. Persistent Curriculum Review and Approval Endpoints (ADMIN ONLY)
+ */
+// A. List books awaiting curriculum review
+router.get('/curriculum/review-queue', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { stage_id, grade_id, subject_id, status } = req.query;
+    const queue = await CurriculumApprovalService.getReviewQueue({
+      stageId: stage_id as string,
+      gradeId: grade_id as string,
+      subjectId: subject_id as string,
+      status: status as string
+    });
+    return res.json({ books: queue });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'حدث خطأ أثناء جلب قائمة المراجعة: ' + err.message });
+  }
+});
+
+// B. Retrieve unit review details, page boundaries, source provenance, chunk coverage
+router.get('/curriculum/units/:chapterId/review', async (req: AuthenticatedRequest, res) => {
+  try {
+    const chapterId = String(req.params.chapterId);
+    const details = await CurriculumApprovalService.getUnitReviewDetails(chapterId);
+    return res.json(details);
+  } catch (err: any) {
+    return res.status(404).json({ error: err.message });
+  }
+});
+
+// C. Approve a specific unit
+router.post('/curriculum/units/:chapterId/approve', async (req: AuthenticatedRequest, res) => {
+  try {
+    const chapterId = String(req.params.chapterId);
+    const { book_id, notes } = req.body;
+    if (!book_id) {
+      return res.status(400).json({ error: 'معرف الكتاب مطلوب (book_id)' });
+    }
+    const result = await CurriculumApprovalService.approveUnit(req.user!.id, chapterId, String(book_id), notes);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// D. Reject a specific unit with a reason
+router.post('/curriculum/units/:chapterId/reject', async (req: AuthenticatedRequest, res) => {
+  try {
+    const chapterId = String(req.params.chapterId);
+    const { book_id, reason } = req.body;
+    if (!book_id) {
+      return res.status(400).json({ error: 'معرف الكتاب مطلوب (book_id)' });
+    }
+    if (!reason || String(reason).trim().length === 0) {
+      return res.status(400).json({ error: 'سبب الرفض مطلوب' });
+    }
+    const result = await CurriculumApprovalService.rejectUnit(req.user!.id, chapterId, String(book_id), String(reason));
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// E. Revoke an existing approval
+router.post('/curriculum/units/:chapterId/revoke', async (req: AuthenticatedRequest, res) => {
+  try {
+    const chapterId = String(req.params.chapterId);
+    const { book_id, reason } = req.body;
+    if (!book_id) {
+      return res.status(400).json({ error: 'معرف الكتاب مطلوب (book_id)' });
+    }
+    if (!reason || String(reason).trim().length === 0) {
+      return res.status(400).json({ error: 'سبب سحب الاعتماد مطلوب' });
+    }
+    const result = await CurriculumApprovalService.revokeUnit(req.user!.id, chapterId, String(book_id), String(reason));
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
   }
 });
 

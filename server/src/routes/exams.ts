@@ -8,6 +8,7 @@ import { checkStudentExamLimit, getMonthlyExamLimit } from '../services/examLimi
 import { ExamCacheService } from '../services/examCacheService.js';
 import { ReferenceImportService } from '../services/referenceImportService.js';
 import { aiRagEngine } from '../services/ai/aiRagEngine.js';
+import { ReadinessValidator } from '../services/readinessValidator.js';
 
 const excelUpload = multer({
   storage: multer.memoryStorage(),
@@ -396,9 +397,45 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
         return res.status(400).json({ error: consistency.error });
       }
 
-      // Validate chapter belongs to book
+      // Validate chapter belongs to book and enforce server-side exam readiness gate
       if (chapter_id) {
         await ExamCacheService.normalizeAndValidateUnitSelection(book_id, chapter_id);
+        const readiness = await ReadinessValidator.getUnitReadinessAsync(book_id, chapter_id);
+        if (!readiness.isEligibleForAI) {
+          return res.status(403).json({
+            error: `لا يمكن إنشاء اختبار لهذا المقرر: الوحدة غير معتمدة أو غير جاهزة للاختبارات (${readiness.reason})`,
+            code: 'UNIT_READINESS_BLOCKED',
+            readiness: {
+              status: readiness.status,
+              reason: readiness.reason,
+              required_actions: readiness.requiredActions
+            }
+          });
+        }
+      } else {
+        // Full book exam: ensure active generation chapters exist and are approved
+        const chRows = await db.query(
+          `SELECT id FROM book_chapters WHERE book_id = $1 AND generation_id = COALESCE((SELECT active_generation_id FROM books WHERE id = $1), 'v1') LIMIT 1`,
+          [book_id]
+        );
+        if (chRows.rows.length === 0) {
+          return res.status(403).json({
+            error: 'لا يمكن إنشاء اختبار لهذا المقرر: لا توجد فصول معتمدة في جيل المعالجة النشط للكتاب',
+            code: 'UNIT_READINESS_BLOCKED'
+          });
+        }
+        const readiness = await ReadinessValidator.getUnitReadinessAsync(book_id, chRows.rows[0].id);
+        if (!readiness.isEligibleForAI) {
+          return res.status(403).json({
+            error: `لا يمكن إنشاء اختبار لهذا المقرر: الكتاب غير معتمد أو غير جاهز للاختبارات (${readiness.reason})`,
+            code: 'UNIT_READINESS_BLOCKED',
+            readiness: {
+              status: readiness.status,
+              reason: readiness.reason,
+              required_actions: readiness.requiredActions
+            }
+          });
+        }
       }
 
       finalStageId = identity.academicStageId;

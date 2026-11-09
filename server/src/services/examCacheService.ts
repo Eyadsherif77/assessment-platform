@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { AnswerValidationService, ExamValidationSummary, QuestionValidationResult } from './answerValidationService.js';
 import { AiUsageMetricsService } from './aiUsageMetricsService.js';
 import { validateListeningAndSourceGrounding } from './ai/aiRagEngine.js';
+import { ReadinessValidator } from './readinessValidator.js';
 
 export interface AuthoritativeCurriculumIdentity {
   bookId: string;
@@ -705,7 +706,25 @@ export class ExamCacheService {
       }
     }
 
-    // C. Validate student eligibility
+    // C. Normalize units & Enforce exam readiness gate early
+    const { normalizedUnitIds, unitSetKey } = await this.normalizeAndValidateUnitSelection(params.bookId, params.chapterIds);
+
+    // Defense-in-depth: Enforce exam readiness gate before checking or returning cached exam
+    for (const uId of normalizedUnitIds) {
+      const uReadiness = await ReadinessValidator.getUnitReadinessAsync(params.bookId, uId);
+      if (!uReadiness.isEligibleForAI) {
+        return {
+          hit: false,
+          reason: 'INELIGIBLE_STUDENT',
+          configKey: '',
+          cacheKey: '',
+          configHash: '',
+          curriculumIdentity: identity
+        };
+      }
+    }
+
+    // D. Validate student eligibility
     const eligibility = await this.validateStudentEligibility(params.studentId, identity);
     if (!eligibility.isEligible) {
       return {
@@ -718,8 +737,6 @@ export class ExamCacheService {
       };
     }
 
-    // D. Normalize units & parameters
-    const { normalizedUnitIds, unitSetKey } = await this.normalizeAndValidateUnitSelection(params.bookId, params.chapterIds);
     const { normalizedParams, paramHash } = this.normalizeExamParameters(params.examParams);
 
     // E. Compute canonical configuration key and hash

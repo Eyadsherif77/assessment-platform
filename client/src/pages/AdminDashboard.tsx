@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { HierarchyDashboard } from './HierarchyDashboard';
 import { LocalWorkerIngestionModal } from '../components/admin/LocalWorkerIngestionModal';
+import { CurriculumReviewModal } from '../components/admin/CurriculumReviewModal';
 
 interface TeacherItem {
   id: string;
@@ -142,6 +143,10 @@ export const AdminDashboard: React.FC = () => {
   // Local Machine Worker Ingestion modal state
   const [isLocalWorkerModalOpen, setIsLocalWorkerModalOpen] = useState<boolean>(false);
   const [selectedLocalWorkerBook, setSelectedLocalWorkerBook] = useState<any | null>(null);
+
+  // Curriculum Unit Review & Approval modal state
+  const [isCurriculumReviewModalOpen, setIsCurriculumReviewModalOpen] = useState<boolean>(false);
+  const [selectedCurriculumBook, setSelectedCurriculumBook] = useState<any | null>(null);
   const [isLoadingChapters, setIsLoadingChapters] = useState(false);
   const [isSavingBook, setIsSavingBook] = useState(false);
   const [newChapterTitle, setNewChapterTitle] = useState('');
@@ -2626,6 +2631,31 @@ export const AdminDashboard: React.FC = () => {
                         </span>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCurriculumBook(book);
+                              setIsCurriculumReviewModalOpen(true);
+                            }}
+                            style={{
+                              border: '1px solid #A7F3D0',
+                              background: '#ECFDF5',
+                              color: '#047857',
+                              padding: '0.3rem 0.65rem',
+                              borderRadius: '0.4rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}
+                            title={language === 'ar' ? 'مراجعة وتدقيق وحدات المنهج واعتماد الجاهزية التعليمية' : 'Review units and approve curriculum'}
+                          >
+                            <ShieldCheck size={13} />
+                            <span>{language === 'ar' ? 'مراجعة واعتماد المنهج' : 'Curriculum Review'}</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => {
@@ -5286,6 +5316,23 @@ export const AdminDashboard: React.FC = () => {
           setSelectedLocalWorkerBook(null);
         }}
         book={selectedLocalWorkerBook}
+        token={token || ''}
+        apiUrl={apiUrl}
+        language={language}
+        onSuccess={() => {
+          fetchAdminBooks();
+          fetchOverview();
+        }}
+      />
+
+      {/* CURRICULUM UNIT REVIEW & APPROVAL MODAL */}
+      <CurriculumReviewModal
+        isOpen={isCurriculumReviewModalOpen}
+        onClose={() => {
+          setIsCurriculumReviewModalOpen(false);
+          setSelectedCurriculumBook(null);
+        }}
+        book={selectedCurriculumBook}
         token={token || ''}
         apiUrl={apiUrl}
         language={language}

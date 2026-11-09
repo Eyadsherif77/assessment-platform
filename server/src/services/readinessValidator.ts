@@ -65,7 +65,9 @@ export class ReadinessValidator {
   private static dynamicUnits: Map<string, any> = new Map<string, any>();
 
   /**
-   * Register a dynamically audited unit from the automated ingestion pipeline
+   * Diagnostic registration only — retained strictly for telemetry and offline inspection.
+   * SECURITY RULE (Phase 3.2): In-memory dynamic registration CANNOT grant AI exam eligibility
+   * or override database/inventory readiness evaluations.
    */
   public static registerDynamicUnit(unit: {
     book_id: string;
@@ -87,9 +89,48 @@ export class ReadinessValidator {
       grade_ar: unit.grade_ar || 'غير محدد',
       subject_ar: unit.subject_ar || 'غير محدد',
       visual_dependencies: unit.visual_dependencies || 'NONE',
-      status_reason: unit.status_reason || 'تم التحقق من جاهزية الوحدة عبر خط المعالجة الآلي.',
-      evidence_and_unresolved_issues: unit.evidence_and_unresolved_issues || 'Automated ingestion pipeline audit passed.'
+      status_reason: unit.status_reason || 'سجل تشخيصي لوحدة معالجة آلياً (غير معتمد رسمياً).',
+      evidence_and_unresolved_issues: unit.evidence_and_unresolved_issues || 'Diagnostic telemetry only. Not an approval.'
     });
+  }
+
+  /**
+   * Diagnostic registration alias (retained for backward compatibility).
+   * SECURITY RULE (Phase 3.2): Calling this method has ZERO authorization effect on AI exam eligibility.
+   */
+  public static registerAuditedCurriculumUnit(unit: {
+    bookId: string;
+    chapterId: string;
+    unitTitle: string;
+    subjectCode?: string;
+    gradeCode?: string;
+    stageCode?: string;
+    term?: number;
+    pageStart?: number;
+    pageEnd?: number;
+    chunkCount?: number;
+    auditStatus: UnitReadinessStatus;
+    auditedAt?: string;
+    generationId?: string;
+  }): void {
+    this.registerDynamicUnit({
+      book_id: unit.bookId,
+      chapter_id: unit.chapterId,
+      book_title_ar: unit.unitTitle,
+      book_title_en: unit.unitTitle,
+      unit_title_ar: unit.unitTitle,
+      unit_title_en: unit.unitTitle,
+      readiness_status: unit.auditStatus,
+      status_reason: `Diagnostic telemetry: unit registered with status ${unit.auditStatus}.`,
+      evidence_and_unresolved_issues: `Diagnostic telemetry recorded at ${unit.auditedAt || new Date().toISOString()}`
+    });
+  }
+
+  /**
+   * Retrieve diagnostic unit telemetry (does NOT grant readiness approval)
+   */
+  public static getDiagnosticUnit(bookId: string, chapterId: string): any | undefined {
+    return this.dynamicUnits.get(`${bookId}::${chapterId}`);
   }
 
   /**
@@ -176,11 +217,10 @@ export class ReadinessValidator {
    */
   private static evaluateMissingUnit(bookId: string, chapterId: string): UnitReadinessResult {
     const isSyntheticTestFixture = (
-      bookId.startsWith('book_') ||
-      chapterId.startsWith('ch_') ||
-      bookId.startsWith('test_') ||
-      chapterId.startsWith('test_') ||
-      bookId === 'mock_book'
+      process.env.NODE_ENV === 'test' && (
+        bookId === 'mock_book' ||
+        bookId === 'mock_test_book'
+      )
     );
 
     return {
@@ -206,7 +246,8 @@ export class ReadinessValidator {
 
   /**
    * Authoritative dynamic evaluation of database records for newly ingested textbooks.
-   * Rejects incomplete, stale, inconsistent, or inaccessible records safely.
+   * Rejects incomplete, stale, inconsistent, or unapproved records safely.
+   * Enforces strict separation: Ingestion Completion (COMPLETED) != Exam Readiness (VERIFIED_READY).
    */
   private static evaluateDbRecordReadiness(bookId: string, chapterId: string, row: any): UnitReadinessResult {
     const totalChunks = parseInt(String(row.total_chunks || '0'), 10);
@@ -220,12 +261,35 @@ export class ReadinessValidator {
     const issues: string[] = [];
     const requiredActions: string[] = [];
 
-    // Check 1: Book Processing Status (COMPLETED, VERIFIED_READY, READY, or PUBLISHED required)
+    // Check 1: Ingestion lifecycle status
     const statusUpper = (row.processing_status || '').toUpperCase();
-    const validStatuses = ['COMPLETED', 'VERIFIED_READY', 'READY', 'PUBLISHED', 'PROCESSED'];
-    if (!validStatuses.includes(statusUpper)) {
-      issues.push(`حالة معالجة الكتاب غير مكتملة أو معلقة (${row.processing_status || 'UNKNOWN'})`);
-      requiredActions.push('انتظر اكتمال معالجة الكتاب أو أعد المحاولة في حال الفشل');
+    if (statusUpper !== 'COMPLETED') {
+      issues.push(`معالجة الكتاب غير مكتملة أو معلقة (${row.processing_status || 'UNKNOWN'})`);
+      requiredActions.push('انتظر اكتمال معالجة الكتاب محلياً قبل طلب الاعتماد أو أعد المحاولة في حال الفشل');
+    }
+
+    // Check 2: Explicit Approval from curriculum_unit_approvals
+    // SECURITY RULE (Phase 3.4): Approval is tied strictly to (book_id, chapter_id, active_generation_id).
+    // Ingestion completion (COMPLETED) alone never grants exam readiness or AI eligibility.
+    const approvalStatus = (row.approval_status || 'NOT_AUDITED').toUpperCase();
+    const activeGen = row.active_generation_id || 'v1';
+    const approvalGen = row.approval_generation_id || '';
+
+    if (approvalStatus === 'APPROVED') {
+      if (approvalGen !== activeGen) {
+        issues.push(`اعتماد الوحدة ينتمي لجيل معالجة سابق (${approvalGen}) وغير صالح للجيل النشط (${activeGen})`);
+        requiredActions.push('إعادة اعتماد الوحدة لجيل المعالجة الجديد بعد اكتمال الاستخراج والفهرسة');
+      }
+    } else if (approvalStatus === 'REJECTED') {
+      issues.push(`تم رفض اعتماد هذه الوحدة من قبل الإدارة التعليمية: ${row.rejection_reason || 'غير محدد'}`);
+      requiredActions.push('مراجعة ملاحظات الرفض وتصحيح المنهج أو الصفحات وإعادة تقديم الطلب');
+    } else if (approvalStatus === 'REVOKED') {
+      issues.push(`تم سحب اعتماد هذه الوحدة من قبل الإدارة التعليمية: ${row.revocation_reason || 'غير محدد'}`);
+      requiredActions.push('إعادة تقديم الوحدة للاعتماد بعد استيفاء التعديلات المطلوبة');
+    } else {
+      // NOT_AUDITED
+      issues.push('حالة معالجة الكتاب مكتملة استخراجاً، ولكن المقرر غير معتمد صراحة لجاهزية الامتحانات (INGESTED_NOT_APPROVED). يلزم اعتماد الجاهزية التعليمية رسمياً من لوحة الإدارة.');
+      requiredActions.push('اعتماد جاهزية الوحدة رسمياً من لوحة تحكم الإدارة (Curriculum Review Queue).');
     }
 
     // Check 2: Processing Error
@@ -244,10 +308,10 @@ export class ReadinessValidator {
       requiredActions.push('تعديل نطاق الصفحات ليكون ضمن إجمالي صفحات ملف الكتاب');
     }
 
-    // Check 4: Text Content & Chunks (Minimum 2 chunks and 100 characters)
+    // Check 4: Text Content & Chunks in Active Generation (Minimum 2 chunks and 100 characters)
     if (totalChunks < 2 || totalChars < 100) {
-      issues.push(`المحتوى النصي للوحدة غير كافٍ لتوليد أسئلة موثوقة (${totalChunks} مقاطع، ${totalChars} حرفاً)`);
-      requiredActions.push('تأكد من أن نطاق صفحات الوحدة يحتوي على نصوص دراسية وشروحات كافية');
+      issues.push(`المحتوى النصي للوحدة في جيل المعالجة النشط غير كافٍ لتوليد أسئلة موثوقة (${totalChunks} مقاطع، ${totalChars} حرفاً)`);
+      requiredActions.push('تأكد من أن نطاق صفحات الوحدة يحتوي على نصوص دراسية وشروحات كافية في جيل المعالجة النشط');
     }
 
     // Check 5: Out of range chunks
@@ -287,7 +351,9 @@ export class ReadinessValidator {
     let reason: string;
 
     if (isBlocked) {
-      finalStatus = 'BLOCKED';
+      // Differentiate between ingestion-complete pending approval vs hard technical blocks
+      const hasDefects = issues.some(iss => !iss.includes('INGESTED_NOT_APPROVED'));
+      finalStatus = hasDefects ? 'BLOCKED' : 'NOT_AUDITED';
       retrievalMode = undefined;
       reason = issues.join(' | ');
     } else if (hasMissingEmbeddings) {
@@ -297,7 +363,7 @@ export class ReadinessValidator {
     } else {
       finalStatus = 'VERIFIED_READY';
       retrievalMode = 'SEMANTIC_VECTOR';
-      reason = 'تم التحقق من جاهزية الوحدة واكتمال النصوص والمتجهات والأصول المرئية من قاعدة البيانات.';
+      reason = 'تم التحقق من جاهزية الوحدة واكتمال النصوص والمتجهات والأصول المرئية واعتمادها رسمياً من قاعدة البيانات.';
     }
 
     return {
@@ -324,9 +390,8 @@ export class ReadinessValidator {
    */
   public static getUnitReadiness(bookId: string, chapterId: string): UnitReadinessResult {
     const key = `${bookId}::${chapterId}`;
-    const dynamicUnit = this.dynamicUnits.get(key);
     const inv = this.loadInventory();
-    const unit = dynamicUnit || inv.get(key);
+    const unit = inv.get(key);
 
     if (unit) {
       return this.evaluateInventoryUnit(bookId, chapterId, unit);
@@ -337,25 +402,22 @@ export class ReadinessValidator {
 
   /**
    * Evaluate readiness of a specific unit asynchronously using authoritative persisted records.
-   * Preserves static inventory validation for existing 54 units, while dynamically auditing
-   * newly uploaded textbooks from the database across independent serverless instances.
+   * Preserves static inventory validation for canonical ministerial curricula (59 units),
+   * while evaluating textbooks from the database with strict Generation Isolation.
+   *
+   * SECURITY RULE (Phase 3.2): In-memory dynamicUnits is NEVER consulted to grant AI eligibility.
    */
   public static async getUnitReadinessAsync(bookId: string, chapterId: string): Promise<UnitReadinessResult> {
     const key = `${bookId}::${chapterId}`;
-    const dynamicUnit = this.dynamicUnits.get(key);
-    if (dynamicUnit) {
-      return this.evaluateInventoryUnit(bookId, chapterId, dynamicUnit);
-    }
-
     const inv = this.loadInventory();
     const staticUnit = inv.get(key);
 
-    // 1. If unit is present in authoritative static inventory (Books 1-13), evaluate directly
+    // 1. If unit is present in authoritative static inventory (Books 1-13, 59 units), evaluate directly
     if (staticUnit) {
       return this.evaluateInventoryUnit(bookId, chapterId, staticUnit);
     }
 
-    // 2. Query TiDB authoritative persisted records for dynamic/new textbooks
+    // 2. Query authoritative persisted records with strict Generation Isolation
     try {
       const sql = `
         SELECT 
@@ -365,6 +427,7 @@ export class ReadinessValidator {
           b.processing_status,
           b.processing_error,
           b.total_pages,
+          b.active_generation_id,
           bc.id AS chapter_id,
           bc.chapter_number,
           bc.title_ar AS unit_title_ar,
@@ -376,24 +439,42 @@ export class ReadinessValidator {
           COUNT(chk.id) AS total_chunks,
           COALESCE(SUM(LENGTH(chk.content)), 0) AS total_chars,
           COUNT(CASE WHEN chk.embedding IS NOT NULL AND LENGTH(chk.embedding) > 50 THEN 1 END) AS embedded_chunks,
-          COUNT(CASE WHEN chk.page_number < bc.start_page OR chk.page_number > bc.end_page THEN 1 END) AS out_of_range_chunks
+          COUNT(CASE WHEN chk.page_number < bc.start_page OR chk.page_number > bc.end_page THEN 1 END) AS out_of_range_chunks,
+          cua.approval_status,
+          cua.approved_by,
+          cua.approved_at,
+          cua.rejected_by,
+          cua.rejected_at,
+          cua.rejection_reason,
+          cua.revoked_by,
+          cua.revoked_at,
+          cua.revocation_reason,
+          cua.generation_id AS approval_generation_id
         FROM books b
-        JOIN book_chapters bc ON bc.book_id = b.id
+        JOIN book_chapters bc ON bc.book_id = b.id 
+          AND bc.generation_id = COALESCE(b.active_generation_id, 'v1')
         LEFT JOIN subjects s ON s.id = b.subject_id
         LEFT JOIN grades g ON g.id = b.grade_id
-        LEFT JOIN book_chunks chk ON chk.book_id = b.id AND (chk.chapter_id = bc.id OR (chk.page_number >= bc.start_page AND chk.page_number <= bc.end_page))
+        LEFT JOIN book_chunks chk ON chk.book_id = b.id 
+          AND chk.generation_id = COALESCE(b.active_generation_id, 'v1')
+          AND (chk.chapter_id = bc.id OR (chk.page_number >= bc.start_page AND chk.page_number <= bc.end_page))
+        LEFT JOIN curriculum_unit_approvals cua ON cua.book_id = b.id 
+          AND cua.chapter_id = bc.id 
+          AND cua.generation_id = COALESCE(b.active_generation_id, 'v1')
         WHERE b.id = $1 AND (bc.id = $2 OR CAST(bc.chapter_number AS CHAR(50)) = $2)
-        GROUP BY b.id, b.title_ar, b.title_en, b.processing_status, b.processing_error, b.total_pages,
+        GROUP BY b.id, b.title_ar, b.title_en, b.processing_status, b.processing_error, b.total_pages, b.active_generation_id,
                  bc.id, bc.chapter_number, bc.title_ar, bc.title_en, bc.start_page, bc.end_page,
-                 s.name_ar, g.name_ar
+                 s.name_ar, g.name_ar,
+                 cua.approval_status, cua.approved_by, cua.approved_at, cua.rejected_by, cua.rejected_at, cua.rejection_reason,
+                 cua.revoked_by, cua.revoked_at, cua.revocation_reason, cua.generation_id
       `;
 
       const result = await db.query(sql, [bookId, chapterId]);
       if (result.rows && result.rows.length > 0) {
         return this.evaluateDbRecordReadiness(bookId, chapterId, result.rows[0]);
       } else {
-        // Precise diagnostic if unit not found in DB
-        const bookCheck = await db.query('SELECT id, title_ar FROM books WHERE id = $1', [bookId]).catch(() => ({ rows: [] }));
+        // Precise diagnostic if unit not found in DB or generation mismatched
+        const bookCheck = await db.query('SELECT id, title_ar, active_generation_id FROM books WHERE id = $1', [bookId]).catch(() => ({ rows: [] }));
         if (bookCheck.rows.length === 0) {
           return {
             bookId,
@@ -412,6 +493,34 @@ export class ReadinessValidator {
             requiredActions: ['تأكد من اختيار الكتاب الصحيح أو أعد رفع الكتاب عبر لوحة الإدارة']
           };
         }
+
+        const activeGen = bookCheck.rows[0].active_generation_id || 'v1';
+        // Check if chapter exists under an older/mismatched generation
+        const chapterAnyGen = await db.query(
+          'SELECT id, generation_id FROM book_chapters WHERE book_id = $1 AND (id = $2 OR CAST(chapter_number AS CHAR(50)) = $2)',
+          [bookId, chapterId]
+        ).catch(() => ({ rows: [] }));
+
+        if (chapterAnyGen.rows.length > 0) {
+          const chGen = chapterAnyGen.rows[0].generation_id || 'v1';
+          return {
+            bookId,
+            chapterId,
+            bookTitleAr: bookCheck.rows[0].title_ar || 'غير معروف',
+            bookTitleEn: 'Unknown Book',
+            unitTitleAr: 'غير معروف',
+            unitTitleEn: 'Unknown Unit',
+            gradeAr: 'غير محدد',
+            subjectAr: 'غير محدد',
+            status: 'BLOCKED',
+            isEligibleForAI: false,
+            visualDependencies: 'NONE',
+            reason: `الوحدة المحددة تنتمي لجيل معالجة غير نشط (${chGen}) وتختلف عن جيل الكتاب النشط (${activeGen}) [INACTIVE_GENERATION].`,
+            evidence: `INACTIVE_GENERATION: chapter generation ${chGen} != active generation ${activeGen}`,
+            requiredActions: ['إعادة استخراج فصول الكتاب لجيل المعالجة النشط أو ترقية الجيل المعتمد']
+          };
+        }
+
         return {
           bookId,
           chapterId,

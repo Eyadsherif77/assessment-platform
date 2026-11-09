@@ -1142,11 +1142,9 @@ export class BookIngestionService {
         chapters: detectedChapters
       });
 
-      // Register dynamic units in ReadinessValidator ONLY after DB persistence succeeds
+      // Security Remediation (Phase 3.2): Automated ingestion completion NEVER grants
+      // runtime exam readiness approval. Units remain NOT_AUDITED in the platform until explicit administrative audit.
       if (finalStatus === 'VERIFIED_READY') {
-        for (const du of dynamicUnitsToRegister) {
-          ReadinessValidator.registerDynamicUnit(du);
-        }
         if (jobRecord) {
           await DurableIngestionJobService.markCompleted(jobRecord.id, workerId, {
             status: finalStatus,

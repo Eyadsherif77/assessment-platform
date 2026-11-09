@@ -190,6 +190,29 @@ CREATE TABLE IF NOT EXISTS book_chunks (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS curriculum_unit_approvals (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    chapter_id TEXT NOT NULL REFERENCES book_chapters(id) ON DELETE CASCADE,
+    generation_id TEXT NOT NULL,
+    approval_status TEXT NOT NULL DEFAULT 'NOT_AUDITED' CHECK (approval_status IN ('NOT_AUDITED', 'APPROVED', 'REJECTED', 'REVOKED')),
+    approved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TEXT,
+    rejected_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    rejected_at TEXT,
+    rejection_reason TEXT,
+    revoked_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    revoked_at TEXT,
+    revocation_reason TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    CONSTRAINT uq_cua_unit_gen UNIQUE (book_id, chapter_id, generation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cua_book ON curriculum_unit_approvals (book_id);
+CREATE INDEX IF NOT EXISTS idx_cua_chapter ON curriculum_unit_approvals (chapter_id);
+CREATE INDEX IF NOT EXISTS idx_cua_status ON curriculum_unit_approvals (approval_status);
+
 -- 4. Question Bank (Reusable across exams and evaluations)
 CREATE TABLE IF NOT EXISTS question_banks (
     id TEXT PRIMARY KEY,
