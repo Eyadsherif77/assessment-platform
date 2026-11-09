@@ -25,7 +25,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.VERCEL ? 3000 : (Number(process.env.PORT) || 3000);
+const PORT = Number(process.env.PORT) || 3000;
 
 // Uploads directory safe for serverless /tmp and multi-root execution
 const uploadsDir = process.env.VERCEL
@@ -99,7 +99,7 @@ app.get('/', (req, res) => {
 });
 
 // Health Check
-app.get('/api/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   res.json({
     status: 'online',
     platform: 'منصة التقييم من أجل التعلم',
@@ -161,15 +161,6 @@ async function startServer() {
       console.log(`✨ Server running on 0.0.0.0:${PORT}`);
       console.log(`📡 Health check ready`);
     });
-
-    const effectivePort = process.env.VERCEL ? 3000 : (Number(process.env.PORT) || 5000);
-    if (effectivePort !== PORT) {
-      try {
-        app.listen(effectivePort, '0.0.0.0', () => {
-          console.log(`✨ Secondary listener on 0.0.0.0:${effectivePort}`);
-        });
-      } catch (_) {}
-    }
 
     // Initialize DB asynchronously without blocking port readiness
     db.init().then(() => seedDatabase()).catch(dbErr => {

@@ -3,9 +3,16 @@
   "services": {
     "web": {
       "root": ".",
-      "framework": "express",
       "entrypoint": "dist/server.js",
       "buildCommand": "npm run build"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "web"
+      }
+    }
+  ]
 }
