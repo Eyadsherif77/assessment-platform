@@ -25,7 +25,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.VERCEL ? 3000 : (Number(process.env.PORT) || 3000);
 
 // Uploads directory safe for serverless /tmp and multi-root execution
 const uploadsDir = process.env.VERCEL
