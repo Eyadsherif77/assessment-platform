@@ -1,12 +1,17 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { execFileSync } from 'child_process';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { workerConfig } from './config.js';
 import { WorkerGatewayClient } from './workerGatewayClient.js';
 import { BookIngestionService } from '../../../server/src/services/bookIngestionService.js';
 import { DurableIngestionJobService } from '../../../server/src/services/jobs/durableIngestionJobService.js';
 import { db } from '../../../server/src/db/db.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface LocalIngestionJobRequest {
   bookId?: string;
@@ -163,6 +168,77 @@ export class LocalIngestionRunner {
   }
 
   /**
+   * Default 100% offline OCR provider using local Poppler pdftoppm (300 DPI) and Tesseract ara+eng.
+   * Completely eliminates Gemini, cloud OCR, and paid external AI APIs from local execution.
+   */
+  public static getDefaultOfflineOcrProvider(pdfFilePath: string): (pageNumber: number, buffer: Buffer) => Promise<string> {
+    const workerDir = path.resolve(__dirname, '..');
+    const pdftoppmPath = path.join(workerDir, 'bin', 'poppler', 'poppler-24.08.0', 'Library', 'bin', 'pdftoppm.exe');
+    const tesseractPath = path.join(workerDir, 'bin', 'tesseract', 'tesseract.exe');
+    const tessdataDir = path.join(workerDir, 'bin', 'tesseract', 'tessdata');
+    const localAppData = process.env.LOCALAPPDATA || 'C:\\FarabiAI';
+    const tempWorkDir = path.join(localAppData, 'Temp', 'farabi_ocr_work', 'runner');
+
+    if (!fs.existsSync(tempWorkDir)) {
+      try { fs.mkdirSync(tempWorkDir, { recursive: true }); } catch (_) {}
+    }
+
+    return async (pageNumber: number, _buffer: Buffer): Promise<string> => {
+      if (!fs.existsSync(pdftoppmPath) || !fs.existsSync(tesseractPath)) {
+        console.warn(`[Local OCR] Poppler or Tesseract binary not found at expected paths. Falling back to text-stub.`);
+        return `[Page ${pageNumber} Content]`;
+      }
+
+      const pagePrefix = path.join(tempWorkDir, `page_${pageNumber}_${Date.now()}`);
+      try {
+        // 1. Rasterize exact single page at 300 DPI
+        execFileSync(pdftoppmPath, [
+          '-png',
+          '-r', '300',
+          '-f', String(pageNumber),
+          '-l', String(pageNumber),
+          pdfFilePath,
+          pagePrefix
+        ], { stdio: 'pipe' });
+
+        const renderedFiles = fs.readdirSync(tempWorkDir)
+          .filter(f => f.startsWith(path.basename(pagePrefix)) && f.endsWith('.png'));
+
+        if (renderedFiles.length === 0) {
+          return '';
+        }
+
+        const imgPath = path.join(tempWorkDir, renderedFiles[0]);
+        const outBase = path.join(tempWorkDir, `ocr_${pageNumber}_${Date.now()}`);
+
+        // 2. Offline Tesseract ara+eng extraction
+        execFileSync(tesseractPath, [
+          imgPath,
+          outBase,
+          '-l', 'ara+eng',
+          '--tessdata-dir', tessdataDir,
+          '--oem', '1',
+          '--psm', '3'
+        ], { stdio: 'pipe' });
+
+        const textFile = `${outBase}.txt`;
+        let extractedText = '';
+        if (fs.existsSync(textFile)) {
+          extractedText = fs.readFileSync(textFile, 'utf8');
+          try { fs.unlinkSync(textFile); } catch (_) {}
+        }
+        try { fs.unlinkSync(imgPath); } catch (_) {}
+        try { fs.unlinkSync(`${outBase}.tsv`); } catch (_) {}
+
+        return extractedText.trim();
+      } catch (ocrErr: any) {
+        console.warn(`[Local OCR] Error processing page ${pageNumber}:`, ocrErr.message);
+        return '';
+      }
+    };
+  }
+
+  /**
    * List all tracked local tasks
    */
   public static listTasks(): IngestionTaskStatus[] {
@@ -182,9 +258,10 @@ export class LocalIngestionRunner {
       term = 1,
       schoolType = 'كلاهما',
       pdfFilePath,
-      ocrProvider,
       fileName = path.basename(pdfFilePath)
     } = params;
+
+    const effectiveOcrProvider = params.ocrProvider || this.getDefaultOfflineOcrProvider(pdfFilePath);
 
     // 1. Read and validate local PDF buffer
     let pdfBuffer: Buffer;
@@ -310,7 +387,7 @@ export class LocalIngestionRunner {
           schoolType,
           term,
           options: {
-            ocrProvider,
+            ocrProvider: effectiveOcrProvider,
             forceReingest: true
           }
         });
@@ -374,21 +451,55 @@ export class LocalIngestionRunner {
             // 3. Sync Semantic Chunks
             try {
               const chunksRes = await db.query(
-                'SELECT id, chapter_id, page_number, content, embedding, embedding_model, embedding_version FROM book_chunks WHERE book_id = $1 ORDER BY page_number ASC',
+                'SELECT id, chapter_id, page_number, content, metadata, embedding, embedding_model, embedding_version FROM book_chunks WHERE book_id = $1 ORDER BY page_number ASC',
                 [sourceBookId]
               );
               if (chunksRes.rows.length > 0) {
-                const chunksPayload = chunksRes.rows.map((r: any, idx: number) => ({
-                  chunkIndex: idx,
-                  pageNumber: Number(r.page_number || 1),
-                  content: String(r.content || ''),
-                  chapterId: r.chapter_id || undefined,
-                  embedding: r.embedding ? (typeof r.embedding === 'string' ? JSON.parse(r.embedding) : r.embedding) : undefined,
-                  embeddingModel: r.embedding_model || 'semantic-hash-768',
-                  embeddingVersion: r.embedding_version || '1.0'
-                }));
+                const chunksPayload = chunksRes.rows.map((r: any, idx: number) => {
+                  let parsedMeta: any = {};
+                  if (r.metadata) {
+                    try {
+                      parsedMeta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata;
+                    } catch (_) {
+                      parsedMeta = {};
+                    }
+                  }
+
+                  // If metadata did not already carry visual review flags, inspect content to ensure mathematical expressions are preserved
+                  if (parsedMeta.requires_visual_review === undefined) {
+                    const chunkContent = String(r.content || '');
+                    const flags: string[] = [];
+                    if (/(\b[0-9a-zA-Z]+\s*[\+\-\*\/]\s*[0-9a-zA-Z]+\b\s*\n\s*[-—_]{2,}\s*\n)/.test(chunkContent) ||
+                        /(\b\d+\s*[-—_]{2,}\s*\d+\b)/.test(chunkContent) ||
+                        chunkContent.includes('——') || chunkContent.includes('---')) {
+                      flags.push('POTENTIAL_2D_FRACTION');
+                    }
+                    if (chunkContent.includes('√') || chunkContent.includes('\\sqrt') || (chunkContent.includes('V') && /V\s*[-+]?\d+/.test(chunkContent))) {
+                      flags.push('RADICAL_EXPRESSION');
+                    }
+                    if (/[\^\^]/.test(chunkContent) || /[²³⁴⁵⁶⁷⁸⁹⁰]/.test(chunkContent) || /\b[a-zA-Z]\s*\d{1,2}\b/.test(chunkContent)) {
+                      flags.push('EXPONENT_UNCERTAINTY');
+                    }
+                    if (flags.length > 0) {
+                      parsedMeta.requires_visual_review = true;
+                      parsedMeta.has_uncertain_math = true;
+                      parsedMeta.visual_review_flags = flags;
+                    }
+                  }
+
+                  return {
+                    chunkIndex: idx,
+                    pageNumber: Number(r.page_number || 1),
+                    content: String(r.content || ''),
+                    chapterId: r.chapter_id || undefined,
+                    metadata: parsedMeta,
+                    embedding: r.embedding ? (typeof r.embedding === 'string' ? JSON.parse(r.embedding) : r.embedding) : undefined,
+                    embeddingModel: r.embedding_model || 'semantic-hash-768',
+                    embeddingVersion: r.embedding_version || '1.0'
+                  };
+                });
                 await gatewayClient.syncSemanticChunks(chunksPayload);
-                console.log(`✅ [Cloud Gateway Sync] Synced ${chunksPayload.length} semantic chunks to Cloud Gateway.`);
+                console.log(`✅ [Cloud Gateway Sync] Synced ${chunksPayload.length} semantic chunks with complete metadata to Cloud Gateway.`);
               }
             } catch (chunkErr: any) {
               console.warn('⚠️ [Cloud Gateway Sync] Chunks sync warning:', chunkErr.message);

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 320" width="450" height="320">
+  <rect width="450" height="320" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+  <!-- Triangle ABC -->
+  <polygon points="225,40 50,260 400,260" fill="#f8fafc" stroke="#1e293b" stroke-width="3"/>
+  <!-- Transversal ED parallel to BC -->
+  <line x1="120" y1="172" x2="330" y2="172" stroke="#2563eb" stroke-width="3"/>
+  <circle cx="225" cy="40" r="4" fill="#0f172a"/>
+  <circle cx="50" cy="260" r="4" fill="#0f172a"/>
+  <circle cx="400" cy="260" r="4" fill="#0f172a"/>
+  <circle cx="120" cy="172" r="4" fill="#dc2626"/>
+  <circle cx="330" cy="172" r="4" fill="#dc2626"/>
+  
+  <text x="220" y="30" font-family="sans-serif" font-size="18" font-weight="bold" fill="#0f172a">A</text>
+  <text x="30" y="270" font-family="sans-serif" font-size="18" font-weight="bold" fill="#0f172a">B</text>
+  <text x="410" y="270" font-family="sans-serif" font-size="18" font-weight="bold" fill="#0f172a">C</text>
+  <text x="95" y="170" font-family="sans-serif" font-size="18" font-weight="bold" fill="#dc2626">E</text>
+  <text x="340" y="170" font-family="sans-serif" font-size="18" font-weight="bold" fill="#dc2626">D</text>
+  
+  <text x="210" y="285" font-family="sans-serif" font-size="15" fill="#475569">14 cm</text>
+  <text x="210" y="160" font-family="sans-serif" font-size="15" fill="#2563eb">ED // BC</text>
+  <text x="130" y="310" font-family="sans-serif" font-size="14" fill="#64748b">ΔAED ~ ΔABC (AA Similarity: AE/AB = AD/AC = ED/BC)</text>
+</svg>

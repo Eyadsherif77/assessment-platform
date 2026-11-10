@@ -92,93 +92,97 @@ router.post(
         return res.status(400).json({ error: 'الملف المرفوع فارغ أو غير صالح.' });
       }
 
-      bookId = uuidv4();
+      const fileChecksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
       const effectiveSchoolType = school_type || 'كلاهما';
       const cleanTerm = parseInt(String(term), 10) === 2 ? 2 : 1;
-      const fileName = req.file.originalname || `book_${bookId}.pdf`;
+
+      // Check if an existing canonical book/job exists for this checksum and metadata
+      const existingJobRes = await db.query(
+        `SELECT j.book_id 
+         FROM book_ingestion_jobs j
+         JOIN books b ON b.id = j.book_id
+         WHERE j.file_checksum = $1 
+           AND b.academic_stage_id = $2 
+           AND b.grade_id = $3 
+           AND b.subject_id = $4 
+           AND b.term = $5
+         ORDER BY j.created_at DESC LIMIT 1`,
+        [fileChecksum, academic_stage_id, grade_id, subject_id, cleanTerm]
+      ).catch(() => ({ rows: [] }));
+
+      if (existingJobRes.rows.length > 0 && existingJobRes.rows[0].book_id) {
+        bookId = existingJobRes.rows[0].book_id;
+      } else {
+        bookId = uuidv4();
+      }
+      const resolvedBookId: string = bookId!;
+      const fileName = req.file.originalname || `book_${resolvedBookId}.pdf`;
 
       // Save PDF chunks into book_pdf_chunks so student/teacher PDF reading works
       const CHUNK_SIZE = 2 * 1024 * 1024;
       const totalChunks = Math.ceil(fileBuffer.length / CHUNK_SIZE);
+      const isMysql = (db as any).getDialect?.() === 'mysql' || (db as any).isMySql;
+      const verb = isMysql ? 'REPLACE INTO' : 'INSERT OR REPLACE INTO';
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(fileBuffer.length, (i + 1) * CHUNK_SIZE);
         const chunkSlice = fileBuffer.slice(start, end);
         await db.query(
-          `REPLACE INTO book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
-          [bookId, i, chunkSlice]
+          `${verb} book_pdf_chunks (book_id, chunk_index, chunk_data) VALUES ($1, $2, $3)`,
+          [resolvedBookId, i, chunkSlice]
         );
       }
 
-      // Execute unified authoritative automated ingestion pipeline
-      const ingestionReport = await BookIngestionService.ingestTextbook({
-        bookId,
-        pdfBuffer: fileBuffer,
-        fileName,
-        titleAr: title_ar.trim(),
-        titleEn: title_en ? title_en.trim() : title_ar.trim(),
-        academicStageId: academic_stage_id,
-        gradeId: grade_id,
-        subjectId: subject_id,
-        schoolType: effectiveSchoolType,
-        term: cleanTerm,
-        teacherId: req.user!.id
+      // Ensure book record exists with PENDING status
+      const existingBookRow = await db.query('SELECT id FROM books WHERE id = $1', [resolvedBookId]).catch(() => ({ rows: [] }));
+      if (existingBookRow.rows.length === 0) {
+        await db.query(
+          `INSERT INTO books (
+             id, title_ar, title_en, academic_stage_id, grade_id, subject_id, teacher_id,
+             file_url, file_size, total_pages, school_type, term, processing_status
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDING')`,
+          [
+            resolvedBookId,
+            title_ar.trim(),
+            title_en ? title_en.trim() : title_ar.trim(),
+            academic_stage_id,
+            grade_id,
+            subject_id,
+            req.user!.id,
+            fileName ? `/uploads/${fileName}` : `/uploads/book_${resolvedBookId}.pdf`,
+            fileBuffer.length,
+            1,
+            effectiveSchoolType,
+            cleanTerm
+          ]
+        ).catch(() => {});
+      }
+
+      // Register durable job in QUEUED_FOR_LOCAL_WORKER state (Vercel never runs OCR or parsing)
+      const durableJob = await DurableIngestionJobService.createOrGetJob({
+        bookId: resolvedBookId,
+        fileChecksum,
+        initialStage: 'QUEUED_FOR_LOCAL_WORKER',
+        initialCheckpoint: {
+          titleAr: title_ar.trim(),
+          titleEn: title_en ? title_en.trim() : title_ar.trim(),
+          fileName,
+          fileSize: fileBuffer.length
+        }
       });
 
-      // If ingestion deduplicated to an existing canonical book, clean up temporary staging upload chunks
-      if (ingestionReport.bookId && ingestionReport.bookId !== bookId) {
-        await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
-      }
-
-      if (ingestionReport.status === 'REQUIRES_REMEDIATION' || ingestionReport.status === 'BLOCKED') {
-        // Clean up temporary upload chunks if ingestion failed and book is not an existing canonical book
-        const canonicalCheck = await db.query(
-          `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
-          [bookId]
-        ).catch(() => ({ rows: [] }));
-        if (canonicalCheck.rows.length === 0) {
-          await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]).catch(() => {});
-        }
-
-        if (ingestionReport.status === 'REQUIRES_REMEDIATION') {
-          return res.status(422).json({
-            error: 'يتطلب الكتاب معالجة تكميلية أو فحصاً يدوياً (OCR / صفحات ممسوحة).',
-            code: 'REQUIRES_REMEDIATION',
-            report: ingestionReport
-          });
-        }
-
-        return res.status(400).json({
-          error: 'فشلت معالجة الكتاب: تم حظر الكتاب بسبب عدم استيفاء شروط الجودة أو المحتوى.',
-          code: 'BOOK_INGESTION_BLOCKED',
-          report: ingestionReport
-        });
-      }
-
       return res.status(201).json({
-        message: ingestionReport.status === 'VERIFIED_READY'
-          ? `تم رفع ومعالجة واعتماد الكتاب بنجاح (${ingestionReport.totalPages} صفحة و ${ingestionReport.units.length} وحدات معتمدة).`
-          : `تمت معالجة الكتاب (${ingestionReport.status}).`,
-        bookId: ingestionReport.bookId,
-        totalPages: ingestionReport.totalPages,
-        status: ingestionReport.status,
-        report: ingestionReport
+        message: 'تم استلام وتخزين ملف الكتاب بنجاح. الكتاب في قائمة الانتظار للمعالجة عبر المشغل المحلي (Local Worker).',
+        bookId: resolvedBookId,
+        jobId: durableJob.id,
+        status: 'PENDING',
+        stage: 'QUEUED_FOR_LOCAL_WORKER',
+        fileChecksum,
+        fileSize: fileBuffer.length
       });
     } catch (err: any) {
       console.error('Book upload error:', err);
-      // Clean up temporary staging chunks only if bookId is not an existing canonical book
-      if (bookId) {
-        try {
-          const canonicalCheck = await db.query(
-            `SELECT id FROM books WHERE id = $1 AND processing_status IN ('COMPLETED', 'VERIFIED_READY')`,
-            [bookId]
-          );
-          if (canonicalCheck.rows.length === 0) {
-            await db.query(`DELETE FROM book_pdf_chunks WHERE book_id = $1`, [bookId]);
-          }
-        } catch (_) {}
-      }
-      return res.status(500).json({ error: 'حدث خطأ أثناء معالجة ورفع الكتاب: ' + err.message });
+      return res.status(500).json({ error: 'حدث خطأ أثناء رفع الكتاب: ' + err.message });
     }
   }
 );
@@ -363,10 +367,11 @@ router.post(
         ).catch(() => {});
       }
 
-      // 7. Register durable job
+      // 7. Register durable job in QUEUED_FOR_LOCAL_WORKER stage
       const durableJob = await DurableIngestionJobService.createOrGetJob({
         bookId: resolvedBookId,
         fileChecksum,
+        initialStage: 'QUEUED_FOR_LOCAL_WORKER',
         initialCheckpoint: {
           titleAr: title_ar.trim(),
           titleEn: title_en ? title_en.trim() : title_ar.trim(),
@@ -375,79 +380,19 @@ router.post(
         }
       });
 
-      // 8. Handle synchronous execution if explicitly requested (e.g. test suites) vs async background default
-      const isSync = req.query.sync === 'true';
+      // 8. Clean up staging upload chunks
+      await db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
 
-      if (isSync) {
-        const ingestionReport = await BookIngestionService.ingestTextbook({
-          bookId: resolvedBookId,
-          pdfBuffer: fullBuffer,
-          fileName,
-          titleAr: title_ar.trim(),
-          titleEn: title_en ? title_en.trim() : title_ar.trim(),
-          academicStageId: academic_stage_id,
-          gradeId: grade_id,
-          subjectId: subject_id,
-          schoolType: effectiveSchoolType,
-          term: cleanTerm,
-          teacherId: req.user!.id
-        });
-
-        if (ingestionReport.status === 'VERIFIED_READY') {
-          db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
-        }
-
-        return res.status(201).json({
-          message: ingestionReport.status === 'VERIFIED_READY'
-            ? `تم رفع ومعالجة واعتماد الكتاب بنجاح (${ingestionReport.totalPages} صفحة و ${ingestionReport.units.length} وحدات معتمدة).`
-            : `تمت معالجة الكتاب (${ingestionReport.status}).`,
-          bookId: ingestionReport.bookId,
-          totalPages: ingestionReport.totalPages,
-          status: ingestionReport.status,
-          report: ingestionReport
-        });
-      }
-
-      // Async background progression: Launch worker with waitUntil lifecycle preservation and return 202 immediately to frontend
-      const targetBookId = resolvedBookId;
-      const backgroundWorkerPromise = (async () => {
-        try {
-          const report = await BookIngestionService.ingestTextbook({
-            bookId: targetBookId,
-            pdfBuffer: fullBuffer,
-            fileName,
-            titleAr: title_ar.trim(),
-            titleEn: title_en ? title_en.trim() : title_ar.trim(),
-            academicStageId: academic_stage_id,
-            gradeId: grade_id,
-            subjectId: subject_id,
-            schoolType: effectiveSchoolType,
-            term: cleanTerm,
-            teacherId: req.user!.id
-          });
-          if (report.status === 'VERIFIED_READY') {
-            db.query(`DELETE FROM file_upload_chunks WHERE upload_id = $1`, [uploadId]).catch(() => {});
-          }
-        } catch (bgErr: any) {
-          console.error(`🚨 [Background Ingestion] Job for book ${targetBookId} notice:`, bgErr.message);
-        }
-      })();
-
-      // Retain execution context in Vercel Serverless environment so background work completes independently of HTTP client
-      try {
-        waitUntil(backgroundWorkerPromise);
-      } catch (_) {
-        // In local/test environments where waitUntil is a no-op, event loop handles the background promise
-      }
-
-      return res.status(202).json({
+      // 9. Return confirmation immediately: book is queued for local worker processing
+      return res.status(201).json({
         success: true,
+        message: 'تم استلام وتجميع أجزاء الكتاب بنجاح. الكتاب في قائمة الانتظار للمعالجة الآمنة عبر المشغل المحلي (Local Worker).',
         bookId: resolvedBookId,
         jobId: durableJob.id,
-        status: 'PROCESSING',
-        stage: durableJob.currentStage || 'EXTRACTING_PAGES',
-        progress: 15,
-        message: 'تم استلام أجزاء الكتاب بنجاح وبدء المعالجة والاستخراج والفهرسة الدلالية.'
+        status: 'PENDING',
+        stage: 'QUEUED_FOR_LOCAL_WORKER',
+        fileChecksum,
+        fileSize: fileSize || fullBuffer.length
       });
     } catch (err: any) {
       console.error('Finalize chunked error:', err);

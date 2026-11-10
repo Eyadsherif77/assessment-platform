@@ -770,7 +770,9 @@ router.get('/books', async (req: AuthenticatedRequest, res) => {
              s.name_ar as subject_name_ar, s.name_en as subject_name_en,
              st.name_ar as stage_name_ar, 
              g.name_ar as grade_name_ar,
-             (SELECT COUNT(*) FROM book_chapters bc WHERE bc.book_id = b.id) as chapters_count
+             COALESCE((SELECT COUNT(*) FROM book_chapters bc WHERE bc.book_id = b.id AND (bc.generation_id = b.active_generation_id OR (b.active_generation_id IS NULL AND bc.generation_id = 'v1'))), 0) as chapters_count,
+             COALESCE((SELECT COUNT(*) FROM curriculum_unit_approvals cua WHERE cua.book_id = b.id AND cua.approval_status = 'APPROVED' AND (cua.generation_id = b.active_generation_id OR (b.active_generation_id IS NULL AND cua.generation_id = 'v1'))), 0) as approved_units_count,
+             COALESCE((SELECT COUNT(*) FROM curriculum_unit_approvals cua WHERE cua.book_id = b.id AND cua.approval_status != 'APPROVED' AND (cua.generation_id = b.active_generation_id OR (b.active_generation_id IS NULL AND cua.generation_id = 'v1'))), 0) as blocked_units_count
       FROM books b
       LEFT JOIN subjects s ON b.subject_id = s.id
       LEFT JOIN academic_stages st ON b.academic_stage_id = st.id

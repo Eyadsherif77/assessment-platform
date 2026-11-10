@@ -29,7 +29,8 @@ import {
   Edit3,
   FileSpreadsheet,
   Download,
-  Laptop
+  Laptop,
+  AlertTriangle
 } from 'lucide-react';
 import { HierarchyDashboard } from './HierarchyDashboard';
 import { LocalWorkerIngestionModal } from '../components/admin/LocalWorkerIngestionModal';
@@ -2625,36 +2626,92 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 800 }}>
-                          ✓ {language === 'ar' ? 'مفهرس بالذكاء الاصطناعي' : 'Indexed'}
-                        </span>
+                      <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {/* Auto-Approval / Verification Status */}
+                        {(() => {
+                          const totalUnits = Number(book.chapters_count || 0);
+                          const approvedUnits = Number(book.approved_units_count || 0);
+                          const blockedUnits = Number(book.blocked_units_count || 0);
+                          const isFullyApproved = (book.processing_status === 'COMPLETED' || book.processing_status === 'VERIFIED_READY') && totalUnits > 0 && approvedUnits >= totalUnits && blockedUnits === 0;
+                          const hasBlockedUnits = blockedUnits > 0;
+
+                          if (isFullyApproved) {
+                            return (
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                color: '#047857',
+                                background: '#ECFDF5',
+                                border: '1px solid #A7F3D0',
+                                borderRadius: '0.4rem',
+                                padding: '0.25rem 0.55rem',
+                                fontSize: '0.72rem',
+                                fontWeight: 800
+                              }} title={language === 'ar' ? 'تم التحقق من جميع معايير الجودة والاعتماد تلقائياً' : 'All quality checks passed & auto-approved'}>
+                                <CheckCircle2 size={13} color="#059669" />
+                                <span>{language === 'ar' ? '✓ معتمد بالكامل وتلقائياً' : '✓ Auto-Approved'}</span>
+                              </span>
+                            );
+                          }
+
+                          if (hasBlockedUnits) {
+                            return (
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                color: '#B45309',
+                                background: '#FFFBEB',
+                                border: '1px solid #FDE68A',
+                                borderRadius: '0.4rem',
+                                padding: '0.25rem 0.55rem',
+                                fontSize: '0.72rem',
+                                fontWeight: 800
+                              }} title={language === 'ar' ? 'توجد وحدات تحتاج إلى مراجعة استثنائية' : 'Units need exception review'}>
+                                <AlertTriangle size={13} color="#D97706" />
+                                <span>{language === 'ar' ? 'يحتاج إلى مراجعة' : 'Requires Review'}</span>
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <span style={{ fontSize: '0.72rem', color: book.processing_status === 'PENDING' ? '#D97706' : '#059669', fontWeight: 800 }}>
+                              {book.processing_status === 'PENDING'
+                                ? (language === 'ar' ? '⏳ في انتظار المعالجة المحلية' : 'Pending Local Processing')
+                                : `✓ ${language === 'ar' ? 'مفهرس بالذكاء الاصطناعي' : 'Indexed'}`}
+                            </span>
+                          );
+                        })()}
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedCurriculumBook(book);
-                              setIsCurriculumReviewModalOpen(true);
-                            }}
-                            style={{
-                              border: '1px solid #A7F3D0',
-                              background: '#ECFDF5',
-                              color: '#047857',
-                              padding: '0.3rem 0.65rem',
-                              borderRadius: '0.4rem',
-                              fontSize: '0.75rem',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem'
-                            }}
-                            title={language === 'ar' ? 'مراجعة وتدقيق وحدات المنهج واعتماد الجاهزية التعليمية' : 'Review units and approve curriculum'}
-                          >
-                            <ShieldCheck size={13} />
-                            <span>{language === 'ar' ? 'مراجعة واعتماد المنهج' : 'Curriculum Review'}</span>
-                          </button>
+                          {/* If any units are blocked or need review, provide the exception review button */}
+                          {Number(book.blocked_units_count || 0) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCurriculumBook(book);
+                                setIsCurriculumReviewModalOpen(true);
+                              }}
+                              style={{
+                                border: '1px solid #F59E0B',
+                                background: '#FFFBEB',
+                                color: '#B45309',
+                                padding: '0.3rem 0.65rem',
+                                borderRadius: '0.4rem',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem'
+                              }}
+                              title={language === 'ar' ? 'مراجعة المشكلات الاستثنائية للوحدات غير المعتمدة' : 'Review exception issues'}
+                            >
+                              <AlertTriangle size={13} />
+                              <span>{language === 'ar' ? 'مراجعة المشكلات الاستثنائية' : 'Review Issues'}</span>
+                            </button>
+                          )}
 
                           <button
                             type="button"

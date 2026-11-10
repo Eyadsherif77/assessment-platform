@@ -141,6 +141,47 @@ export class ReadinessValidator {
   }
 
   /**
+   * Deterministically infer visual requirements based on both unit title and book title
+   * Supports geometry (هندسة / مثلثات / geometry / trigonometry) and geography / maps (جغرافيا / خريطة / خرائط / تضاريس / map).
+   */
+  public static detectVisualRequirement(
+    params: {
+      unitTitleAr?: string;
+      unitTitleEn?: string;
+      bookTitleAr?: string;
+      bookTitleEn?: string;
+    } | string,
+    maybeBookTitle?: string
+  ): 'GEOMETRY_DIAGRAMS' | 'CARTOGRAPHIC_MAPS' | 'NONE' {
+    let combined = '';
+    if (typeof params === 'object' && params !== null) {
+      combined = `${params.unitTitleAr || ''} ${params.unitTitleEn || ''} ${params.bookTitleAr || ''} ${params.bookTitleEn || ''}`;
+    } else {
+      combined = `${params || ''} ${maybeBookTitle || ''}`;
+    }
+    const lower = combined.toLowerCase();
+    if (
+      lower.includes('هندسة') ||
+      lower.includes('geometry') ||
+      lower.includes('مثلثات') ||
+      lower.includes('trigonometry')
+    ) {
+      return 'GEOMETRY_DIAGRAMS';
+    }
+    if (
+      lower.includes('جغرافيا') ||
+      lower.includes('geography') ||
+      lower.includes('خريطة') ||
+      lower.includes('خرائط') ||
+      lower.includes('تضاريس') ||
+      lower.includes('map')
+    ) {
+      return 'CARTOGRAPHIC_MAPS';
+    }
+    return 'NONE';
+  }
+
+  /**
    * Load and cache the authoritative inventory
    */
   private static loadInventory(): Map<string, any> {
@@ -263,7 +304,7 @@ export class ReadinessValidator {
 
     // Check 1: Ingestion lifecycle status
     const statusUpper = (row.processing_status || '').toUpperCase();
-    if (statusUpper !== 'COMPLETED') {
+    if (statusUpper !== 'COMPLETED' && statusUpper !== 'VERIFIED_READY') {
       issues.push(`معالجة الكتاب غير مكتملة أو معلقة (${row.processing_status || 'UNKNOWN'})`);
       requiredActions.push('انتظر اكتمال معالجة الكتاب محلياً قبل طلب الاعتماد أو أعد المحاولة في حال الفشل');
     }
@@ -321,22 +362,21 @@ export class ReadinessValidator {
     }
 
     // Check 6: Visual Requirement Gate
-    const titleAr = row.book_title_ar || '';
-    let visualReq = 'NONE';
-    const lowerTitle = titleAr.toLowerCase();
-    if (lowerTitle.includes('هندسة') || lowerTitle.includes('geometry')) {
-      visualReq = 'GEOMETRY_DIAGRAMS';
-    } else if (lowerTitle.includes('جغرافيا') || lowerTitle.includes('خريطة') || lowerTitle.includes('خرائط')) {
-      visualReq = 'CARTOGRAPHIC_MAPS';
-    }
+    const visualReq = ReadinessValidator.detectVisualRequirement({
+      unitTitleAr: row.unit_title_ar || row.title_ar,
+      unitTitleEn: row.unit_title_en || row.title_en,
+      bookTitleAr: row.book_title_ar,
+      bookTitleEn: row.book_title_en
+    });
 
     let visualAssetCount = 0;
     if (visualReq !== 'NONE') {
-      const assets = VisualAssetExtractor.getAssetsForChapter(bookId, row.chapter_id || chapterId);
-      visualAssetCount = assets.length;
-      if (visualAssetCount === 0) {
-        issues.push(`المقرر يتطلب أصولاً بصرية (${visualReq})، ولكن لم يتم توفير أو اعتماد أي مخططات لهذه الوحدة`);
-        requiredActions.push('استخراج المخططات الهندسية أو الخرائط وإرفاقها بملف الأصول المرئية');
+      const validation = VisualAssetExtractor.validateAssetsForChapter(bookId, row.chapter_id || chapterId, visualReq);
+      visualAssetCount = validation.validAssets.length;
+      if (!validation.isValid || visualAssetCount === 0) {
+        const detail = validation.failureReason ? ` (${validation.failureReason})` : '';
+        issues.push(`المقرر يتطلب أصولاً بصرية (${visualReq})، ولكن لم يتم توفير أو اعتماد مخططات بصرية موثقة وصالحة لهذه الوحدة${detail}`);
+        requiredActions.push('استخراج واعتماد المخططات الهندسية أو الخرائط بحالة VERIFIED والتأكد من إتاحة ملفاتها في مسار التخزين');
       }
     }
 

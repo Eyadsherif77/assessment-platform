@@ -962,8 +962,16 @@ export async function verifyQuestionProvenance(
   const partialAnswerMatch = ansWords.length > 0 && (matchedAnsWords.length / ansWords.length) >= 0.6;
   const isAnswerSupported = exactAnswerMatch || partialAnswerMatch;
 
-  // Rule 1: The correct answer MUST be supported by the page/chunk text
-  if (!isAnswerSupported) {
+  // Mathematics computational question support:
+  // If the question is a mathematical problem where the premise/formula is supported on the page,
+  // numeric or algebraic calculation answers are verified by the independent bounded blind solver in Stage B.
+  const isMathQuestion = /[\+\-\*\/=²³√^]|equation|function|value of|solve|evaluate|slope|domain|range|power|exponent|root|zero|vertex|coordinate|دالة|معادلة|احسب|أوجد|قيمة|أس|ميل/i.test(q.question_text || '') ||
+                         /math|رياضيات/i.test(chunkContent);
+  const isNumericOrMathAnswer = /^[-+]?[\d\s\/\.,\(\)xyz\^=√±a-e{}]+$/i.test(correctOpt.trim());
+  const mathComputationalException = isMathQuestion && isNumericOrMathAnswer && (hasBigramMatch || matchedQWords.length >= 2);
+
+  // Rule 1: The correct answer MUST be supported by the page/chunk text (or pass math computational exception)
+  if (!isAnswerSupported && !mathComputationalException) {
     return {
       isVerified: false,
       reason: `Answer "${correctOpt}" is NOT supported on page ${q.page_reference} (matched words: ${matchedAnsWords.join(', ') || 'none'})`
@@ -982,7 +990,7 @@ export async function verifyQuestionProvenance(
 
   // Rule 3: Guard against isolated generic answer words (proximity check)
   // If answer is 1 word/number, it must appear within reasonable proximity of at least one matched question keyword
-  if (ansWords.length <= 1) {
+  if (ansWords.length <= 1 && !mathComputationalException) {
     const targetTerm = ansWords[0] || normalizedCorrectOpt;
     const targetIndices: number[] = [];
     let startIdx = 0;
@@ -1770,7 +1778,8 @@ Return valid JSON with exact keys:
     const { academicStageId, gradeId, subjectId, bookId, chapterId, queryText, limit = 3 } = params;
 
     // Fast-path: In-memory cache lookup
-    const cachedEntry = AIRagEngine.chunksMemoryCache.get(chapterId);
+    const chunkCacheKey = `${bookId}::${chapterId}`;
+    const cachedEntry = AIRagEngine.chunksMemoryCache.get(chunkCacheKey);
     if (cachedEntry && (Date.now() - cachedEntry.timestamp < 15 * 60 * 1000) && !queryText) {
       const shuffled = [...cachedEntry.chunks].sort(() => Math.random() - 0.5);
       return shuffled.slice(0, limit);
@@ -1897,7 +1906,7 @@ Return valid JSON with exact keys:
     const candidateChunks = educationalChunks.length > 0 ? educationalChunks : sanitizedRows.filter((r: RetrievedChunk) => !isBoilerplateChunk(r.content));
 
     // Save in memory cache for 15 minutes
-    AIRagEngine.chunksMemoryCache.set(chapterId, {
+    AIRagEngine.chunksMemoryCache.set(chunkCacheKey, {
       chunks: candidateChunks,
       timestamp: Date.now()
     });
@@ -1908,8 +1917,22 @@ Return valid JSON with exact keys:
       return shuffled.slice(0, limit);
     }
 
+    // Detect target chunk model across candidate chunks
+    let targetChunkModel = 'semantic-hash-768';
+    for (const row of candidateChunks) {
+      if (row.metadata) {
+        try {
+          const m = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+          if (m.embedding_model && m.embedding_model !== 'none') {
+            targetChunkModel = m.embedding_model;
+            break;
+          }
+        } catch (_) {}
+      }
+    }
+
     // Perform vector ranking using query embedding and metadata
-    const queryMeta = await generateEmbeddingWithMeta(queryText);
+    const queryMeta = await generateEmbeddingWithMeta(queryText, targetChunkModel);
     const queryVec = queryMeta.values;
     const queryModel = queryMeta.model;
     const queryVersion = queryMeta.version;
@@ -1926,6 +1949,15 @@ Return valid JSON with exact keys:
           const m = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
           chunkModel = m.embedding_model || m.embeddingModel || '';
           chunkVersion = m.embedding_version || m.embeddingVersion || '';
+        } catch (_) {}
+      }
+      if (!chunkModel && row.embedding) {
+        try {
+          const chunkVec = typeof row.embedding === 'string' ? JSON.parse(row.embedding) : row.embedding;
+          if (Array.isArray(chunkVec) && chunkVec.length === 768) {
+            chunkModel = 'semantic-hash-768';
+            chunkVersion = '1.0';
+          }
         } catch (_) {}
       }
 

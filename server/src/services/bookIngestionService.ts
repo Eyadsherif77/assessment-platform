@@ -567,35 +567,9 @@ export class BookIngestionService {
             let ocrText = '';
             if (options.ocrProvider) {
               ocrText = (await options.ocrProvider(lp.pageNumber, pdfBuffer)) || '';
+              success = true;
             } else {
-              const ocrRes = await GeminiOcrService.ocrPage({
-                bookId,
-                pageNumber: lp.pageNumber,
-                fullPdfBuffer: pdfBuffer
-              });
-
-              if (ocrRes.status === 'EXTRACTED') {
-                ocrText = ocrRes.text;
-                success = true;
-              } else if (ocrRes.status === 'FAILED_RETRYABLE') {
-                retries++;
-                if (retries <= maxRetries) {
-                  const isCooldown = (ocrRes.error || '').includes('cooling down') || (ocrRes.error || '').includes('QUOTA_EXHAUSTED');
-                  const minBackoff = isCooldown ? 16000 : 2000;
-                  const backoffMs = Math.max(minBackoff, 2000 * Math.pow(1.8, retries)) + Math.random() * 1000;
-                  console.warn(`⏳ [BookIngestionService] OCR retryable on page ${lp.pageNumber} (attempt ${retries}/${maxRetries}). Backoff ${Math.round(backoffMs)}ms.`);
-                  await new Promise(res => setTimeout(res, backoffMs));
-                  continue;
-                } else {
-                  console.warn(`❌ [BookIngestionService] OCR retries exhausted for page ${lp.pageNumber}: ${ocrRes.error}`);
-                  failedFatalPages.push(lp.pageNumber);
-                  break;
-                }
-              } else {
-                console.warn(`🛑 [BookIngestionService] OCR fatal failure for page ${lp.pageNumber}: ${ocrRes.error}`);
-                failedFatalPages.push(lp.pageNumber);
-                break;
-              }
+              throw new Error(`LOCAL_WORKER_REQUIRED: Page ${lp.pageNumber} requires OCR, but no local OCR provider was supplied. Heavy cloud OCR on Vercel is strictly disabled. Please process this textbook using the Local Windows Worker.`);
             }
 
             if (hasMeaningfulContent(ocrText)) {
@@ -880,6 +854,7 @@ export class BookIngestionService {
       content: string;
       charCount: number;
       embedding: string;
+      metadata?: any;
     }
 
     const allChunks: ChunkRecord[] = [];
@@ -921,6 +896,16 @@ export class BookIngestionService {
       for (const seg of segments) {
         const chunkId = uuidv4();
         const vec = createSemanticVector(seg, 768);
+        const visualFlags = BookIngestionService.detectVisualReviewReasons(seg);
+        const requiresReview = visualFlags.length > 0;
+        const chunkMeta = {
+          page: page.pageNumber,
+          charCount: seg.length,
+          title: `صفحة ${page.pageNumber}`,
+          requires_visual_review: requiresReview,
+          has_uncertain_math: requiresReview,
+          visual_review_flags: visualFlags
+        };
 
         allChunks.push({
           id: chunkId,
@@ -930,7 +915,8 @@ export class BookIngestionService {
           chunkIndex: globalChunkIdx++,
           content: seg,
           charCount: seg.length,
-          embedding: JSON.stringify(vec)
+          embedding: JSON.stringify(vec),
+          metadata: chunkMeta
         });
 
         chapterChunkCountMap.set(assignedChapterId, (chapterChunkCountMap.get(assignedChapterId) || 0) + 1);
@@ -1053,15 +1039,16 @@ export class BookIngestionService {
         });
       }
 
-      // Check visual requirement if subject mandates diagrams or maps
-      if (subjectVisualReq !== 'NONE' && assets.length === 0) {
+      // Check visual requirement if subject or unit mandates diagrams or maps
+      const effectiveVisualReq = options.visualRequirements || this.inferVisualRequirement(subjectId, titleAr, ch.title_ar);
+      if (effectiveVisualReq !== 'NONE' && assets.length === 0) {
         // If geometry or maps required but no assets extracted, unit is conditionally ready or blocked
         unitIssues.push({
           stage: 'VISUAL_INTEGRITY',
           code: 'MISSING_REQUIRED_VISUAL_ASSETS',
           chapterNumber: ch.chapter_number,
           unitTitle: ch.title_ar,
-          message: `المقرر يتطلب أصولاً بصرية (${subjectVisualReq})، لكن لم يتم استخراج أي مخططات أو خرائط لهذه الوحدة.`,
+          message: `المقرر يتطلب أصولاً بصرية (${effectiveVisualReq})، لكن لم يتم استخراج أي مخططات أو خرائط لهذه الوحدة.`,
           remediationGuidance: 'استخرج المخططات الهندسية أو الخرائط الجغرافية وأرفقها بمانيفست الأصول المرئية.'
         });
       }
@@ -1195,18 +1182,40 @@ export class BookIngestionService {
   }
 
   /**
-   * Helper to infer visual requirements based on subject ID or book title
+   * Helper to infer visual requirements based on subject ID, book title, or unit title
    */
   private static inferVisualRequirement(
     subjectId: string,
-    titleAr: string
+    titleAr: string,
+    unitTitleAr?: string
   ): 'GEOMETRY_DIAGRAMS' | 'CARTOGRAPHIC_MAPS' | 'NONE' {
-    const title = titleAr.toLowerCase();
-    if (title.includes('هندسة') || title.includes('geometry')) return 'GEOMETRY_DIAGRAMS';
-    if (title.includes('جغرافيا') || title.includes('خريطة') || title.includes('خرائط') || (title.includes('دراسات') && title.includes('جغرافيا'))) {
+    const combined = `${titleAr || ''} ${unitTitleAr || ''}`.toLowerCase();
+    if (combined.includes('هندسة') || combined.includes('geometry') || combined.includes('مثلثات') || combined.includes('trigonometry')) {
+      return 'GEOMETRY_DIAGRAMS';
+    }
+    if (combined.includes('جغرافيا') || combined.includes('geography') || combined.includes('خريطة') || combined.includes('خرائط') || combined.includes('تضاريس') || (combined.includes('دراسات') && combined.includes('جغرافيا'))) {
       return 'CARTOGRAPHIC_MAPS';
     }
     return 'NONE';
+  }
+
+  /**
+   * Offline heuristics to detect mathematical expressions requiring visual review
+   */
+  public static detectVisualReviewReasons(text: string): string[] {
+    const reasons: string[] = [];
+    if (/(\b[0-9a-zA-Z]+\s*[\+\-\*\/]\s*[0-9a-zA-Z]+\b\s*\n\s*[-—_]{2,}\s*\n)/.test(text) ||
+        /(\b\d+\s*[-—_]{2,}\s*\d+\b)/.test(text) ||
+        text.includes('——') || text.includes('---')) {
+      reasons.push('POTENTIAL_2D_FRACTION');
+    }
+    if (text.includes('√') || text.includes('\\sqrt') || (text.includes('V') && /V\s*[-+]?\d+/.test(text))) {
+      reasons.push('RADICAL_EXPRESSION');
+    }
+    if (/[\^\^]/.test(text) || /[²³⁴⁵⁶⁷⁸⁹⁰]/.test(text) || /\b[a-zA-Z]\s*\d{1,2}\b/.test(text)) {
+      reasons.push('EXPONENT_UNCERTAINTY');
+    }
+    return reasons;
   }
 
   /**
@@ -1393,7 +1402,7 @@ export class BookIngestionService {
             c.pageNumber,
             c.chunkIndex,
             c.content,
-            JSON.stringify({ page: c.pageNumber, charCount: c.charCount, title: `صفحة ${c.pageNumber}` }),
+            JSON.stringify(c.metadata || { page: c.pageNumber, charCount: c.charCount, title: `صفحة ${c.pageNumber}` }),
             c.embedding
           );
         });

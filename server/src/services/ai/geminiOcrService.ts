@@ -117,8 +117,9 @@ export class GeminiOcrService {
   }
 
   /**
-   * Execute authentic multimodal OCR extraction for a single scanned textbook page
-   * using the platform's active Gemini client and verified candidate models.
+   * Execute authentic multimodal OCR extraction for a single scanned textbook page.
+   * STRICT CLOUD OCR GUARD: Cloud OCR via Gemini on Vercel is strictly disabled.
+   * All heavy OCR processing must execute on the Local Windows Worker (Poppler + Tesseract ara+eng).
    */
   public static async ocrPage(params: {
     bookId: string;
@@ -126,70 +127,17 @@ export class GeminiOcrService {
     fullPdfBuffer: Buffer;
     timeoutMs?: number;
   }): Promise<PageOcrResult> {
-    const { bookId, pageNumber, fullPdfBuffer, timeoutMs = 60000 } = params;
+    const { pageNumber } = params;
 
-    try {
-      const singlePageBuffer = await this.extractSinglePagePdf(fullPdfBuffer, pageNumber);
-      const base64Data = singlePageBuffer.toString('base64');
-
-      const systemInstruction = `أنت محرك التعرف الضوئي على النصوص (OCR) الأكاديمي المتخصص في المناهج التعليمية والكتب المدرسية العربية واللغات.
-مهمتك استخراج كامل المحتوى التعليمي المقروء في الصفحة بدقة متناهية:
-1. استخرج جميع العناوين الرئيسية والفرعية، أسماء الوحدات، أرقام الصفحات الأصلية المطبوعة، وشرح الدروس.
-2. استخرج جميع المفاهيم، التعريفات، القوانين، المسائل والتمارين، والمعادلات الرياضية والعلمية بدقة.
-3. إذا كانت الصفحة تحتوي على نصوص مرسومة كمنحنيات موجهة (Vector Outlines) أو نصوص داخل جداول أو رسوم توضيحية، اقرأها واستخرجها كاملة.
-4. حافظ على المصطلحات الإنجليزية والعربية كما هي تماماً في مدارس اللغات والحكومية (Bilingual / Language Schools).
-5. إذا كانت الصفحة فارغة تماماً أو مجرد غلاف بدون نصوص تعليمية، اكتب نصاً موجزاً يوضح ذلك دون اختلاق محتوى.
-6. لا تضف أي مقدمات أو هوامش مثل "إليك النص". أخرج المحتوى التعليمي المستخرج مباشرة.`;
-
-      const prompt = `استخرج كامل النص والمحتوى التعليمي الموجود في الصفحة رقم ${pageNumber} من هذا الكتاب المدرسي بدقة تامة.`;
-
-      const rawResponse = await GeminiClient.generateContent({
-        systemInstruction,
-        prompt,
-        parts: [
-          {
-            inline_data: {
-              mime_type: 'application/pdf',
-              data: base64Data
-            }
-          }
-        ],
-        temperature: 0.1,
-        timeoutMs,
-        context: {
-          bookId,
-          callPurpose: 'OCR_PAGE_EXTRACTION',
-          workflow: 'TEXTBOOK_INGESTION'
-        }
-      });
-
-      const cleaned = cleanArabicText(rawResponse.trim());
-
-      return {
-        pageNumber,
-        text: cleaned,
-        charCount: cleaned.length,
-        isScannedOrLowText: cleaned.length < this.LOW_TEXT_THRESHOLD_CHARS,
-        status: 'EXTRACTED'
-      };
-    } catch (err: any) {
-      const isRetryable =
-        err instanceof GeminiProviderError
-          ? err.category === 'TEMPORARY_OVERLOAD' ||
-            err.category === 'TIMEOUT' ||
-            err.category === 'QUOTA_EXHAUSTED'
-          : err.name === 'AbortError' || err.code === 'ETIMEDOUT';
-
-      console.warn(`⚠️ [GeminiOcrService] OCR failed for page ${pageNumber} (retryable: ${isRetryable}): ${err.message}`);
-
-      return {
-        pageNumber,
-        text: '',
-        charCount: 0,
-        isScannedOrLowText: true,
-        status: isRetryable ? 'FAILED_RETRYABLE' : 'FAILED_FATAL',
-        error: err.message
-      };
-    }
+    // Fail closed: Cloud OCR on Vercel is prohibited per architecture policy
+    console.warn(`🛑 [GeminiOcrService] Cloud OCR blocked for page ${pageNumber}. Local worker execution is mandatory.`);
+    return {
+      pageNumber,
+      text: '',
+      charCount: 0,
+      isScannedOrLowText: true,
+      status: 'FAILED_FATAL',
+      error: 'CLOUD_OCR_DISABLED: Heavy OCR processing on Vercel is disabled. All textbook OCR must run offline via the Local Windows Worker (Poppler + Tesseract ara+eng).'
+    };
   }
 }

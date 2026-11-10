@@ -24,7 +24,7 @@ if %errorlevel% neq 0 (
 if not exist ".env.worker" (
     echo [NOTICE] .env.worker not found. Creating from .env.worker.example...
     copy ".env.worker.example" ".env.worker" >nul
-    echo [WARNING] Please open tools\local-ingestion-worker\.env.worker and configure your GEMINI_API_KEY. (Zero TiDB credentials required).
+    echo [INFO] Standalone local offline OCR active (Poppler + Tesseract ara+eng). Zero TiDB credentials and zero paid APIs required.
     echo.
 )
 

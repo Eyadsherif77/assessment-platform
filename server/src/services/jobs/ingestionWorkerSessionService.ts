@@ -754,6 +754,14 @@ export class IngestionWorkerSessionService {
       [savedPages.length, session.id]
     );
 
+    // 8. Strict Automatic Curriculum Quality Gate & Approval
+    try {
+      const { CurriculumApprovalService } = await import('../curriculumApprovalService.js');
+      await CurriculumApprovalService.evaluateAndAutoApproveBook(session.book_id, session.generation_id);
+    } catch (approvalErr: any) {
+      console.warn(`[AutoApprovalGate] Notice for book ${session.book_id}:`, approvalErr.message);
+    }
+
     return {
       success: true,
       status: 'VERIFIED_READY',

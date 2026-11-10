@@ -612,39 +612,6 @@ export const LocalWorkerIngestionModal: React.FC<LocalWorkerIngestionModalProps>
               <div>{errorMessage}</div>
             </div>
           )}
-
-          {/* LNA Local Device Access Notice */}
-          <div style={{
-            fontSize: '0.8rem',
-            color: '#1E293B',
-            background: '#F8FAFC',
-            border: '1px solid #E2E8F0',
-            borderRadius: '0.5rem',
-            padding: '0.65rem 0.85rem',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '0.5rem'
-          }}>
-            <Laptop size={16} color="#0284C7" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div>
-              <span style={{ fontWeight: 700 }}>
-                {language === 'ar' ? 'معالجة محلية خاصة (127.0.0.1):' : 'Local Device Access (127.0.0.1):'}
-              </span>{' '}
-              {language === 'ar'
-                ? 'يتم الاتصال بمشغل المعالجة المحلي على حاسوبك لاستخراج النصوص وتوليد المتجهات بدون استهلاك خوادم السحابة. في حال طلب المتصفح إذناً بالوصول للشبكة المحلية، يُرجى الموافقة.'
-                : 'Farabi AI connects to the local worker on loopback to process pages without consuming cloud servers. If your browser requests Local Network Access, please allow it.'}
-            </div>
-          </div>
-
-          {/* Security & Isolation Callout */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748B', borderTop: '1px solid #F1F5F9', paddingTop: '0.75rem' }}>
-            <ShieldCheck size={14} color="#059669" />
-            <span>
-              {language === 'ar'
-                ? 'مؤمن بالكامل: يعمل عبر 127.0.0.1 حصراً • تحقق RS256 لا متماثل • عزل كامل بقاعدة البيانات وبدون استهلاك لسحابة فرابي.'
-                : 'Zero DB credentials on PC • Enforced RS256 asymmetric cloud pairing • Loopback-only binding.'}
-            </span>
-          </div>
         </div>
 
         {/* Modal Footer Actions */}

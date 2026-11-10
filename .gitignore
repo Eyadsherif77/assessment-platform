@@ -36,3 +36,11 @@ tools/local-ingestion-worker/node_modules/
 keys/
 server/keys/
 tools/local-ingestion-worker/keys/
+tools/local-ingestion-worker/scratch_eval/
+tools/local-ingestion-worker/generations/
+tools/local-ingestion-worker/bin/
+tools/local-ingestion-worker/test-results/
+tools/local-ingestion-worker/test_sample_booklet.pdf
+tools/local-ingestion-worker/src/process_full_math_prep3.cjs
+Farabi_AI_*.pdf
+generate_platform_flowcharts.py

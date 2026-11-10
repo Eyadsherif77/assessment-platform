@@ -9,10 +9,24 @@ export interface EmbeddingResult {
   dimensions: number;
 }
 
-export async function generateEmbeddingWithMeta(text: string): Promise<EmbeddingResult> {
-  const cacheKey = text.trim().slice(0, 500);
+export async function generateEmbeddingWithMeta(text: string, preferredModel?: string): Promise<EmbeddingResult> {
+  const cacheKey = `${preferredModel || 'auto'}::${text.trim().slice(0, 500)}`;
   if (embeddingMetaCache.has(cacheKey)) {
     return embeddingMetaCache.get(cacheKey)!;
+  }
+
+  // If explicitly requested semantic-hash-768, compute deterministically
+  if (preferredModel === 'semantic-hash-768') {
+    const fallbackVec = createSemanticVector(text, 768);
+    const result: EmbeddingResult = {
+      values: fallbackVec,
+      model: 'semantic-hash-768',
+      version: '1.0',
+      dimensions: 768
+    };
+    embeddingMetaCache.set(cacheKey, result);
+    embeddingCache.set(cacheKey, fallbackVec);
+    return result;
   }
 
   const geminiKey = process.env.GEMINI_API_KEY;
@@ -26,7 +40,8 @@ export async function generateEmbeddingWithMeta(text: string): Promise<Embedding
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'models/gemini-embedding-001',
-            content: { parts: [{ text: text.slice(0, 2048) }] }
+            content: { parts: [{ text: text.slice(0, 2048) }] },
+            outputDimensionality: 768
           })
         }
       );

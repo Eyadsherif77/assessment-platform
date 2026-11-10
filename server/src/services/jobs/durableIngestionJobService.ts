@@ -3,6 +3,7 @@ import { db } from '../../db/db.js';
 
 export type IngestionJobStage =
   | 'UPLOADED'
+  | 'QUEUED_FOR_LOCAL_WORKER'
   | 'EXTRACTING_PAGES'
   | 'OCR_PROCESSING'
   | 'DETECTING_CHAPTERS'
@@ -49,8 +50,9 @@ export class DurableIngestionJobService {
     bookId: string;
     fileChecksum: string;
     initialCheckpoint?: any;
+    initialStage?: IngestionJobStage;
   }): Promise<IngestionJobRecord> {
-    const { bookId, fileChecksum, initialCheckpoint = {} } = params;
+    const { bookId, fileChecksum, initialCheckpoint = {}, initialStage = 'QUEUED_FOR_LOCAL_WORKER' } = params;
 
     // Check if an existing job for this book and checksum is already completed or in progress
     const existing = await db.query(
@@ -88,15 +90,15 @@ export class DurableIngestionJobService {
       `INSERT INTO book_ingestion_jobs (
          id, book_id, file_checksum, current_stage, status, attempt_count, max_attempts,
          checkpoint_data
-       ) VALUES ($1, $2, $3, 'UPLOADED', 'PENDING', 0, $4, $5)`,
-      [jobId, bookId, fileChecksum, this.MAX_ATTEMPTS, initialCheckpointJson]
+       ) VALUES ($1, $2, $3, $4, 'PENDING', 0, $5, $6)`,
+      [jobId, bookId, fileChecksum, initialStage, this.MAX_ATTEMPTS, initialCheckpointJson]
     );
 
     return {
       id: jobId,
       bookId,
       fileChecksum,
-      currentStage: 'UPLOADED',
+      currentStage: initialStage,
       status: 'PENDING',
       attemptCount: 0,
       maxAttempts: this.MAX_ATTEMPTS,
@@ -420,8 +422,8 @@ export class DurableIngestionJobService {
     const isMysql = this.isMySql();
 
     const whereClause = isMysql
-      ? `(status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_owner IS NULL OR lease_expires_at < NOW()))) AND attempt_count < max_attempts`
-      : `(status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_owner IS NULL OR lease_expires_at IS NULL OR lease_expires_at < datetime('now')))) AND attempt_count < max_attempts`;
+      ? `(status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_owner IS NULL OR lease_expires_at < NOW()))) AND attempt_count < max_attempts AND current_stage != 'QUEUED_FOR_LOCAL_WORKER'`
+      : `(status IN ('PENDING', 'RETRYING') OR (status = 'IN_PROGRESS' AND (lease_owner IS NULL OR lease_expires_at IS NULL OR lease_expires_at < datetime('now')))) AND attempt_count < max_attempts AND current_stage != 'QUEUED_FOR_LOCAL_WORKER'`;
 
     const res = await db.query(
       `SELECT id, book_id, file_checksum, current_stage, status, attempt_count,
@@ -480,6 +482,10 @@ export class DurableIngestionJobService {
 
     if (job.status === 'COMPLETED' || job.currentStage === 'COMPLETED') {
       return { success: true, stage: 'COMPLETED' };
+    }
+
+    if (job.currentStage === 'QUEUED_FOR_LOCAL_WORKER') {
+      return { success: true, stage: 'QUEUED_FOR_LOCAL_WORKER' };
     }
     const workerId = `worker_resume_${uuidv4().slice(0, 8)}`;
     const claimed = await this.claimJob(jobId, workerId, 120);

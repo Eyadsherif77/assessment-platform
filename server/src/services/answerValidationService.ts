@@ -836,9 +836,13 @@ export function parseNumericValue(text: string): number | null {
     }
   }
 
-  // Handle standard decimal or integer
-  const num = parseFloat(cleaned);
-  return !isNaN(num) ? Math.round(num * 1e8) / 1e8 : null;
+  // Handle standard decimal or integer (must match full string, preventing algebraic terms like 9a^4 from becoming 9)
+  if (/^-?\d+(?:\.\d+)?$/.test(cleaned)) {
+    const num = parseFloat(cleaned);
+    return !isNaN(num) ? Math.round(num * 1e8) / 1e8 : null;
+  }
+
+  return null;
 }
 
 /**
@@ -873,7 +877,7 @@ export function validateOptionsUniqueness(options: Array<{ id: string; text: str
   const seenIds = new Set<string>();
   const seenTexts = new Set<string>();
   const seenNormArabic = new Set<string>();
-  const seenNumericValues = new Map<number, string>(); // numericValue -> option text
+  const seenNumericValues = new Map<string, string>(); // 'varPrefix::numericValue' -> option text
 
   let correctCount = 0;
   let correctNumericValue: number | null = null;
@@ -905,6 +909,9 @@ export function validateOptionsUniqueness(options: Array<{ id: string; text: str
     if (normAr) seenNormArabic.add(normAr);
 
     const numVal = parseNumericValue(optText);
+    const varMatch = optText.match(/^([a-zA-Z\u0633\u0635\u0639\u0646])\s*=\s*/);
+    const varPrefix = varMatch ? varMatch[1].toLowerCase() : '';
+
     if (opt.is_correct) {
       correctCount++;
       correctNumericValue = numVal;
@@ -913,8 +920,10 @@ export function validateOptionsUniqueness(options: Array<{ id: string; text: str
 
     // Mathematical equivalence check among options
     if (numVal !== null) {
-      for (const [existingVal, existingText] of seenNumericValues.entries()) {
-        if (Math.abs(existingVal - numVal) < 0.0001) {
+      for (const [existingKey, existingText] of seenNumericValues.entries()) {
+        const [existingVar, valStr] = existingKey.split('::');
+        const existingVal = parseFloat(valStr);
+        if (existingVar === varPrefix && Math.abs(existingVal - numVal) < 0.0001) {
           return {
             isValid: false,
             hasMultipleCorrectAnswers: Boolean(opt.is_correct || existingText === correctOptText),
@@ -922,7 +931,7 @@ export function validateOptionsUniqueness(options: Array<{ id: string; text: str
           };
         }
       }
-      seenNumericValues.set(numVal, optText);
+      seenNumericValues.set(`${varPrefix}::${numVal}`, optText);
     }
   }
 
