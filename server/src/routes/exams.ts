@@ -448,14 +448,44 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
       finalGradeId = grade_id || '2f0f4f5a-7c5c-4136-a935-33c79effca3d'; // الصف الثالث الإعدادي
     }
 
+    let resolvedBookId = book_id || null;
+    let resolvedChapterId = chapter_id || null;
+
+    if (!resolvedBookId && finalSubjectId && finalGradeId) {
+      const activeBookRes = await db.query(
+        `SELECT id FROM books WHERE subject_id = $1 AND grade_id = $2 AND term = $3 ORDER BY created_at DESC LIMIT 1`,
+        [finalSubjectId, finalGradeId, finalExamTerm || 1]
+      );
+      if (activeBookRes.rows.length > 0) {
+        resolvedBookId = activeBookRes.rows[0].id;
+      }
+    }
+
+    if (resolvedBookId && !resolvedChapterId) {
+      const detectedUnitNum = ReferenceImportService.detectUnitNumber([title_ar, title_en]);
+      if (detectedUnitNum !== null) {
+        const chRes = await db.query(
+          `SELECT id FROM book_chapters WHERE book_id = $1 AND chapter_number = $2 LIMIT 1`,
+          [resolvedBookId, detectedUnitNum]
+        );
+        if (chRes.rows.length > 0) {
+          resolvedChapterId = chRes.rows[0].id;
+        }
+      }
+    }
+
     const creatorGovId = governorate_id || req.user?.governorateId || null;
     const is_style_reference = (req.body.is_style_reference === true || req.body.is_style_reference === 1 || req.body.is_style_reference === '1') ? 1 : 0;
+    const is_ai_reference = (req.body.is_ai_reference !== undefined)
+      ? (req.body.is_ai_reference === true || req.body.is_ai_reference === 1 || req.body.is_ai_reference === '1' ? 1 : 0)
+      : is_style_reference;
+
     const examId = uuidv4();
     await db.query(
       `INSERT INTO exams (
          id, title_ar, title_en, teacher_id, academic_stage_id, grade_id, subject_id,
-         book_id, chapter_id, duration_minutes, is_published, is_style_reference, school_type, governorate_id, term
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+         book_id, chapter_id, duration_minutes, is_published, is_style_reference, is_ai_reference, school_type, governorate_id, term
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         examId,
         title_ar.trim(),
@@ -464,11 +494,12 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'ADMIN', 'SUPERVISOR
         finalStageId,
         finalGradeId,
         finalSubjectId,
-        book_id || null,
-        chapter_id || null,
+        resolvedBookId,
+        resolvedChapterId,
         duration_minutes,
         is_published ? 1 : 0,
         is_style_reference,
+        is_ai_reference,
         finalSchoolType,
         creatorGovId,
         finalExamTerm
@@ -777,8 +808,9 @@ router.post('/references/import-excel', authenticateToken, requireRole(['TEACHER
         createFixedExam: create_fixed_exam !== 'false' && create_fixed_exam !== false,
         durationMinutes: parsedDuration,
         examTitle: exam_title || undefined,
-        isPublished: is_published !== undefined ? (is_published === 'true' || is_published === true) : (req.user!.role === 'TEACHER' ? false : true),
-        isStyleReference: is_style_reference !== undefined ? (is_style_reference === 'true' || is_style_reference === true) : (req.user!.role === 'TEACHER' ? false : true)
+        isPublished: is_published !== undefined ? (is_published === 'true' || is_published === true) : true,
+        isStyleReference: is_style_reference !== undefined ? (is_style_reference === 'true' || is_style_reference === true) : true,
+        isAiReference: (req.body.is_ai_reference !== undefined) ? (req.body.is_ai_reference === 'true' || req.body.is_ai_reference === true) : true
       }
     );
 

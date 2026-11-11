@@ -1144,7 +1144,8 @@ router.post('/references/import-excel', excelUpload.single('file'), async (req: 
         durationMinutes: duration_minutes ? parseInt(String(duration_minutes), 10) : undefined,
         examTitle: exam_title || undefined,
         isPublished: is_published !== undefined ? (is_published === 'true' || is_published === true) : undefined,
-        isStyleReference: is_style_reference !== undefined ? (is_style_reference === 'true' || is_style_reference === true) : undefined
+        isStyleReference: is_style_reference !== undefined ? (is_style_reference === 'true' || is_style_reference === true) : true,
+        isAiReference: (req.body.is_ai_reference !== undefined) ? (req.body.is_ai_reference === 'true' || req.body.is_ai_reference === true) : true
       }
     );
 

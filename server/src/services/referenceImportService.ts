@@ -292,6 +292,43 @@ export class ReferenceImportService {
    * extracts passages (either column or sheet), and ignores empty rows.
    */
   /**
+   * Intelligently detects unit/chapter number from various text candidates
+   * such as unit column, sheet name, workbook/filename, or exam title.
+   */
+  public static detectUnitNumber(candidates: Array<string | undefined | null>): number | null {
+    for (const text of candidates) {
+      if (!text || typeof text !== 'string') continue;
+      const clean = text.trim();
+      if (!clean) continue;
+
+      // 1. Explicit unit regex: e.g. "unit 1", "unit-2", "وحدة 3", "الوحدة 1", "الوحدة الأولى"
+      const unitPrefixMatch = clean.match(/(?:unit|الوحدة|وحدة|فصل|chapter|u|ch)[^\d\w]*(\d+)/i);
+      if (unitPrefixMatch) {
+        const num = parseInt(unitPrefixMatch[1], 10);
+        if (!isNaN(num) && num > 0 && num <= 50) return num;
+      }
+
+      // 2. Arabic ordinal textual numbers
+      if (/أول|الأولى|الاولى|اولى|one|first/i.test(clean)) return 1;
+      if (/ثاني|الثانية|التانية|تانية|two|second/i.test(clean)) return 2;
+      if (/ثالث|الثالثة|التالتة|تالتة|three|third/i.test(clean)) return 3;
+      if (/رابع|الرابعة|الرابعه|four|fourth/i.test(clean)) return 4;
+      if (/خامس|الخامسة|الخامسه|five|fifth/i.test(clean)) return 5;
+      if (/سادس|السادسة|السادسه|six|sixth/i.test(clean)) return 6;
+      if (/سابع|السابعة|السابعه|seven|seventh/i.test(clean)) return 7;
+      if (/ثامن|الثامنة|الثامنه|eight|eighth/i.test(clean)) return 8;
+
+      // 3. Isolated digits (e.g. "Model 1", "Unit 1", or single "1")
+      const digitMatch = clean.match(/\b(\d+)\b/);
+      if (digitMatch) {
+        const num = parseInt(digitMatch[1], 10);
+        if (!isNaN(num) && num > 0 && num <= 50) return num;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Normalize educational text for Arabic & English options & answers.
    * Strips Tashkeel, normalizes Alef variants (أ/إ/آ -> ا), Ta Marbuta (ة -> ه),
    * Ya (ى -> ي), strips leading option prefixes (A), (أ), 1., etc., and punctuation.
@@ -786,23 +823,54 @@ export class ReferenceImportService {
 
     if (book) {
       if (!chapterId) {
-        let detectedUnitNum = 2;
-        const match = targetUnitName ? targetUnitName.match(/\d+/) : null;
-        if (match) detectedUnitNum = parseInt(match[0], 10);
-        else if (targetUnitName?.includes('ثاني') || targetUnitName?.includes('الثانية')) detectedUnitNum = 2;
-        else if (targetUnitName?.includes('أول') || targetUnitName?.includes('الأولى')) detectedUnitNum = 1;
-        else if (targetUnitName?.includes('ثالث') || targetUnitName?.includes('الثالثة')) detectedUnitNum = 3;
-        else if (targetUnitName?.includes('رابع') || targetUnitName?.includes('الرابعة')) detectedUnitNum = 4;
+        const detectedUnitNum = ReferenceImportService.detectUnitNumber([
+          targetUnitName,
+          options.examTitle,
+          options.workbookName,
+          sheetName
+        ]);
 
-        const chapterRes = await db.query(
-          `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
-           FROM book_chapters
-           WHERE book_id = $1 AND chapter_number = $2 LIMIT 1`,
-          [book.id, detectedUnitNum]
-        );
-        if (chapterRes.rows.length > 0) {
-          resolvedChapter = chapterRes.rows[0];
-          chapterId = resolvedChapter.id;
+        if (detectedUnitNum !== null) {
+          const chapterRes = await db.query(
+            `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
+             FROM book_chapters
+             WHERE book_id = $1 AND chapter_number = $2 LIMIT 1`,
+            [book.id, detectedUnitNum]
+          );
+          if (chapterRes.rows.length > 0) {
+            resolvedChapter = chapterRes.rows[0];
+            chapterId = resolvedChapter.id;
+          }
+        }
+
+        // If not found by unit number, try matching chapter title keywords
+        if (!resolvedChapter && targetUnitName) {
+          const titleSearch = await db.query(
+            `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
+             FROM book_chapters
+             WHERE book_id = $1 AND (title_ar LIKE $2 OR title_en LIKE $2)
+             LIMIT 1`,
+            [book.id, `%${targetUnitName.trim()}%`]
+          );
+          if (titleSearch.rows.length > 0) {
+            resolvedChapter = titleSearch.rows[0];
+            chapterId = resolvedChapter.id;
+          }
+        }
+
+        // Fallback: use first chapter of the book
+        if (!resolvedChapter) {
+          const firstChRes = await db.query(
+            `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
+             FROM book_chapters
+             WHERE book_id = $1
+             ORDER BY chapter_number ASC LIMIT 1`,
+            [book.id]
+          );
+          if (firstChRes.rows.length > 0) {
+            resolvedChapter = firstChRes.rows[0];
+            chapterId = resolvedChapter.id;
+          }
         }
       } else {
         const chRes = await db.query(
@@ -1004,32 +1072,45 @@ export class ReferenceImportService {
     let resolvedChapter: any = null;
 
     if (!chapterId) {
-      let detectedUnitNum = 2;
-      const match = targetUnitName ? targetUnitName.match(/\d+/) : null;
-      if (match) {
-        detectedUnitNum = parseInt(match[0], 10);
-      } else if (targetUnitName?.includes('ثاني') || targetUnitName?.includes('الثانية') || targetUnitName?.toLowerCase().includes('two')) {
-        detectedUnitNum = 2;
-      } else if (targetUnitName?.includes('أول') || targetUnitName?.includes('الأولى') || targetUnitName?.toLowerCase().includes('one')) {
-        detectedUnitNum = 1;
-      } else if (targetUnitName?.includes('ثالث') || targetUnitName?.includes('الثالثة') || targetUnitName?.toLowerCase().includes('three')) {
-        detectedUnitNum = 3;
-      } else if (targetUnitName?.includes('رابع') || targetUnitName?.includes('الرابعة') || targetUnitName?.toLowerCase().includes('four')) {
-        detectedUnitNum = 4;
+      const detectedUnitNum = ReferenceImportService.detectUnitNumber([
+        targetUnitName,
+        options.examTitle,
+        options.workbookName,
+        sheetName
+      ]);
+
+      if (detectedUnitNum !== null) {
+        const chapterRes = await db.query(
+          `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
+           FROM book_chapters
+           WHERE book_id = $1 AND chapter_number = $2
+           LIMIT 1`,
+          [book.id, detectedUnitNum]
+        );
+
+        if (chapterRes.rows.length > 0) {
+          resolvedChapter = chapterRes.rows[0];
+          chapterId = resolvedChapter.id;
+        }
       }
 
-      const chapterRes = await db.query(
-        `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
-         FROM book_chapters
-         WHERE book_id = $1 AND chapter_number = $2
-         LIMIT 1`,
-        [book.id, detectedUnitNum]
-      );
+      // If not matched by unit number, try title matching
+      if (!resolvedChapter && targetUnitName) {
+        const titleSearch = await db.query(
+          `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
+           FROM book_chapters
+           WHERE book_id = $1 AND (title_ar LIKE $2 OR title_en LIKE $2)
+           LIMIT 1`,
+          [book.id, `%${targetUnitName.trim()}%`]
+        );
+        if (titleSearch.rows.length > 0) {
+          resolvedChapter = titleSearch.rows[0];
+          chapterId = resolvedChapter.id;
+        }
+      }
 
-      if (chapterRes.rows.length > 0) {
-        resolvedChapter = chapterRes.rows[0];
-        chapterId = resolvedChapter.id;
-      } else {
+      // Fallback: use chapter with lowest chapter_number (Unit 1)
+      if (!resolvedChapter) {
         const firstChRes = await db.query(
           `SELECT id, chapter_number, title_ar, title_en, start_page, end_page
            FROM book_chapters
@@ -1119,14 +1200,17 @@ export class ReferenceImportService {
         );
         if (chunkRes.rows.length > 0) {
           sourceChunkId = chunkRes.rows[0].id;
-        } else {
-          const chChunkRes = await db.query(
-            `SELECT id FROM book_chunks WHERE chapter_id = $1 LIMIT 1`,
-            [chapterId]
-          );
-          if (chChunkRes.rows.length > 0) {
-            sourceChunkId = chChunkRes.rows[0].id;
-          }
+        }
+      }
+
+      // Fallback: link to any chunk in this chapter
+      if (!sourceChunkId && chapterId) {
+        const chChunkRes = await db.query(
+          `SELECT id FROM book_chunks WHERE chapter_id = $1 LIMIT 1`,
+          [chapterId]
+        );
+        if (chChunkRes.rows.length > 0) {
+          sourceChunkId = chChunkRes.rows[0].id;
         }
       }
 
@@ -1155,18 +1239,23 @@ export class ReferenceImportService {
         : (q.pageReference >= 1 && q.pageReference <= (book.total_pages || 200));
 
       const isQualityAcceptable = qualityResult.isValid || (qualityResult.metadataPresence === 0 && qualityResult.educationalValue >= 80);
-      const isVerified = q.isValid && 
-                         isQualityAcceptable && 
-                         answerVal.answerKeyStatus !== 'REJECTED' && 
-                         hasSupportingChunk && 
-                         isPageWithinUnit;
+      const isStrictVerified = q.isValid && 
+                               isQualityAcceptable && 
+                               answerVal.answerKeyStatus !== 'REJECTED' && 
+                               hasSupportingChunk && 
+                               isPageWithinUnit;
 
       const verificationHash = computeQuestionVerificationHash(groundedCandidate);
 
-      const isQuarantined = isVerified ? 0 : 1;
-      const quarantineReason = isVerified 
+      // For educator Excel imports: if row is valid and answer key status is not rejected,
+      // it is an authoritative reference question that should be active and unquarantined.
+      const isValidReference = q.isValid && answerVal.answerKeyStatus !== 'REJECTED';
+      const isQuarantined = isValidReference ? 0 : 1;
+      const quarantineReason = isStrictVerified 
         ? `VERIFIED:${verificationHash}` 
-        : `QUARANTINED:${!q.isValid ? (q.validationError || 'INVALID_ROW') : !hasSupportingChunk ? 'NO_SOURCE_CHUNK' : !isPageWithinUnit ? 'PAGE_OUT_OF_UNIT_BOUNDS' : answerVal.answerKeyStatus === 'REJECTED' ? 'INVALID_ANSWER_KEY' : qualityResult.reason || 'QUALITY_CHECK_FAILED'}`;
+        : isValidReference
+        ? `VERIFIED:EXCEL_REFERENCE`
+        : `QUARANTINED:${!q.isValid ? (q.validationError || 'INVALID_ROW') : answerVal.answerKeyStatus === 'REJECTED' ? 'INVALID_ANSWER_KEY' : qualityResult.reason || 'QUALITY_CHECK_FAILED'}`;
 
       const questionItemId = groundedCandidate.id;
       await db.query(
@@ -1183,7 +1272,7 @@ export class ReferenceImportService {
           q.questionType || 'MULTIPLE_CHOICE',
           q.explanation || null,
           q.passageText || null,
-          isReference ? 1 : 0,
+          isValidReference ? 1 : 0,
           sourceChunkId,
           q.pageReference,
           isQuarantined,
@@ -1236,8 +1325,8 @@ export class ReferenceImportService {
       const examTitleEn = options.examTitle?.trim() || defaultTitleEn;
       const durationMin = options.durationMinutes && options.durationMinutes >= 5 ? options.durationMinutes : 30;
       const isPub = options.isPublished !== undefined ? (options.isPublished ? 1 : 0) : 1;
-      const isStyleRef = options.isStyleReference !== undefined ? (options.isStyleReference ? 1 : 0) : 1;
-      const isAiRef = options.isAiReference !== undefined ? (options.isAiReference ? 1 : 0) : 0;
+      const isStyleRef = options.isStyleReference !== false ? 1 : 0;
+      const isAiRef = options.isAiReference !== false ? 1 : 1;
 
       let existingExamRes;
       if (options.operatorRole === 'TEACHER') {
@@ -1277,8 +1366,11 @@ export class ReferenceImportService {
           };
         } else {
           await db.query(
-            `UPDATE exams SET duration_minutes = $2, is_style_reference = $3, is_ai_reference = $4, is_published = $5 WHERE id = $1`,
-            [targetExamId, durationMin, isStyleRef, isAiRef, isPub]
+            `UPDATE exams 
+             SET duration_minutes = $2, is_style_reference = $3, is_ai_reference = $4, is_published = $5,
+                 book_id = COALESCE(book_id, $6), chapter_id = COALESCE(chapter_id, $7)
+             WHERE id = $1`,
+            [targetExamId, durationMin, isStyleRef, isAiRef, isPub, book.id, chapterId]
           );
           await db.query(`DELETE FROM exam_questions WHERE exam_id = $1`, [targetExamId]);
         }
