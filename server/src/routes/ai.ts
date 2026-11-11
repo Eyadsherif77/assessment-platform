@@ -182,7 +182,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
       try {
         const studentId = req.user!.id;
 
-        // Source 1: Check question_bank_items where is_reference = 1
+        // Source 1: Check question_bank_items where is_reference = 1 or verified
         const qbiRes = await db.query(
           `SELECT qbi.id, qbi.question_text, qbi.question_type, qbi.passage_text,
                   qbi.explanation, qbi.page_reference, qbi.difficulty,
@@ -193,7 +193,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
            WHERE qb.grade_id = $1
              AND qb.subject_id = $2
              AND qbi.chapter_id = $3
-             AND qbi.is_reference = 1
+             AND (qbi.is_reference = 1 OR qbi.quarantine_reason LIKE 'VERIFIED:%')
              AND qbi.is_quarantined = 0
            ORDER BY qbi.created_at ASC, qbi.id ASC`,
           [identity.gradeId, identity.subjectId, chapter_id]
