@@ -287,13 +287,38 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
 
         const candidateRefQuestions = Array.from(poolMap.values());
 
-        if (candidateRefQuestions.length >= parsedCount) {
-          // Priority 2 Full Hit: Approved reference bank satisfies the entire requested exam count!
+        // Question Rotation: Query student's past evaluations to prioritize unseen questions and eliminate repetition
+        let seenQuestionIds = new Set<string>();
+        if (studentId) {
+          try {
+            const pastEvalRes = await db.query(
+              `SELECT student_answers_data FROM ai_evaluations WHERE student_id = $1 AND chapter_id = $2`,
+              [studentId, chapter_id]
+            );
+            for (const row of pastEvalRes.rows) {
+              const ans = typeof row.student_answers_data === 'string'
+                ? JSON.parse(row.student_answers_data)
+                : row.student_answers_data;
+              if (Array.isArray(ans)) {
+                for (const a of ans) {
+                  if (a?.question_id) seenQuestionIds.add(a.question_id);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('⚠️ [routes/ai.ts] Failed to query student past answers for question rotation:', e);
+          }
+        }
+
+        const unseenCandidateRefQuestions = candidateRefQuestions.filter(q => !seenQuestionIds.has(q.id));
+
+        if (unseenCandidateRefQuestions.length >= parsedCount) {
+          // Priority 2 Full Hit: Approved reference bank satisfies the entire requested exam count with UNSEEN questions!
           // Intelligently select questions while keeping passage-bound questions grouped together
           const passageGroups = new Map<string, any[]>();
           const standaloneQuestions: any[] = [];
 
-          for (const q of candidateRefQuestions) {
+          for (const q of unseenCandidateRefQuestions) {
             if (q.passage_text) {
               if (!passageGroups.has(q.passage_text)) passageGroups.set(q.passage_text, []);
               passageGroups.get(q.passage_text)!.push(q);
@@ -318,7 +343,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
             }
           }
           if (selected.length < parsedCount) {
-            const remainingPool = [...candidateRefQuestions].sort(() => Math.random() - 0.5);
+            const remainingPool = [...unseenCandidateRefQuestions].sort(() => Math.random() - 0.5);
             for (const q of remainingPool) {
               if (!selected.some(s => s.id === q.id) && selected.length < parsedCount) {
                 selected.push(q);
@@ -337,7 +362,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
           examTitle = examRefRes.rows[0]?.title_ar || `امتحان ${identity.subjectNameAr || 'المادة'} (نموذج معتمد)`;
           examDurationMinutes = Math.max(5, parseInt(examRefRes.rows[0]?.duration_minutes, 10) || 30);
 
-          console.log(`🎯 [Priority 2 Reference Match] Built complete exam (${refQuestions.length} questions) from approved references for student ${studentId} (Zero Gemini calls)`);
+          console.log(`🎯 [Priority 2 Reference Match] Built complete exam (${refQuestions.length} unseen questions) from approved references for student ${studentId} (Zero Gemini calls)`);
 
           if (matchingExamId) {
             const existingAttemptRes = await db.query(
@@ -360,31 +385,6 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
             }
           }
 
-          // Store in shared cache for future zero-cost instant retrieval
-          try {
-            const stored = await ExamCacheService.storeExamInCache({
-              examId: cachedExamId,
-              identity,
-              unitIds: [chapter_id],
-              examParams: {
-                count: parsedCount,
-                difficulty: normalizedDifficulty
-              },
-              questions: refQuestions,
-              assignedStudentId: studentId,
-              skipProvenanceCheck: true
-            });
-            cachedExamId = stored.examId;
-            configHash = stored.configHash;
-            contentHash = stored.contentHash;
-            versionNumber = stored.versionNumber || 1;
-            if (Array.isArray(stored.questions) && stored.questions.length > 0) {
-              questions = stored.questions;
-            }
-          } catch (cacheStoreErr: any) {
-            console.warn('⚠️ [routes/ai.ts] Failed to store reference exam in cache:', cacheStoreErr?.message || cacheStoreErr);
-          }
-
           // Record telemetry event: 0 provider tokens, $0.00 provider cost
           AiUsageMetricsService.recordCacheHit({
             studentId,
@@ -393,10 +393,15 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
             configHash,
             cachedExamId
           }).catch(e => console.warn('⚠️ [routes/ai.ts] recordCacheHit error:', e?.message || e));
+        } else if (unseenCandidateRefQuestions.length > 0) {
+          // Priority 2 Partial: Retain all available UNSEEN reference questions; missing portion will be generated via Gemini fallback
+          console.log(`🎯 [Priority 2 Partial] Using ${unseenCandidateRefQuestions.length}/${parsedCount} unseen approved reference questions; remainder will use style-grounded Gemini generation`);
+          refQuestions = unseenCandidateRefQuestions;
         } else if (candidateRefQuestions.length > 0) {
-          // Priority 2 Partial: Retain all available reference questions; missing portion will be generated via Gemini fallback
-          console.log(`🎯 [Priority 2 Partial] Using ${candidateRefQuestions.length}/${parsedCount} approved reference questions; remainder will use style-grounded Gemini generation`);
-          refQuestions = candidateRefQuestions;
+          // All reference questions have already been answered by this student.
+          // Leave refQuestions empty so Priority 3 generates fresh AI questions rather than repeating old ones!
+          console.log(`🔄 [Priority 2 Reference Rotation] Student ${studentId} has answered all ${candidateRefQuestions.length} reference questions; falling through to Priority 3 for fresh AI questions.`);
+          refQuestions = [];
         }
       } catch (refErr: any) {
         console.warn('⚠️ [routes/ai.ts] Priority 2 reference lookup warning:', refErr?.message || refErr);
@@ -502,8 +507,9 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
             styleGuidance
           });
 
-          if (!generatedQuestions || (refQuestions.length + generatedQuestions.length) < parsedCount) {
-            const totalGot = (refQuestions.length + (generatedQuestions?.length || 0));
+          const totalGot = (refQuestions.length + (generatedQuestions?.length || 0));
+          const minAcceptableCount = Math.min(3, parsedCount);
+          if (!generatedQuestions || totalGot < minAcceptableCount) {
             throw new Error(`INCOMPLETE_EXAM_GENERATED: Only ${totalGot}/${parsedCount} questions verified`);
           }
 
@@ -516,7 +522,7 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
             identity,
             unitIds: [chapter_id],
             examParams: {
-              count: parsedCount,
+              count: questions.length,
               difficulty: normalizedDifficulty,
               styleReferenceId: style_reference_id ? String(style_reference_id).trim() : null
             },
@@ -532,7 +538,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
           console.warn('⚠️ AI generation failed, checking verified cache fallback:', genErr?.name || genErr?.message || genErr);
           // If questions were already successfully generated, the failure occurred during persistence or student assignment.
           // Do NOT mask database or assignment failures as a provider outage; fail closed immediately.
-          if (questions && questions.length >= parsedCount) {
+          const minAcceptableCount = Math.min(3, parsedCount);
+          if (questions && questions.length >= minAcceptableCount) {
             throw genErr;
           }
           // Verified Cache Fallback: If Gemini hits 429 quota exhaustion or 503 overload, check if a verified cached exam exists for this student
@@ -613,7 +620,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
       };
     });
 
-    if (sanitizedQuestions.length < parsedCount && !isReferenceExam) {
+    const minAcceptableCount = Math.min(3, parsedCount);
+    if (sanitizedQuestions.length < minAcceptableCount && !isReferenceExam) {
       return res.status(503).json({
         error: `لم نتمكن من استيفاء عدد الأسئلة المطلوب بالكامل (${sanitizedQuestions.length} من أصل ${parsedCount} أسئلة معتمدة) مع الالتزام بمعايير الجودة والتوثيق من كتاب الوزارة. يرجى المحاولة مرة أخرى بعد قليل.`,
         code: 'INSUFFICIENT_VERIFIED_QUESTIONS',
@@ -623,6 +631,8 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
       });
     }
 
+    const isPartial = sanitizedQuestions.length < parsedCount;
+
     return res.json({
       book_id,
       chapter_id,
@@ -631,16 +641,18 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
       questions: sanitizedQuestions,
       requested_count: parsedCount,
       generated_count: sanitizedQuestions.length,
-      is_partial: false,
+      is_partial: isPartial,
       is_fallback: isFallbackExam,
-      exam_status: 'COMPLETE',
+      exam_status: isPartial ? 'PARTIAL' : 'COMPLETE',
       source: isReferenceExam ? 'IMPORTED_REFERENCE' : (cacheResult.hit ? 'CACHED_AI' : 'GENERATED_AI'),
       duration_minutes: examDurationMinutes,
       exam_title: examTitle || null,
       fallback_notice: isFallbackExam
         ? 'تم إعداد هذا الاختبار المعتمد من بنك أسئلة كتاب الوزارة نظراً لضغط مؤقت على خدمة الذكاء الاصطناعي.'
         : null,
-      partial_notice: null
+      partial_notice: isPartial
+        ? `تنبيه: تم إعداد ${sanitizedQuestions.length} أسئلة معتمدة من أصل ${parsedCount} مطلوبة للحفاظ على معايير الجودة والتوثيق المنهجي من كتاب الوزارة.`
+        : null
     });
   } catch (err: any) {
     console.error('AI Generate Quiz error:', err?.name === 'GeminiProviderError' ? err.message : err);
@@ -848,7 +860,7 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
       });
     }
 
-    // 4. Load Authoritative Exam Questions from Database (Shared Cache or Imported Reference)
+    // 4. Load Authoritative Exam Questions from Database (Reference Exam or Shared Cache)
     let authoritativeQuestions: GroundedQuestion[] = [];
     let examAcademicStageId: string = '';
     let examGradeId: string = '';
@@ -857,46 +869,16 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
     let isReferenceExam = false;
     let refExamRecord: any = null;
 
-    const examRes = await db.query(
-      `SELECT id, config_hash, content_hash, version_number, questions_data,
-              book_id, academic_stage_id, grade_id, subject_id, unit_ids
-       FROM shared_cached_exams
+    // Check if this is an approved imported reference exam in `exams` table FIRST
+    const refRes = await db.query(
+      `SELECT id, title_ar, title_en, duration_minutes, academic_stage_id, grade_id,
+              subject_id, chapter_id, book_id
+       FROM exams
        WHERE id = $1`,
       [payload.cached_exam_id]
     );
 
-    if (examRes.rows.length > 0) {
-      const cachedRow = examRes.rows[0];
-      if (cachedRow.content_hash !== payload.content_hash) {
-        return res.status(409).json({
-          error: 'تعارض في نسخة محتوى الاختبار المعتمد.',
-          code: 'EXAM_CONTENT_MISMATCH'
-        });
-      }
-      authoritativeQuestions = typeof cachedRow.questions_data === 'string'
-        ? JSON.parse(cachedRow.questions_data)
-        : cachedRow.questions_data;
-      examAcademicStageId = cachedRow.academic_stage_id;
-      examGradeId = cachedRow.grade_id;
-      examSubjectId = cachedRow.subject_id;
-      examBookId = cachedRow.book_id;
-    } else {
-      // Check if this is an approved imported reference exam in `exams` table
-      const refRes = await db.query(
-        `SELECT id, title_ar, title_en, duration_minutes, academic_stage_id, grade_id,
-                subject_id, chapter_id, book_id
-         FROM exams
-         WHERE id = $1`,
-        [payload.cached_exam_id]
-      );
-
-      if (refRes.rows.length === 0) {
-        return res.status(404).json({
-          error: 'الاختبار المعتمد غير موجود في سجلات الخادم.',
-          code: 'CACHED_EXAM_NOT_FOUND'
-        });
-      }
-
+    if (refRes.rows.length > 0) {
       refExamRecord = refRes.rows[0];
       isReferenceExam = true;
       examAcademicStageId = refExamRecord.academic_stage_id;
@@ -949,8 +931,15 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
         [refExamRecord.id]
       );
 
+      // Filter to the specific questions assigned in the student's attempt token
+      let candidateQRows = qRes.rows;
+      if (Array.isArray(payload.question_ids) && payload.question_ids.length > 0) {
+        const assignedSet = new Set(payload.question_ids);
+        candidateQRows = candidateQRows.filter((qr: any) => assignedSet.has(qr.id));
+      }
+
       let optRes: any = { rows: [] };
-      if (qRes.rows.length > 0) {
+      if (candidateQRows.length > 0) {
         optRes = await db.query(
           `SELECT eqo.id, eqo.question_id, eqo.option_text, eqo.is_correct
            FROM exam_question_options eqo
@@ -971,7 +960,7 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
         });
       }
 
-      authoritativeQuestions = qRes.rows.map((qRow: any) => {
+      authoritativeQuestions = candidateQRows.map((qRow: any) => {
         const opts = optMap.get(qRow.id) || [];
         const correctOpt = opts.find((o: any) => o.is_correct);
         return {
@@ -991,6 +980,38 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
           correct_answer: correctOpt?.id || correctOpt?.text || ''
         };
       });
+    } else {
+      // Load from shared_cached_exams
+      const examRes = await db.query(
+        `SELECT id, config_hash, content_hash, version_number, questions_data,
+                book_id, academic_stage_id, grade_id, subject_id, unit_ids
+         FROM shared_cached_exams
+         WHERE id = $1`,
+        [payload.cached_exam_id]
+      );
+
+      if (examRes.rows.length === 0) {
+        return res.status(404).json({
+          error: 'الاختبار المعتمد غير موجود في سجلات الخادم.',
+          code: 'CACHED_EXAM_NOT_FOUND'
+        });
+      }
+
+      const cachedRow = examRes.rows[0];
+      if (cachedRow.content_hash !== payload.content_hash) {
+        return res.status(409).json({
+          error: 'تعارض في نسخة محتوى الاختبار المعتمد.',
+          code: 'EXAM_CONTENT_MISMATCH'
+        });
+      }
+
+      authoritativeQuestions = typeof cachedRow.questions_data === 'string'
+        ? JSON.parse(cachedRow.questions_data)
+        : cachedRow.questions_data;
+      examAcademicStageId = cachedRow.academic_stage_id;
+      examGradeId = cachedRow.grade_id;
+      examSubjectId = cachedRow.subject_id;
+      examBookId = cachedRow.book_id;
     }
 
     // 5. Strict Question Membership & Answer Integrity Validation

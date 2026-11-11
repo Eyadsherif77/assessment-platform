@@ -1421,11 +1421,33 @@ export class ExamCacheService {
 
     const res = await db.query(queryStr, queryParams);
 
-    if (res.rows.length === 0) {
-      return null;
+    let row = res.rows[0];
+
+    if (!row) {
+      // If studentId was provided, but ALL verified versions have already been attempted by this student:
+      // Gracefully recycle the least recently attempted version for practice/revision rather than failing closed!
+      if (params.studentId) {
+        const recycleQuery = `
+          SELECT sce.*
+          FROM shared_cached_exams sce
+          WHERE sce.config_hash = $1
+            AND sce.provenance_verified = 1
+            AND sce.total_questions >= $2
+          ORDER BY sce.version_number ASC, sce.created_at ASC
+          LIMIT 1
+        `;
+        const recycleRes = await db.query(recycleQuery, [configHash, requestedCount]);
+        if (recycleRes.rows.length > 0) {
+          console.log(`🔄 [ExamCacheService.getVerifiedFallbackExam] Student ${params.studentId} attempted all versions; recycling version ${recycleRes.rows[0].version_number} for practice.`);
+          row = recycleRes.rows[0];
+        } else {
+          return null;
+        }
+      } else {
+        return null;
+      }
     }
 
-    const row = res.rows[0];
     let questions: any[] = [];
     try {
       questions = typeof row.questions_data === 'string' ? JSON.parse(row.questions_data) : row.questions_data;
