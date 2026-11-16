@@ -491,6 +491,55 @@ async function main() {
       assert.strictEqual(evalData.report.items.length, 2, 'Report must evaluate both submitted questions');
     });
 
+    // -------------------------------------------------------------
+    // Test 7: Practice Exam Evaluation Not Blocked by Duration
+    // -------------------------------------------------------------
+    await runTest('Test 7: Practice exam evaluation succeeds even if attempt started earlier than duration_minutes', async () => {
+      const staleAttemptId = 'att_stale_' + Date.now();
+      const threeHoursAgo = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+      await db.query(
+        `INSERT INTO exam_attempts (id, exam_id, student_id, started_at, status)
+         VALUES ($1, $2, $3, $4, 'IN_PROGRESS')`,
+        [staleAttemptId, refExamId, studentUser.id, threeHoursAgo]
+      );
+
+      const { signExamAttemptToken } = await import('../dist/services/answerValidationService.js');
+      const staleToken = signExamAttemptToken({
+        schema_version: 'v1',
+        attempt_id: staleAttemptId,
+        student_id: studentUser.id,
+        cached_exam_id: refExamId,
+        config_hash: 'test_hash',
+        content_hash: 'test_content',
+        version_number: 1,
+        question_ids: [qIds[0]],
+        issued_at: Date.now(),
+        expires_at: Date.now() + 3600000
+      });
+
+      const evalRes = await fetch(`${baseUrl}/evaluate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${studentToken}`
+        },
+        body: JSON.stringify({
+          attempt_token: staleToken,
+          answers: [
+            { question_id: qIds[0], selected_option_id: `opt_${qIds[0]}_1` }
+          ]
+        })
+      });
+
+      const evalData = await evalRes.json();
+      assert.strictEqual(evalRes.status, 200, `Expected 200 OK without EXAM_DEADLINE_EXCEEDED, got ${evalRes.status}: ${JSON.stringify(evalData)}`);
+      assert.ok(evalData.report, 'Evaluation report must be generated');
+
+      // Verify attempt is marked COMPLETED
+      const checkAtt = await db.query('SELECT status FROM exam_attempts WHERE id = $1', [staleAttemptId]);
+      assert.strictEqual(checkAtt.rows[0]?.status, 'COMPLETED', 'Attempt must be completed');
+    });
+
     console.log(`\n================================================================`);
     console.log(`ALL ${passedTests}/${totalTests} TESTS PASSED PERFECTLY!`);
     console.log(`================================================================\n`);

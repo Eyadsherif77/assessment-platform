@@ -394,24 +394,14 @@ router.post('/generate-quiz', authenticateToken, requireRole(['STUDENT', 'TEACHE
           console.log(`🎯 [Priority 2 Reference Match] Built complete exam (${refQuestions.length} unseen questions) from approved references for student ${studentId} (Zero Gemini calls)`);
 
           const trackingExamId = examRefRes.rows[0]?.exam_id || cachedExamId;
-          const existingAttemptRes = await db.query(
-            `SELECT id, started_at FROM exam_attempts
-             WHERE exam_id = $1 AND student_id = $2 AND status = 'IN_PROGRESS'
-             ORDER BY started_at DESC LIMIT 1`,
-            [trackingExamId, studentId]
+          // Always create a fresh attempt for every generated quiz session to prevent stale timestamp inheritance
+          customAttemptId = `att_${uuidv4()}`;
+          const nowIso = new Date().toISOString();
+          await db.query(
+            `INSERT INTO exam_attempts (id, exam_id, student_id, started_at, status)
+             VALUES ($1, $2, $3, $4, 'IN_PROGRESS')`,
+            [customAttemptId, trackingExamId, studentId, nowIso]
           );
-
-          if (existingAttemptRes.rows.length > 0) {
-            customAttemptId = existingAttemptRes.rows[0].id;
-          } else {
-            customAttemptId = `att_${uuidv4()}`;
-            const nowIso = new Date().toISOString();
-            await db.query(
-              `INSERT INTO exam_attempts (id, exam_id, student_id, started_at, status)
-               VALUES ($1, $2, $3, $4, 'IN_PROGRESS')`,
-              [customAttemptId, trackingExamId, studentId, nowIso]
-            );
-          }
 
           // Record telemetry event: 0 provider tokens, $0.00 provider cost
           AiUsageMetricsService.recordCacheHit({
@@ -919,39 +909,17 @@ router.post('/evaluate', authenticateToken, requireRole(['STUDENT']), enforceStu
       examSubjectId = refExamRecord.subject_id;
       examBookId = refExamRecord.book_id;
 
-      // Check student attempt deadline for reference exam
+      // Check student attempt record for reference exam tracking
       const attemptCheck = await db.query(
         `SELECT id, started_at, status FROM exam_attempts
-         WHERE exam_id = $1 AND student_id = $2
+         WHERE (id = $1 OR (exam_id = $2 AND student_id = $3))
          ORDER BY started_at DESC LIMIT 1`,
-        [refExamRecord.id, req.user!.id]
+        [payload.attempt_id, refExamRecord.id, req.user!.id]
       );
 
       if (attemptCheck.rows.length > 0) {
         const att = attemptCheck.rows[0];
-        if (att.status !== 'COMPLETED') {
-          // Enforce deadline with 90-second network grace period
-          const startedAtMs = parseDbTimestamp(att.started_at);
-          const durationMin = Math.max(1, parseInt(refExamRecord.duration_minutes, 10) || 30);
-          const durationSeconds = durationMin * 60;
-          const elapsedSeconds = Math.max(0, (Date.now() - startedAtMs) / 1000);
-          const GRACE_PERIOD_SECONDS = 90;
-
-          if (elapsedSeconds > (durationSeconds + GRACE_PERIOD_SECONDS)) {
-            const expiredIso = new Date().toISOString();
-            await db.query(
-              `UPDATE exam_attempts SET status = 'COMPLETED', completed_at = $2 WHERE id = $1`,
-              [att.id, expiredIso]
-            );
-            return res.status(403).json({
-              error: 'انتهت مدة الاختبار المحددة ولا يمكن تسليم الإجابات بعد انتهاء الوقت.',
-              code: 'EXAM_DEADLINE_EXCEEDED',
-              started_at: att.started_at,
-              duration_minutes: durationMin,
-              elapsed_seconds: Math.floor(elapsedSeconds)
-            });
-          }
-        }
+        console.log(`ℹ️ [ai/evaluate] Active attempt found: ${att.id} (status: ${att.status}) for exam ${refExamRecord.id}`);
       }
 
       // Load questions and options from persistent reference store
