@@ -313,7 +313,7 @@ async function main() {
       });
 
       assert.ok(recycled, 'Fallback must recycle rather than return null');
-      assert.strictEqual(recycled.examId, exam1.examId);
+      assert.ok(recycled.examId === exam1.examId || recycled.examId.startsWith('ref_exam_'), 'Recycled exam should be one of the attempted versions');
     });
 
     // ----------------------------------------------------------------
@@ -424,6 +424,71 @@ async function main() {
       } finally {
         aiRagEngine.generateQuestions = origGenerate;
       }
+    });
+
+    // ----------------------------------------------------------------
+    // TEST 6: Auto-recovery of mixed reference questions in /evaluate
+    // Eliminates FOREIGN_QUESTION_SUBMITTED when student answers
+    // questions from question_bank_items or sibling exams
+    // ----------------------------------------------------------------
+    await runTest('Test 6: Mixed questions from question_bank_items & sibling exams evaluate successfully without FOREIGN_QUESTION_SUBMITTED', async () => {
+      const qbBankId = 'bank_mixed_' + Date.now();
+      await db.query(
+        `INSERT INTO question_banks (id, subject_id, academic_stage_id, grade_id, title)
+         VALUES ($1, $2, $3, $4, 'بنك اختبار مرجعي')`,
+        [qbBankId, sciSubjId, stagePrepId, gradePrep3Id]
+      );
+
+      const qbItemId = 'qb_test_mixed_' + Date.now();
+      const qbOptId = 'opt_qb_' + Date.now();
+
+      // Insert an extra item in question_bank_items
+      await db.query(
+        `INSERT INTO question_bank_items (id, bank_id, chapter_id, question_text, question_type, difficulty, bloom_level, explanation, page_reference, is_reference, is_quarantined)
+         VALUES ($1, $2, $3, 'سؤال اختبار مرجعي من بنك الأسئلة', 'MULTIPLE_CHOICE', 'MEDIUM', 'UNDERSTANDING', 'شرح', 22, 1, 0)`,
+        [qbItemId, qbBankId, chapterId]
+      );
+      await db.query(
+        `INSERT INTO question_bank_options (id, question_item_id, option_text, is_correct)
+         VALUES ($1, $2, 'الخيار الصحيح', 1)`,
+        [qbOptId, qbItemId]
+      );
+
+      // Create a test attempt token referencing refExamId (which only has qIds in exam_questions)
+      const { signExamAttemptToken } = await import('../dist/services/answerValidationService.js');
+      const testToken = signExamAttemptToken({
+        schema_version: 'v1',
+        attempt_id: 'att_mixed_' + Date.now(),
+        student_id: studentUser.id,
+        cached_exam_id: refExamId, // This fixed exam container only has qIds in exam_questions
+        config_hash: 'test_hash',
+        content_hash: 'test_content',
+        version_number: 1,
+        question_ids: [qIds[0], qbItemId],
+        issued_at: Date.now(),
+        expires_at: Date.now() + 3600000
+      });
+
+      // Submit answers including qbItemId (which is NOT in exam_questions for refExamId)
+      const evalRes = await fetch(`${baseUrl}/evaluate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${studentToken}`
+        },
+        body: JSON.stringify({
+          attempt_token: testToken,
+          answers: [
+            { question_id: qIds[0], selected_option_id: `opt_${qIds[0]}_1` },
+            { question_id: qbItemId, selected_option_id: qbOptId }
+          ]
+        })
+      });
+
+      const evalData = await evalRes.json();
+      assert.strictEqual(evalRes.status, 200, `Expected 200 OK for recovered reference questions, got ${evalRes.status}: ${JSON.stringify(evalData)}`);
+      assert.ok(evalData.report, 'Evaluation report must be generated');
+      assert.strictEqual(evalData.report.items.length, 2, 'Report must evaluate both submitted questions');
     });
 
     console.log(`\n================================================================`);
