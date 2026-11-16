@@ -189,6 +189,8 @@ export const StudentDashboard: React.FC = () => {
   const [examResult, setExamResult] = useState<any | null>(null);
   const [isSubmittingExam, setIsSubmittingExam] = useState(false);
   const [examTimeLeft, setExamTimeLeft] = useState<number | null>(null);
+  const examDeadlineRef = useRef<number | null>(null);
+  const isAutoSubmittingRef = useRef<boolean>(false);
 
   // Format countdown time MM:SS
   const formatTime = (seconds: number) => {
@@ -550,23 +552,56 @@ export const StudentDashboard: React.FC = () => {
     fetchExamLimitStatus();
   };
 
-  // Live Exam Countdown Timer Effect
+  // Live Exam Countdown Timer & Drift-Proof Effect (Resilient against mobile app suspension / sleep)
   useEffect(() => {
     if (!activeExam || examTimeLeft === null || examResult) return;
 
-    if (examTimeLeft <= 0) {
-      handleSubmitExam();
-      return;
-    }
+    const syncAndTick = () => {
+      if (!examDeadlineRef.current) return;
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((examDeadlineRef.current - now) / 1000));
+      setExamTimeLeft(remaining);
 
-    const timerInterval = setInterval(() => {
-      setExamTimeLeft(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
-    }, 1000);
+      if (remaining <= 0 && !isAutoSubmittingRef.current && !isSubmittingExam) {
+        isAutoSubmittingRef.current = true;
+        handleSubmitExam(true);
+      }
+    };
 
-    return () => clearInterval(timerInterval);
-  }, [activeExam, examTimeLeft, examResult]);
+    // Immediate check
+    syncAndTick();
 
-  // Start taking an exam
+    const timerInterval = setInterval(syncAndTick, 1000);
+
+    // Re-check on visibilitychange and focus to prevent timer drift during mobile sleep
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        syncAndTick();
+      }
+    };
+    window.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', syncAndTick);
+
+    return () => {
+      clearInterval(timerInterval);
+      window.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', syncAndTick);
+    };
+  }, [activeExam, examResult, isSubmittingExam]);
+
+  // Offline Auto-Submit Recovery when connection returns after deadline
+  useEffect(() => {
+    const handleOnline = () => {
+      if (activeExam && !examResult && !isSubmittingExam && examDeadlineRef.current && Date.now() >= examDeadlineRef.current) {
+        console.log('Online event: Auto-submitting preserved answers after network reconnection...');
+        handleSubmitExam(true);
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [activeExam, examResult, isSubmittingExam]);
+
+  // Start taking an exam (Restores active attempts, deadlines, and saved answers)
   const handleStartExam = async (examId: string) => {
     try {
       const res = await fetch(apiUrl(`/api/exams/${examId}`), {
@@ -578,28 +613,98 @@ export const StudentDashboard: React.FC = () => {
         return;
       }
       setActiveExam(data);
-      setExamAnswers({});
+
+      // If exam already completed, show results immediately
+      if (data.result) {
+        setExamResult(data.result);
+        setExamTimeLeft(null);
+        return;
+      }
+
+      // Restore saved answers from server and localStorage
+      const serverAnswers = data.attempt?.saved_answers || {};
+      let localDraft = {};
+      try {
+        const raw = localStorage.getItem(`farabi_draft_${examId}_${data.attempt?.id}`);
+        if (raw) localDraft = JSON.parse(raw);
+      } catch (e) {}
+      const initialAnswers = { ...serverAnswers, ...localDraft };
+      setExamAnswers(initialAnswers);
       setExamResult(null);
 
       const durationMin = parseInt(data.exam?.duration_minutes, 10) || 15;
-      if (typeof data.attempt?.remaining_seconds === 'number') {
-        setExamTimeLeft(data.attempt.remaining_seconds);
-      } else {
-        setExamTimeLeft(durationMin * 60);
-      }
+      const remainingSec = typeof data.attempt?.remaining_seconds === 'number'
+        ? data.attempt.remaining_seconds
+        : (durationMin * 60);
+
+      setExamTimeLeft(remainingSec);
+      examDeadlineRef.current = Date.now() + (remainingSec * 1000);
+      isAutoSubmittingRef.current = false;
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleSubmitExam = async () => {
-    if (!activeExam) return;
+  // Real-time Answer Selection with Optimistic State, Local Draft, and Background Autosave
+  const handleSelectExamOption = (questionId: string, optionId: string) => {
+    if (isSubmittingExam || (examTimeLeft !== null && examTimeLeft <= 0)) return;
+
+    // 1. Optimistic React state update
+    setExamAnswers(prev => {
+      const updated = { ...prev, [questionId]: optionId };
+      if (activeExam?.exam?.id && activeExam?.attempt?.id) {
+        try {
+          localStorage.setItem(`farabi_draft_${activeExam.exam.id}_${activeExam.attempt.id}`, JSON.stringify(updated));
+        } catch (e) {}
+      }
+      return updated;
+    });
+
+    // 2. Real-time background autosave to server
+    if (activeExam?.exam?.id && activeExam?.attempt?.id) {
+      fetch(apiUrl(`/api/exams/${activeExam.exam.id}/answers`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          attempt_id: activeExam.attempt.id,
+          question_id: questionId,
+          selected_option_id: optionId
+        })
+      }).then(async res => {
+        const data = await res.json();
+        if (data.expired || data.auto_submitted) {
+          // Exam expired during answering: load final result immediately
+          if (data.result) {
+            setExamResult(data.result);
+            setExamTimeLeft(null);
+          }
+        }
+      }).catch(err => {
+        console.warn('Autosave network transit error; answer safe in local draft:', err);
+      });
+    }
+  };
+
+  // Authoritative Submission: Works for both manual click and automatic timer expiration
+  const handleSubmitExam = async (isAutoSubmit = false) => {
+    if (!activeExam || isSubmittingExam) return;
     setIsSubmittingExam(true);
     setExamTimeLeft(null);
     try {
-      const answersPayload = Object.entries(examAnswers).map(([qId, optId]) => ({
+      // Gather latest answers from React state merged with localStorage
+      let localDraft = {};
+      try {
+        const raw = localStorage.getItem(`farabi_draft_${activeExam.exam.id}_${activeExam.attempt?.id}`);
+        if (raw) localDraft = JSON.parse(raw);
+      } catch (e) {}
+      const combinedAnswers = { ...localDraft, ...examAnswers };
+
+      const answersPayload = Object.entries(combinedAnswers).map(([qId, optId]) => ({
         question_id: qId,
-        selected_option_id: optId
+        selected_option_id: optId as string
       }));
 
       const res = await fetch(apiUrl(`/api/exams/${activeExam.exam.id}/submit`), {
@@ -610,20 +715,35 @@ export const StudentDashboard: React.FC = () => {
         },
         body: JSON.stringify({
           attempt_id: activeExam.attempt?.id,
-          answers: answersPayload
+          answers: answersPayload,
+          is_auto_submit: isAutoSubmit
         })
       });
       const data = await res.json();
       if (!res.ok) {
+        if (navigator.onLine === false) {
+          alert(isAr ? 'أنت غير متصل بالإنترنت حالياً. تم حفظ إجاباتك محلياً بأمان، وسيتم تسليمها تلقائياً فور عودة الاتصال.' : 'You are offline. Answers preserved locally.');
+          return;
+        }
         alert(data.error || (isAr ? 'تعذر تسليم الاختبار' : 'Failed to submit exam'));
         return;
       }
+
+      // Cleanup local draft
+      try {
+        localStorage.removeItem(`farabi_draft_${activeExam.exam.id}_${activeExam.attempt?.id}`);
+      } catch (e) {}
+
       setExamResult(data);
       loadAnalytics();
     } catch (e) {
-      console.error(e);
+      console.error('Submit exam error:', e);
+      if (navigator.onLine === false) {
+        alert(isAr ? 'أنت غير متصل بالإنترنت حالياً. تم حفظ إجاباتك محلياً بأمان، وسيتم تسليمها تلقائياً فور عودة الاتصال.' : 'You are offline. Answers preserved locally.');
+      }
     } finally {
       setIsSubmittingExam(false);
+      isAutoSubmittingRef.current = false;
     }
   };
 
@@ -2421,6 +2541,23 @@ export const StudentDashboard: React.FC = () => {
                       <h3 style={{ fontSize: '1.5rem', fontWeight: 900, margin: '0 0 0.5rem' }}>
                         {isAr ? 'انتهى الامتحان وتم التصحيح الفوري!' : 'Exam Completed & Automatically Graded!'}
                       </h3>
+                      {examResult.auto_submitted && (
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          background: '#FEF3C7',
+                          color: '#92400E',
+                          padding: '0.35rem 0.85rem',
+                          borderRadius: 'var(--radius-full)',
+                          fontSize: '0.85rem',
+                          fontWeight: 800,
+                          margin: '0.25rem auto 0.75rem auto'
+                        }}>
+                          <Clock size={16} />
+                          <span>{isAr ? 'تم تسليم وتصحيح هذا الاختبار تلقائياً فور انتهاء الوقت وحفظ كافة الإجابات' : 'Auto-submitted at deadline with all answers preserved'}</span>
+                        </div>
+                      )}
                       <div style={{
                         fontSize: '3rem',
                         fontWeight: 900,
@@ -2591,6 +2728,23 @@ export const StudentDashboard: React.FC = () => {
                   </div>
                 ) : (
                   <div>
+                    {examTimeLeft === 0 && (
+                      <div style={{
+                        background: '#EFF6FF',
+                        border: '1.5px solid #3B82F6',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '0.85rem 1.25rem',
+                        marginBottom: '1.25rem',
+                        color: '#1E40AF',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem'
+                      }}>
+                        <Clock size={20} />
+                        <span>{isAr ? 'انتهت مدة الاختبار! جاري تسليم إجاباتك وتصحيح الامتحان تلقائياً...' : 'Time expired! Auto-submitting and grading your answers...'}</span>
+                      </div>
+                    )}
                     {/* Questions */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
                       {activeExam.questions?.map((q: any, idx: number) => {
@@ -2638,20 +2792,22 @@ export const StudentDashboard: React.FC = () => {
                                     borderRadius: 'var(--radius-md)',
                                     background: isSelected ? 'var(--primary-50)' : '#FFFFFF',
                                     border: isSelected ? '1.5px solid var(--primary-600)' : '1px solid var(--border-light)',
-                                    cursor: 'pointer',
+                                    cursor: (isSubmittingExam || (examTimeLeft !== null && examTimeLeft <= 0)) ? 'not-allowed' : 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.5rem',
                                     minWidth: 0,
                                     maxWidth: '100%',
-                                    boxSizing: 'border-box'
+                                    boxSizing: 'border-box',
+                                    opacity: (isSubmittingExam || (examTimeLeft !== null && examTimeLeft <= 0)) ? 0.8 : 1
                                   }}
                                 >
                                   <input
                                     type="radio"
                                     name={`q_${q.id}`}
                                     checked={isSelected}
-                                    onChange={() => setExamAnswers({ ...examAnswers, [q.id]: opt.id })}
+                                    disabled={isSubmittingExam || (examTimeLeft !== null && examTimeLeft <= 0)}
+                                    onChange={() => handleSelectExamOption(q.id, opt.id)}
                                     style={{ flexShrink: 0 }}
                                   />
                                   <span style={{ minWidth: 0, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{opt.option_text}</span>
@@ -2670,7 +2826,7 @@ export const StudentDashboard: React.FC = () => {
                       </button>
                       <button
                         className="btn btn-primary"
-                        onClick={handleSubmitExam}
+                        onClick={() => handleSubmitExam(false)}
                         disabled={isSubmittingExam}
                         style={{ fontWeight: 800 }}
                       >
