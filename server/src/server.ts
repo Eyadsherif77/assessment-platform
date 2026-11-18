@@ -59,7 +59,8 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+  exposedHeaders: ['X-Request-Id']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -89,7 +90,7 @@ app.get('/', (req, res) => {
     status: 'online',
     platform: 'منصة التقييم من أجل التعلم',
     description: 'National AI Assessment Platform API Service',
-    version: '1.0.0',
+    version: '1.0.2',
     endpoints: {
       health: '/api/health',
       meta: '/api/meta',
@@ -106,7 +107,7 @@ app.get(['/health', '/api/health'], (req, res) => {
   res.json({
     status: 'online',
     platform: 'منصة التقييم من أجل التعلم',
-    version: '1.0.0',
+    version: '1.0.2',
     timestamp: new Date().toISOString()
   });
 });
