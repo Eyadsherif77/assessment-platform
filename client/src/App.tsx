@@ -10,6 +10,8 @@ import { HierarchyDashboard } from './pages/HierarchyDashboard';
 import { GovernorateSupervisorDashboard } from './pages/GovernorateSupervisorDashboard';
 import { AuthModal } from './pages/AuthModal';
 import { PlatformSettingsProvider } from './context/PlatformSettingsContext';
+import { ToastProvider } from './context/ToastContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useScreenDetector } from './utils/useScreenDetector';
 
 const PlatformApp: React.FC = () => {
@@ -176,10 +178,14 @@ const PlatformApp: React.FC = () => {
 
 export default function App() {
   return (
-    <PlatformSettingsProvider>
-      <AuthProvider>
-        <PlatformApp />
-      </AuthProvider>
-    </PlatformSettingsProvider>
+    <ErrorBoundary>
+      <PlatformSettingsProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <PlatformApp />
+          </ToastProvider>
+        </AuthProvider>
+      </PlatformSettingsProvider>
+    </ErrorBoundary>
   );
 }

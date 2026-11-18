@@ -63,12 +63,41 @@ export function apiUrl(path: string): string {
   return `${base}${path}`;
 }
 
+export function generateRequestId(): string {
+  try {
+    return 'req_' + (crypto?.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 12) : Math.random().toString(36).slice(2, 14));
+  } catch (_) {
+    return 'req_' + Math.random().toString(36).slice(2, 14);
+  }
+}
+
 export async function apiFetch(path: string, options?: RequestInit): Promise<Response> {
   const url = apiUrl(path);
-  return fetch(url, options);
+  const headers = new Headers(options?.headers || {});
+  if (!headers.has('X-Request-Id')) {
+    headers.set('X-Request-Id', generateRequestId());
+  }
+
+  const finalOptions: RequestInit = {
+    ...options,
+    headers
+  };
+
+  try {
+    return await fetch(url, finalOptions);
+  } catch (err: any) {
+    console.warn(`[Network Warning] apiFetch failed for ${path}:`, err?.message || err);
+    throw err;
+  }
 }
 
 export function authHeaders(token: string | null): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const baseHeaders: Record<string, string> = {
+    'X-Request-Id': generateRequestId()
+  };
+  if (token) {
+    baseHeaders['Authorization'] = `Bearer ${token}`;
+  }
+  return baseHeaders;
 }
 

@@ -126,8 +126,20 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     }
 
     next();
-  } catch (err) {
-    return res.status(403).json({ error: 'رمز المصادقة غير صالح أو منتهي الصلاحية' });
+  } catch (err: any) {
+    const reqId = (req as any).id;
+    if (err?.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        error: 'انتهت صلاحية جلسة تسجيل الدخول. يُرجى تسجيل الدخول مجدداً.', 
+        code: 'TOKEN_EXPIRED',
+        requestId: reqId
+      });
+    }
+    return res.status(403).json({ 
+      error: 'رمز المصادقة غير صالح أو منتهي الصلاحية', 
+      code: 'INVALID_TOKEN',
+      requestId: reqId
+    });
   }
 }
 

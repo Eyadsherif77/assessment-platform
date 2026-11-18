@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { db } from './db/db.js';
 import { seedDatabase } from './db/seed.js';
+import { requestIdMiddleware } from './middleware/requestId.js';
 
 import authRoutes from './routes/auth.js';
 import metaRoutes from './routes/meta.js';
@@ -42,6 +43,8 @@ try {
 }
 
 // Middlewares
+app.use(requestIdMiddleware);
+
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',')
   : ['http://localhost:5173', 'http://localhost:3000'];
@@ -56,7 +59,7 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -143,11 +146,20 @@ app.get('/sitemap.xml', (req, res) => {
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const reqId = (req as any).id || 'unknown';
   if (err.type === 'entity.parse.failed' || err.status === 400) {
-    return res.status(400).json({ error: 'صيغة البيانات (JSON) المرسلة غير صالحة' });
+    return res.status(400).json({ 
+      error: 'صيغة البيانات (JSON) المرسلة غير صالحة',
+      code: 'INVALID_JSON_PAYLOAD',
+      requestId: reqId
+    });
   }
-  console.error('Unhandled server error:', err);
-  res.status(500).json({ error: 'حدث خطأ غير متوقع في الخادم: ' + (err.message || 'Error') });
+  console.error(`[${reqId}] Unhandled server error:`, err);
+  res.status(500).json({ 
+    error: 'حدث تعذر مؤقت في معالجة طلبك، يُرجى إعادة المحاولة لاحقاً.', 
+    code: 'INTERNAL_SERVER_ERROR',
+    requestId: reqId 
+  });
 });
 
 
